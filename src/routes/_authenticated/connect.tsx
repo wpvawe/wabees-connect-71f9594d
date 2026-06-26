@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
@@ -11,6 +11,7 @@ import { ManualTokenForm } from "@/components/connect/ManualTokenForm";
 import { ConnectedCard } from "@/components/connect/ConnectedCard";
 import { getConnectionStatus } from "@/lib/meta/connect.functions";
 import { getMetaPublicConfig } from "@/lib/meta/config.functions";
+import { syncWhatsAppFromFirebase } from "@/lib/meta/sync.functions";
 
 export const Route = createFileRoute("/_authenticated/connect")({
   head: () => ({ meta: [{ title: "Connect WhatsApp — Wabees" }] }),
@@ -20,9 +21,24 @@ export const Route = createFileRoute("/_authenticated/connect")({
 function ConnectPage() {
   const statusFn = useServerFn(getConnectionStatus);
   const cfgFn = useServerFn(getMetaPublicConfig);
+  const syncFn = useServerFn(syncWhatsAppFromFirebase);
+  const qc = useQueryClient();
   const { data: row } = useSuspenseQuery({ queryKey: ["whatsapp-config"], queryFn: () => statusFn() });
   const { data: cfg } = useSuspenseQuery({ queryKey: ["meta-public-config"], queryFn: () => cfgFn() });
   const [showManual, setShowManual] = useState(false);
+
+  useEffect(() => {
+    if (row) return;
+    let cancelled = false;
+    syncFn({ data: undefined })
+      .then((res) => {
+        if (!cancelled && res.synced) qc.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [row, syncFn, qc]);
 
   return (
     <>
