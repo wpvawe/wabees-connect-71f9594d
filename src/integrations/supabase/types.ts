@@ -113,6 +113,54 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_config: {
+        Row: {
+          access_token_encrypted: string | null
+          business_name: string | null
+          connected_at: string | null
+          created_at: string
+          display_phone: string | null
+          method: string
+          phone_number_id: string | null
+          quality_rating: string | null
+          token_iv: string | null
+          token_tag: string | null
+          updated_at: string
+          user_id: string
+          waba_id: string | null
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          business_name?: string | null
+          connected_at?: string | null
+          created_at?: string
+          display_phone?: string | null
+          method?: string
+          phone_number_id?: string | null
+          quality_rating?: string | null
+          token_iv?: string | null
+          token_tag?: string | null
+          updated_at?: string
+          user_id: string
+          waba_id?: string | null
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          business_name?: string | null
+          connected_at?: string | null
+          created_at?: string
+          display_phone?: string | null
+          method?: string
+          phone_number_id?: string | null
+          quality_rating?: string | null
+          token_iv?: string | null
+          token_tag?: string | null
+          updated_at?: string
+          user_id?: string
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
