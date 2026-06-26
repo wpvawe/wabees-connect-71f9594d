@@ -6,7 +6,7 @@ import { Bee3D } from "./Bee3D";
 export function Hero() {
   return (
     <section className="hero-bg relative overflow-hidden">
-      <Bee3D className="pointer-events-none absolute inset-0 h-full w-full opacity-90" />
+      <Bee3D className="pointer-events-none absolute right-[-6%] top-1/2 hidden h-[420px] w-[420px] -translate-y-1/2 opacity-70 lg:block" />
       <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:py-28 lg:grid-cols-[1.05fr_0.95fr] lg:py-32">
         <div className="relative z-10">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft">
