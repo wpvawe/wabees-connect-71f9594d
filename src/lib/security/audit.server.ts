@@ -13,7 +13,7 @@ export async function logAudit(opts: {
       action: opts.action,
       ip: clientIp(),
       user_agent: getRequestHeader("user-agent") ?? null,
-      meta: opts.meta ?? {},
+      meta: (opts.meta ?? {}) as never,
     });
   } catch (e) {
     // never fail the calling fn on audit failure
