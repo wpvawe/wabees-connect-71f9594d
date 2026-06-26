@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { SideRail } from "@/components/shell/SideRail";
 import { MobileTabBar } from "@/components/shell/MobileTabBar";
+import { FirebaseSessionProvider } from "@/hooks/useFirebaseSession";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -15,12 +16,14 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AppShell() {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <SideRail />
-      <main className="flex min-w-0 flex-1 flex-col pb-14 md:pb-0">
-        <Outlet />
-      </main>
-      <MobileTabBar />
-    </div>
+    <FirebaseSessionProvider>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <SideRail />
+        <main className="flex min-w-0 flex-1 flex-col pb-14 md:pb-0">
+          <Outlet />
+        </main>
+        <MobileTabBar />
+      </div>
+    </FirebaseSessionProvider>
   );
 }
