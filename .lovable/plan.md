@@ -1,116 +1,114 @@
-## Phase 2 — Authentication, Firebase wiring & Meta Embedded Signup
+## Phase 2.5 — App ↔ Web Account & WhatsApp Sync
 
-Goal: User can sign up / log in, land in an authenticated app shell, and connect their WhatsApp Business Account through Meta's Embedded Signup (no manual token paste). All security rules from `docs/RULES.md` (rate-limit, honeypot, zod, JWT, audit log) enforced from day one.
+Goal: A user who already signed up in the Flutter app (Firebase Auth) and connected WhatsApp there must be able to sign in on the website with the **same email + password** and immediately see their WhatsApp connected — no second signup, no second Meta flow. And vice versa: signing up on web → signing in on the app works the same way. Firebase remains the source of truth for cross-platform identity and WhatsApp config (because Flutter is already live on it); Supabase is the web session/JWT layer.
 
-### 1. Backend foundation
+### 1. Identity bridge (Firebase ↔ Supabase)
 
-- Enable **Lovable Cloud** (Supabase under the hood). Used for: session/JWT, `rate_limits` table, `audit_logs` table, encrypted secrets cache. Firestore stays the source of truth for app data (shared with Flutter app).
-- Tables (migration, with GRANTs + RLS):
-  - `profiles` (id → auth.users, display_name, avatar_url, firebase_uid, created_at)
-  - `user_roles` (separate table + `app_role` enum: `admin|owner|agent` + `has_role()` security-definer fn)
-  - `rate_limits` (key, window_start, count) — sliding-window helper
-  - `audit_logs` (user_id, action, ip, ua, meta jsonb, created_at)
-- Secrets to add: `META_APP_ID` (public-ish, also `VITE_META_APP_ID`), `META_APP_SECRET`, `META_CONFIG_ID`, `META_GRAPH_VERSION` (v21.0), `TOKEN_ENC_KEY` (generated 64-char), `FIREBASE_SERVICE_ACCOUNT_JSON` (for server-side Firestore writes from TanStack server fns).
+- Add `src/integrations/firebase/admin.server.ts` — server-only Firebase Admin SDK initialized from `FIREBASE_SERVICE_ACCOUNT_JSON`. Used to:
+  - Look up a Firebase user by email
+  - Verify a password by calling Identity Toolkit `signInWithPassword` REST (Admin SDK can't verify passwords directly)
+  - Mint Firebase custom tokens for web→app handoff later
+  - Read/write Firestore `users/{firebase_uid}/whatsapp_config`
+- Add `src/integrations/firebase/client.ts` — Firebase Web SDK init for browser (project options pulled from Flutter `firebase_options.dart`). Used later for Firestore realtime in inbox.
+- Required new secret: `FIREBASE_WEB_API_KEY` (public, also exposed as `VITE_FIREBASE_WEB_API_KEY` for client SDK). Used server-side for password verification REST call.
 
-### 2. Firebase Web SDK (client)
+### 2. Unified sign-in flow
 
-- Install `firebase` (web v10).
-- `src/integrations/firebase/client.ts` — initialize with the same project options from the Flutter `firebase_options.dart` (web config). Export `auth`, `db` (Firestore), `messaging` lazy.
-- `src/integrations/firebase/auth-bridge.ts` — on Supabase sign-in, mint a Firebase custom token via server fn → `signInWithCustomToken`. Keeps both auth systems in sync so Firestore rules see the same UID Flutter uses.
-
-### 3. Auth surface
-
-- Public routes (top-level, NOT under `_authenticated/`):
-  - `/auth` — tabs: Sign in / Sign up. Email+password, Google. Honeypot field `company_url`. Zod schema (email, password ≥ 8, name 2–60). Rate-limit via server fn.
-  - `/auth/forgot` + `/auth/reset-password` (mandatory pair).
-- Protected shell under `src/routes/_authenticated/` (integration-managed gate):
-  - `_authenticated/route.tsx` (already provided by Lovable Cloud integration) — redirects to `/auth`.
-  - `_authenticated/app.tsx` — 3-column shell: `SideRail` (icons), `SecondaryPane` (changes per section), `MainPane` (Outlet). Mobile = bottom tab bar.
-  - `_authenticated/dashboard.tsx` — landing after login (KPIs placeholder).
-  - `_authenticated/connect.tsx` — WhatsApp connect screen (the Embedded Signup flow).
-  - `_authenticated/settings.tsx` — profile / sign out.
-
-### 4. Meta Embedded Signup
-
-- `src/components/connect/FacebookSdkLoader.tsx` — loads `connect.facebook.net/en_US/sdk.js` once, calls `FB.init({ appId, version, xfbml: false })`.
-- `src/components/connect/MetaConnectButton.tsx` — Facebook-blue button: calls `FB.login(cb, { config_id, response_type: 'code', override_default_response_type: true, extras: { setup: { } } })`. Listens to `FB.Event.subscribe('xfbml.register')` for `{ phone_number_id, waba_id }` via `message` event from `*.facebook.com`.
-- Server route `src/routes/api/public/meta/exchange-token.ts` (HMAC-signed body from client + bearer from `requireSupabaseAuth` middleware on a sibling server fn — we'll actually use `createServerFn` with auth middleware instead of a public route to keep it simple):
-  - Accept `{ code, phone_number_id, waba_id }`.
-  - Exchange code → long-lived business token (`GET /v21.0/oauth/access_token?...`).
-  - Subscribe app to WABA webhooks (`POST /{waba-id}/subscribed_apps`).
-  - Register phone (`POST /{phone-number-id}/register` with PIN).
-  - AES-256-GCM encrypt token with `TOKEN_ENC_KEY` → write to Firestore `users/{firebase_uid}/whatsapp_config` via Admin SDK in a `.server.ts` helper.
-  - Insert `audit_logs` row.
-- Manual-token fallback section (collapsed by default) for users whose Meta App is still in review — same as Flutter.
-- Connected state card: shows phone display number, quality rating, WABA name, "Disconnect" + "Rotate token" actions.
-
-### 5. Security & infra primitives (reusable)
-
-- `src/lib/security/rate-limit.functions.ts` — `assertRateLimit(key, max, windowSec)` server fn used by auth + meta endpoints.
-- `src/lib/security/honeypot.ts` — `HoneypotField` component + `assertHoneypot(formData)` helper.
-- `src/lib/security/audit.server.ts` — `logAudit({ userId, action, meta })`.
-- `src/lib/security/crypto.server.ts` — AES-256-GCM encrypt/decrypt with `TOKEN_ENC_KEY`.
-- `src/lib/security/safe-error.ts` — strips stack/paths from client-facing errors.
-- Zod schemas in `src/lib/schemas/` reused client+server.
-
-### 6. UI patterns
-
-- `src/components/wb/` reusable widgets: `WbButton` (variants: primary/ghost/danger), `WbCard`, `WbInput` (label+error+honeypot-aware), `WbEmpty`, `WbDialog`, `WbToast`, `WbAvatar`.
-- All icons via Font Awesome (already installed). 3-color palette unchanged.
-- Loading/empty/error 3-state UI on every list.
-
-### 7. Landing page update
-
-- Wire `SiteNav` "Sign in" + Hero CTAs → `/auth`.
-- Already-authenticated users hitting `/auth` → redirect to `/_authenticated/dashboard`.
-
-### 8. Files (≤ 200 lines each)
+`src/lib/auth/unified-signin.functions.ts` — server fn `unifiedSignIn({ email, password })`:
 
 ```text
-src/integrations/firebase/{client.ts, auth-bridge.ts, admin.server.ts}
-src/lib/security/{rate-limit.functions.ts, honeypot.ts, audit.server.ts, crypto.server.ts, safe-error.ts}
-src/lib/auth/{sign-in.functions.ts, sign-up.functions.ts, mint-firebase-token.functions.ts}
-src/lib/meta/{exchange-token.functions.ts, disconnect.functions.ts}
-src/lib/schemas/{auth.ts, meta.ts}
-src/components/wb/{WbButton, WbCard, WbInput, WbEmpty, WbDialog, WbAvatar}.tsx
-src/components/auth/{SignInForm, SignUpForm, ForgotForm, ResetForm, AuthLayout}.tsx
-src/components/connect/{FacebookSdkLoader, MetaConnectButton, ConnectedCard, ManualTokenFallback}.tsx
-src/components/shell/{SideRail, SecondaryPane, MobileTabBar, TopBar}.tsx
-src/routes/auth.tsx, src/routes/auth.forgot.tsx, src/routes/auth.reset-password.tsx
-src/routes/_authenticated/app.tsx (layout w/ Outlet)
-src/routes/_authenticated/dashboard.tsx
-src/routes/_authenticated/connect.tsx
-src/routes/_authenticated/settings.tsx
-supabase migration: profiles, user_roles + enum + has_role(), rate_limits, audit_logs (with GRANTs + RLS)
+1. Try Supabase signInWithPassword
+   └─ success → ensure profile.firebase_uid is set (look up in Firebase by email; link if missing); return { mode: 'supabase' }
+   └─ "Invalid login credentials" → step 2
+2. Look up Firebase user by email (Admin SDK)
+   └─ not found → return original Supabase error
+   └─ found → call Identity Toolkit signInWithPassword to verify password
+       └─ fails → return generic invalid credentials (no enumeration)
+       └─ succeeds → step 3
+3. App-first user on web:
+   - Create Supabase user (admin.createUser) with same email + a random password
+   - Set profile.firebase_uid = firebase user uid, display_name from Firebase
+   - Update Supabase user password to the one user just typed (so future logins go fast path)
+   - Generate Supabase session (admin.generateLink + token) OR sign in normally with the new password
+   - Return { mode: 'linked', session }
+4. Audit log
 ```
 
-### 9. Secrets I'll need from you (after enabling Cloud)
+Client `SignInForm` calls `unifiedSignIn` first, then on `{ mode: 'linked', session }` calls `supabase.auth.setSession(session)`. Honeypot + rate-limit (`auth:signin` 10/min) reused.
 
-1. `META_APP_ID` — your Meta App ID
-2. `META_APP_SECRET` — Meta App Secret
-3. `META_CONFIG_ID` — Tech Provider Embedded Signup config_id
-4. Firebase Web config (apiKey/authDomain/projectId/appId/messagingSenderId) — I'll lift from `firebase_options.dart` automatically
-5. `FIREBASE_SERVICE_ACCOUNT_JSON` — for server-side Firestore writes (same one PHP backend uses)
+### 3. Unified sign-up flow
 
-`TOKEN_ENC_KEY` I'll auto-generate.
+`unifiedSignUp({ email, password, display_name })`:
+- If Firebase user already exists with that email → reject "Account already exists, please sign in"
+- Else create Supabase user (normal flow) AND create Firebase user via Admin SDK with the same password → store firebase_uid on profile
+- Result: a fresh web signup is immediately usable in the Flutter app too
 
-### 10. Acceptance / test checklist for Phase 2
+### 4. WhatsApp config auto-fetch
 
-- [ ] `/auth` sign-up creates Supabase user + profile + default `owner` role + Firebase custom token sign-in
-- [ ] Honeypot trip → silent 200, no account created
-- [ ] 6th failed login within 1 min → 429
-- [ ] Reset-password flow end-to-end
-- [ ] `/auth` while signed-in → redirect to `/dashboard`
-- [ ] `/dashboard` while signed-out → redirect to `/auth`
-- [ ] Meta Connect button opens FB popup; on success, `users/{uid}/whatsapp_config` doc appears with encrypted token, phone + WABA shown in UI
-- [ ] Manual-token fallback still works
-- [ ] `audit_logs` row for each login + connect
-- [ ] No secrets in client bundle (`rg META_APP_SECRET dist/` = 0 hits)
-- [ ] Lighthouse on `/auth` ≥ 95 across the board
+`src/lib/meta/sync.functions.ts` — `syncWhatsAppFromFirebase()` server fn (auth-required):
+- Read `profiles.firebase_uid`
+- If no Supabase `whatsapp_config` row but Firestore `users/{uid}/whatsapp_config` exists → copy `phone_number_id`, `waba_id`, `display_phone`, `business_name`, `quality_rating`. Encrypt the access token with `TOKEN_ENC_KEY` if Firestore stores it plaintext (Flutter app currently does); if already encrypted with the same scheme, copy as-is. Set `method = 'app_synced'`.
+- Reverse: in `exchangeMetaToken` and `manualConnect`, also write the same fields back to Firestore so the Flutter app sees a web-initiated connect instantly.
 
-### After Phase 2 approval, I'll need from you:
+Trigger points:
+- After successful `unifiedSignIn` (server-side, before returning) → silent sync
+- On Connect screen mount → fallback sync + `useQuery(['whatsapp-config'])`
 
-- Confirmation to enable Lovable Cloud
-- The 3 Meta secrets + Firebase service account JSON (I'll request via secure form, not chat)
+Result: app-first user lands on `/dashboard` with WhatsApp already showing as connected.
 
-Ready to proceed?
+### 5. Schema additions
+
+One small migration:
+- Add `profiles.firebase_uid` UNIQUE index (column already exists)
+- Add `whatsapp_config.source` text column (`'app' | 'web' | 'embedded_signup' | 'manual'`) — replaces overloaded `method`. Keep `method` for backwards compat for now.
+- Add `whatsapp_config.synced_at` timestamptz
+
+### 6. Security
+
+- All Firebase Admin calls inside `.server.ts` files, loaded with `await import(...)` inside handlers (never module scope of `.functions.ts`).
+- `FIREBASE_SERVICE_ACCOUNT_JSON` never reaches client bundle (verified).
+- Password verification REST call uses generic error to prevent account enumeration.
+- Rate-limit `auth:signin` 10/min/IP+email composite key.
+- Audit log every linked sign-in with `{ source: 'firebase-link' }`.
+- Reuse `safeError` everywhere.
+
+### 7. Files (all ≤ 200 lines)
+
+```text
+src/integrations/firebase/client.ts                    (web SDK init)
+src/integrations/firebase/admin.server.ts              (Admin SDK + REST password verify)
+src/integrations/firebase/firestore-wa.server.ts       (read/write users/{uid}/whatsapp_config)
+src/lib/auth/unified-signin.functions.ts
+src/lib/auth/unified-signup.functions.ts
+src/lib/auth/link-firebase.server.ts                   (helpers: linkOrCreateSupabaseUser)
+src/lib/meta/sync.functions.ts                         (syncWhatsAppFromFirebase + writeWhatsAppToFirebase)
+edit: src/components/auth/SignInForm.tsx               (call unifiedSignIn)
+edit: src/components/auth/SignUpForm.tsx               (call unifiedSignUp)
+edit: src/lib/meta/connect.functions.ts                (also write to Firestore)
+edit: src/routes/_authenticated/connect.tsx           (auto-sync on mount)
+edit: src/routes/_authenticated/dashboard.tsx         (call syncWhatsAppFromFirebase on first load)
+migration: profiles.firebase_uid unique, whatsapp_config.source + synced_at
+```
+
+### 8. Required secret (only 1 new)
+
+- `FIREBASE_WEB_API_KEY` — Firebase Web API key (also exposed as `VITE_FIREBASE_WEB_API_KEY`). Lifted from `firebase_options.dart` web config.
+
+`FIREBASE_SERVICE_ACCOUNT_JSON` is already added. ✅
+
+### 9. Acceptance checklist
+
+- [ ] App-only user signs in on web with same email+password → lands in dashboard, WhatsApp shows connected, no Meta flow needed
+- [ ] Web-only user signs into Flutter app with same credentials → works (Firebase user was created during web signup)
+- [ ] Web user connects WhatsApp via Meta → Flutter app sees connection within seconds (Firestore write)
+- [ ] App user connects WhatsApp in Flutter → web shows it on next dashboard load (Firestore read)
+- [ ] Wrong password on either path → generic "Invalid email or password", no enumeration
+- [ ] Honeypot + 429 still work
+- [ ] No service account JSON or web API key with sensitive scope in client bundle
+- [ ] `audit_logs` row per linked sign-in / per sync
+
+### 10. After Phase 2.5 approval → Phase 3 (Inbox & Realtime)
+
+Firestore realtime mirror of conversations, contacts list, campaigns table, templates browser. The identity + WA sync built here makes Phase 3 trivial because `firebase_uid` and connection are already wired.
+
+**Need from you:** confirm I can add `FIREBASE_WEB_API_KEY` (I'll request it after you approve this plan). Ready to build?
