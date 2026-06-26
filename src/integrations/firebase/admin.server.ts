@@ -31,6 +31,25 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
+/** Mint a Firebase custom token (1h validity) for a given uid. */
+export async function mintCustomToken(uid: string): Promise<string> {
+  const { client_email, private_key } = sa();
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: client_email,
+    sub: client_email,
+    aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+    iat: now,
+    exp: now + 3600,
+    uid,
+  };
+  const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claim))}`;
+  const key = createPrivateKey(private_key);
+  const sig = createSign("RSA-SHA256").update(unsigned).sign(key);
+  return `${unsigned}.${b64url(sig)}`;
+}
+
 /** Mint OAuth2 access token for Google APIs using service account JWT. */
 async function getAccessToken(scopes: string[]): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -139,6 +158,34 @@ export async function firestoreSetDoc(path: string, data: Record<string, unknown
     },
   );
   if (!res.ok) throw new Error(`Firestore set failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Firestore REST: create a document with auto-generated id. Returns new doc id. */
+export async function firestoreCreateDoc(parentPath: string, data: Record<string, unknown>): Promise<string> {
+  const token = await getAccessToken(["https://www.googleapis.com/auth/datastore"]);
+  const fields = encodeFields(data);
+  const res = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${firebaseProjectId()}/databases/(default)/documents/${parentPath}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ fields }),
+    },
+  );
+  if (!res.ok) throw new Error(`Firestore create failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as { name: string };
+  const parts = json.name.split("/");
+  return parts[parts.length - 1];
+}
+
+/** Firestore REST: delete a document. No-op on 404. */
+export async function firestoreDeleteDoc(path: string): Promise<void> {
+  const token = await getAccessToken(["https://www.googleapis.com/auth/datastore"]);
+  const res = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${firebaseProjectId()}/databases/(default)/documents/${path}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok && res.status !== 404) throw new Error(`Firestore delete failed: ${res.status}`);
 }
 
 // --- Firestore value (de)serialization (minimal subset) ---
