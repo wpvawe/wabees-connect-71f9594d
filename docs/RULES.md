@@ -404,3 +404,22 @@ App me user manually `phone_number_id` + `access_token` paste karta tha. Web me 
 - **PHP backend** (`api.wabees.live`) stays the source of truth for WhatsApp send/receive and webhooks. Web calls it via signed JWT.
 - **Plan / subscription state** read by both — single source of truth in Firestore.
 - **Push notifications** — web uses FCM Web SDK on top of the same project.
+
+---
+
+## 📦 PHASE STATUS (Web)
+
+- **Phase 1 ✅** — Landing page, design system, RULES.md.
+- **Phase 2 ✅** — Lovable Cloud enabled, profiles + user_roles + has_role + rate_limits + audit_logs + whatsapp_config tables (with GRANTs + RLS). Auth pages (`/auth`, `/auth/forgot`, `/auth/reset-password`) with email/password, Google (via Lovable broker), honeypot, zod, sliding-window rate limit. AES-256-GCM token encryption (`TOKEN_ENC_KEY`). Meta **Embedded Signup** flow (`MetaConnectButton` + `exchangeMetaToken` server fn) with manual-token fallback. 3-column shell (`SideRail` + `MobileTabBar` + `TopBar`) under `/_authenticated/*`.
+- **Phase 3 ⏳** — Inbox + realtime (Firestore mirror or PHP webhook→Postgres bridge), contacts, templates, campaigns.
+- **Phase 4 ⏳** — Bots (AI + rules), analytics, calling, admin, polish.
+
+### Env / secrets configured
+`TOKEN_ENC_KEY`, `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_GRAPH_VERSION`, `FIREBASE_SERVICE_ACCOUNT_JSON` (reserved for Phase 3), Supabase URL + publishable + service-role (auto).
+
+### Conventions added this phase
+- **All forms** → `react-hook-form` + `zod` + `<HoneypotField />` + rate-limit on the server fn.
+- **All server fns hitting user data** → `.middleware([requireSupabaseAuth])`.
+- **All client-facing errors** → wrap with `safeError(err)`; never leak stacks.
+- **All audit-worthy actions** (login, connect, disconnect, token rotate, role change) → `await logAudit({ userId, action, meta })`.
+- **WhatsApp tokens** → ALWAYS `encryptToken()` before any DB write. Never log them, never return them to the client.

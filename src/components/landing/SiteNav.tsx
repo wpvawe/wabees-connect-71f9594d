@@ -28,11 +28,11 @@ export function SiteNav() {
           ))}
         </nav>
         <div className="hidden items-center gap-2 md:flex">
-          <a href="/auth/login" className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:text-foreground">
+          <a href="/auth" className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:text-foreground">
             Sign in
           </a>
           <a
-            href="#download"
+            href="/auth"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-soft transition-transform hover:-translate-y-px"
           >
             Get started
@@ -60,11 +60,11 @@ export function SiteNav() {
                 {n.label}
               </a>
             ))}
-            <a href="/auth/login" className="rounded-md px-3 py-2 text-foreground/90 hover:bg-muted">
+            <a href="/auth" className="rounded-md px-3 py-2 text-foreground/90 hover:bg-muted">
               Sign in
             </a>
             <a
-              href="#download"
+              href="/auth"
               onClick={() => setOpen(false)}
               className="mt-1 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 font-semibold text-primary-foreground"
             >
