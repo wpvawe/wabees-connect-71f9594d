@@ -151,8 +151,9 @@ export const manualConnect = createServerFn({ method: "POST" })
     }
   });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function mirrorToFirestore(
-  context: { userId: string; supabase: { from: (t: string) => { select: (s: string) => { eq: (c: string, v: string) => { maybeSingle: () => Promise<{ data: { firebase_uid: string | null } | null }> } } } } },
+  context: { userId: string; supabase: any },
   data: {
     phone_number_id: string;
     waba_id: string;
