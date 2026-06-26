@@ -94,6 +94,16 @@ export const exchangeMetaToken = createServerFn({ method: "POST" })
 
       const { logAudit } = await import("@/lib/security/audit.server");
       await logAudit({ userId: context.userId, action: "whatsapp.connect.embedded", meta: { waba_id: data.waba_id } });
+
+      // Mirror to Firestore so the Flutter app sees the connection instantly.
+      await mirrorToFirestore(context, {
+        phone_number_id: data.phone_number_id,
+        waba_id: data.waba_id,
+        access_token: accessToken,
+        display_phone: displayPhone,
+        quality_rating: qualityRating,
+      });
+
       return { ok: true };
     } catch (err) {
       throw safeError(err, "Could not connect WhatsApp. Try again.");
@@ -126,11 +136,46 @@ export const manualConnect = createServerFn({ method: "POST" })
       if (error) throw error;
       const { logAudit } = await import("@/lib/security/audit.server");
       await logAudit({ userId: context.userId, action: "whatsapp.connect.manual" });
+
+      await mirrorToFirestore(context, {
+        phone_number_id: data.phone_number_id,
+        waba_id: data.waba_id,
+        access_token: data.access_token,
+        display_phone: data.display_phone ?? null,
+        business_name: data.business_name ?? null,
+      });
+
       return { ok: true };
     } catch (err) {
       throw safeError(err, "Could not save connection.");
     }
   });
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function mirrorToFirestore(
+  context: { userId: string; supabase: any },
+  data: {
+    phone_number_id: string;
+    waba_id: string;
+    access_token: string;
+    display_phone?: string | null;
+    business_name?: string | null;
+    quality_rating?: string | null;
+  },
+): Promise<void> {
+  try {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("firebase_uid")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.firebase_uid) return;
+    const { writeWhatsAppToFirestore } = await import("@/lib/meta/sync.functions");
+    await writeWhatsAppToFirestore({ firebaseUid: profile.firebase_uid, ...data });
+  } catch {
+    // Non-fatal: web connection succeeded; cross-platform mirror is best-effort.
+  }
+}
 
 export const disconnectWhatsApp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlug, faComments, faBullhorn, faRobot } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
@@ -8,6 +9,7 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { getConnectionStatus } from "@/lib/meta/connect.functions";
+import { syncWhatsAppFromFirebase } from "@/lib/meta/sync.functions";
 import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -17,7 +19,25 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const fn = useServerFn(getConnectionStatus);
+  const syncFn = useServerFn(syncWhatsAppFromFirebase);
+  const qc = useQueryClient();
   const { data: row } = useSuspenseQuery({ queryKey: ["whatsapp-config"], queryFn: () => fn() });
+
+  // First load only: if web has no WA row, try pulling it from the Flutter app's Firestore.
+  useEffect(() => {
+    if (row) return;
+    let cancelled = false;
+    syncFn({ data: undefined })
+      .then((res) => {
+        if (!cancelled && res.synced) qc.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      })
+      .catch(() => {
+        /* silent — user can still connect manually */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row, syncFn, qc]);
 
   return (
     <>
