@@ -31,6 +31,25 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
+/** Mint a Firebase custom token (1h validity) for a given uid. */
+export async function mintCustomToken(uid: string): Promise<string> {
+  const { client_email, private_key } = sa();
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: client_email,
+    sub: client_email,
+    aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+    iat: now,
+    exp: now + 3600,
+    uid,
+  };
+  const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claim))}`;
+  const key = createPrivateKey(private_key);
+  const sig = createSign("RSA-SHA256").update(unsigned).sign(key);
+  return `${unsigned}.${b64url(sig)}`;
+}
+
 /** Mint OAuth2 access token for Google APIs using service account JWT. */
 async function getAccessToken(scopes: string[]): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
