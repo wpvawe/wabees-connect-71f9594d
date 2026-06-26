@@ -123,6 +123,8 @@ export type Database = {
           method: string
           phone_number_id: string | null
           quality_rating: string | null
+          source: string | null
+          synced_at: string | null
           token_iv: string | null
           token_tag: string | null
           updated_at: string
@@ -138,6 +140,8 @@ export type Database = {
           method?: string
           phone_number_id?: string | null
           quality_rating?: string | null
+          source?: string | null
+          synced_at?: string | null
           token_iv?: string | null
           token_tag?: string | null
           updated_at?: string
@@ -153,6 +157,8 @@ export type Database = {
           method?: string
           phone_number_id?: string | null
           quality_rating?: string | null
+          source?: string | null
+          synced_at?: string | null
           token_iv?: string | null
           token_tag?: string | null
           updated_at?: string
