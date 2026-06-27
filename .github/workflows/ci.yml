@@ -1,4 +1,5 @@
 name: CI
+# Sync check: GitHub connected on 2026-06-27
 
 on:
   push:
