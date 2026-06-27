@@ -34,11 +34,73 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 require_once __DIR__ . '/../config/firebase-config.php';
 
-// ============ 1. AUTHENTICATE VIA API KEY ============
+// ============ 1. AUTHENTICATE — JWT (Authorization: Bearer …) OR X-Api-Key ============
+// JWT path is used by the WABEES web dashboard (signed with PHP_BACKEND_JWT_SECRET).
+// X-Api-Key path remains for the Flutter app and external integrations.
+$userId = null;          // set by whichever auth path succeeds
+$phoneNumberId = null;
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
-if (empty($apiKey)) {
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+
+if (preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
+    // ---- JWT verify (HS256) ----
+    $jwt = trim($m[1]);
+    $secret = getenv('PHP_BACKEND_JWT_SECRET');
+    if (!$secret && is_file(__DIR__ . '/../config/jwt-secret.php')) {
+        $secret = require __DIR__ . '/../config/jwt-secret.php';
+    }
+    if (!$secret) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'JWT secret not configured on server']);
+        exit;
+    }
+    $parts = explode('.', $jwt);
+    if (count($parts) !== 3) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Malformed JWT']);
+        exit;
+    }
+    [$h64, $p64, $s64] = $parts;
+    $b64url_decode = function ($s) {
+        $s = strtr($s, '-_', '+/');
+        $pad = strlen($s) % 4;
+        if ($pad) $s .= str_repeat('=', 4 - $pad);
+        return base64_decode($s);
+    };
+    $expectedSig = hash_hmac('sha256', "$h64.$p64", $secret, true);
+    $actualSig = $b64url_decode($s64);
+    if (!hash_equals($expectedSig, $actualSig)) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Invalid JWT signature']);
+        exit;
+    }
+    $payload = json_decode($b64url_decode($p64), true);
+    if (!is_array($payload)) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Invalid JWT payload']);
+        exit;
+    }
+    if (!empty($payload['exp']) && $payload['exp'] < time()) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'JWT expired']);
+        exit;
+    }
+    $uid = $payload['uid'] ?? ($payload['sub'] ?? '');
+    if (empty($uid)) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'JWT missing uid claim']);
+        exit;
+    }
+    $userId = $uid;
+    // Load phoneNumberId from user doc
+    $userResp = firestore_get("users/$userId");
+    if (($userResp['code'] ?? 404) === 200) {
+        $f = $userResp['data']['fields'] ?? [];
+        $phoneNumberId = $f['whatsappPhoneNumberId']['stringValue'] ?? '';
+    }
+} elseif (empty($apiKey)) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Missing X-Api-Key header']);
+    echo json_encode(['success' => false, 'error' => 'Missing auth: provide Authorization: Bearer <jwt> or X-Api-Key']);
     exit;
 }
 
@@ -67,20 +129,18 @@ if (strlen($message) < 1 || strlen($message) > 4096) {
 // Normalize: ensure + prefix
 $phone = '+' . $phone;
 
-// ============ 3. FIND USER BY API KEY ============
-$queryResult = firestore_query('users', 'apiKey', 'EQUAL', $apiKey);
-
-$userId = null;
-$phoneNumberId = null;
-
-foreach ($queryResult as $qr) {
-    if (isset($qr['document'])) {
-        $docName = $qr['document']['name'];
-        $parts = explode('/', $docName);
-        $userId = end($parts);
-        $fields = $qr['document']['fields'] ?? [];
-        $phoneNumberId = $fields['whatsappPhoneNumberId']['stringValue'] ?? '';
-        break;
+// ============ 3. FIND USER BY API KEY (if JWT path didn't already set userId) ============
+if (!$userId) {
+    $queryResult = firestore_query('users', 'apiKey', 'EQUAL', $apiKey);
+    foreach ($queryResult as $qr) {
+        if (isset($qr['document'])) {
+            $docName = $qr['document']['name'];
+            $parts = explode('/', $docName);
+            $userId = end($parts);
+            $fields = $qr['document']['fields'] ?? [];
+            $phoneNumberId = $fields['whatsappPhoneNumberId']['stringValue'] ?? '';
+            break;
+        }
     }
 }
 
