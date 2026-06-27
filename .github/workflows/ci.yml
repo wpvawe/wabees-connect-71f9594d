@@ -36,9 +36,10 @@ jobs:
       - name: Build
         run: bun run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'placeholder-key' }}
-          VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID || 'placeholder' }}
+          # Publishable (anon) values — safe to commit; browser dekh hi leta hai
+          VITE_SUPABASE_URL: https://yksgsxmssnlmoijcwmkr.supabase.co
+          VITE_SUPABASE_PROJECT_ID: yksgsxmssnlmoijcwmkr
+          VITE_SUPABASE_PUBLISHABLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc2dzeG1zc25sbW9pamN3bWtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0ODA3ODIsImV4cCI6MjA5ODA1Njc4Mn0.n6Q_l51nmA9tgFIxuxAn5-G4GWk1G3g3h9KSDB1z1aA
 
       - name: Upload build artifact
         if: success()
