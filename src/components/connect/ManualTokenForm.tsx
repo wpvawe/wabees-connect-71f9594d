@@ -5,6 +5,7 @@ import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
 import { useMutation } from "@tanstack/react-query";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
+import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
 
@@ -92,6 +93,17 @@ export function ManualTokenForm() {
         business_name: phone.verified_name,
         quality_rating: phone.quality_rating,
       });
+      // Auto-pull templates from Meta so the Templates page is not empty
+      // right after connect (mirrors what the Flutter app does).
+      try {
+        const r = await syncTemplatesFromMeta(uid);
+        if (r.synced > 0) toast.success(`Synced ${r.synced} templates from Meta`);
+      } catch (e) {
+        // Non-fatal — user can click Sync from Meta on the Templates page.
+        toast.message(
+          e instanceof Error ? `Templates auto-sync skipped: ${e.message}` : "Templates auto-sync skipped",
+        );
+      }
     },
     onSuccess: () => toast.success("WhatsApp connected — details auto-detected"),
     onError: (e: Error) => toast.error(e.message),

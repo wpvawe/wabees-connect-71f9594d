@@ -1,9 +1,10 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleCheck, faPhone, faBuilding, faStar } from "@fortawesome/free-solid-svg-icons";
+import { faCircleCheck, faPhone, faBuilding, faStar, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useMutation } from "@tanstack/react-query";
 import { disconnectWhatsApp } from "@/lib/firebase/whatsapp-config";
+import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
 
@@ -21,6 +22,11 @@ export function ConnectedCard({ row }: { row: Row }) {
   const dis = useMutation({
     mutationFn: () => disconnectWhatsApp(uid!),
     onSuccess: () => toast.success("Disconnected"),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const sync = useMutation({
+    mutationFn: () => syncTemplatesFromMeta(uid!),
+    onSuccess: (r) => toast.success(`Synced ${r.synced} templates`),
     onError: (e: Error) => toast.error(e.message),
   });
   return (
@@ -42,7 +48,11 @@ export function ConnectedCard({ row }: { row: Row }) {
           <Item icon={faBuilding} label="WABA" value={row.business_name || row.waba_id || "—"} />
           {row.quality_rating && <Item icon={faStar} label="Quality" value={row.quality_rating} />}
         </dl>
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-end gap-2">
+          <WbButton variant="secondary" size="sm" loading={sync.isPending} onClick={() => sync.mutate()}>
+            <FontAwesomeIcon icon={faRotate} className="mr-1.5 h-3.5 w-3.5" />
+            Sync templates
+          </WbButton>
           <WbButton variant="danger" size="sm" loading={dis.isPending} onClick={() => dis.mutate()}>
             Disconnect
           </WbButton>
