@@ -5,7 +5,8 @@ import {
   faChartLine, faComments, faAddressBook, faBullhorn, faRobot, faFileLines,
   faPlug, faGear, faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
-import { supabase } from "@/integrations/supabase/client";
+import { signOut as fbSignOut } from "firebase/auth";
+import { fbAuth } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
 import wbIcon from "@/assets/wabees-icon.png";
 
@@ -22,7 +23,7 @@ const NAV: { to: string; label: string; icon: IconDefinition }[] = [
 export function SideRail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   async function signOut() {
-    await supabase.auth.signOut();
+    await fbSignOut(fbAuth());
     window.location.assign("/auth");
   }
   return (

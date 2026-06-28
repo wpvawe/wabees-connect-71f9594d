@@ -14,7 +14,6 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
 import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
-import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AuthenticatedTemplatesRouteImport } from './routes/_authenticated/templates'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated/inbox'
@@ -49,11 +48,6 @@ const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
 const AuthForgotRoute = AuthForgotRouteImport.update({
   id: '/forgot',
   path: '/forgot',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthCallbackRoute = AuthCallbackRouteImport.update({
-  id: '/callback',
-  path: '/callback',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthenticatedTemplatesRoute = AuthenticatedTemplatesRouteImport.update({
@@ -125,7 +119,6 @@ export interface FileRoutesByFullPath {
   '/inbox': typeof AuthenticatedInboxRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/templates': typeof AuthenticatedTemplatesRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
@@ -143,7 +136,6 @@ export interface FileRoutesByTo {
   '/inbox': typeof AuthenticatedInboxRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/templates': typeof AuthenticatedTemplatesRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
@@ -163,7 +155,6 @@ export interface FileRoutesById {
   '/_authenticated/inbox': typeof AuthenticatedInboxRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/_authenticated/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
@@ -183,7 +174,6 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/settings'
     | '/templates'
-    | '/auth/callback'
     | '/auth/forgot'
     | '/auth/reset-password'
     | '/campaigns/$id'
@@ -201,7 +191,6 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/settings'
     | '/templates'
-    | '/auth/callback'
     | '/auth/forgot'
     | '/auth/reset-password'
     | '/campaigns/$id'
@@ -220,7 +209,6 @@ export interface FileRouteTypes {
     | '/_authenticated/inbox'
     | '/_authenticated/settings'
     | '/_authenticated/templates'
-    | '/auth/callback'
     | '/auth/forgot'
     | '/auth/reset-password'
     | '/_authenticated/campaigns/$id'
@@ -269,13 +257,6 @@ declare module '@tanstack/react-router' {
       path: '/forgot'
       fullPath: '/auth/forgot'
       preLoaderRoute: typeof AuthForgotRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/auth/callback': {
-      id: '/auth/callback'
-      path: '/callback'
-      fullPath: '/auth/callback'
-      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_authenticated/templates': {
@@ -411,13 +392,11 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface AuthRouteChildren {
-  AuthCallbackRoute: typeof AuthCallbackRoute
   AuthForgotRoute: typeof AuthForgotRoute
   AuthResetPasswordRoute: typeof AuthResetPasswordRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
-  AuthCallbackRoute: AuthCallbackRoute,
   AuthForgotRoute: AuthForgotRoute,
   AuthResetPasswordRoute: AuthResetPasswordRoute,
 }

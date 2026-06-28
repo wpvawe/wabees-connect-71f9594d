@@ -1,6 +1,5 @@
 import { format } from "date-fns";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -9,15 +8,15 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useCampaign } from "@/hooks/useCampaigns";
 import { useCampaignLogs } from "@/hooks/useCampaignLogs";
-import { startCampaign, deleteCampaign } from "@/lib/campaigns/run.functions";
+import { runCampaign, deleteCampaign } from "@/lib/firebase/campaigns";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignDetail({ id }: { id: string }) {
   const { data, error } = useCampaign(id);
   const { data: logs } = useCampaignLogs(id);
   const navigate = useNavigate();
+  const uid = useFirebaseUid();
   const [running, setRunning] = useState(false);
-  const start = useServerFn(startCampaign);
-  const del = useServerFn(deleteCampaign);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (data === undefined || data === null) {
@@ -30,10 +29,11 @@ export function CampaignDetail({ id }: { id: string }) {
   }
 
   async function run() {
-    if (!confirm(`Start sending to ${data!.totalRecipients} recipients?`)) return;
+    if (!uid || !data) return;
+    if (!confirm(`Start sending to ${data.totalRecipients} recipients?`)) return;
     setRunning(true);
     try {
-      const r = await start({ data: { id } });
+      const r = await runCampaign(uid, id, data.audiencePhones ?? [], data.messageBody);
       toast.success(`Sent ${r.sent}, failed ${r.failed}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Run failed");
@@ -43,9 +43,10 @@ export function CampaignDetail({ id }: { id: string }) {
   }
 
   async function remove() {
+    if (!uid) return;
     if (!confirm("Delete this campaign?")) return;
     try {
-      await del({ data: { id } });
+      await deleteCampaign(uid, id);
       toast.success("Deleted");
       navigate({ to: "/campaigns" });
     } catch (e) {

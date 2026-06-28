@@ -5,15 +5,15 @@ import { isBotSubmission } from "@/lib/security/honeypot";
 import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
 import { HoneypotField } from "@/components/wb/HoneypotField";
-import { supabase } from "@/integrations/supabase/client";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { fbAuth } from "@/integrations/firebase/client";
+import { ensureUserDoc } from "@/lib/firebase/users";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { unifiedSignUp } from "@/lib/auth/unified-signup.functions";
 
 export function SignUpForm() {
   const navigate = useNavigate();
-  const signUpFn = useServerFn(unifiedSignUp);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
   });
@@ -21,19 +21,19 @@ export function SignUpForm() {
   async function onSubmit(values: SignUpValues) {
     if (isBotSubmission(values as unknown as Record<string, unknown>)) return;
     try {
-      await signUpFn({
-        data: { email: values.email, password: values.password, display_name: values.displayName },
-      });
-      // Auto sign-in so user lands straight in the app.
-      const { error } = await supabase.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
-      });
-      if (error) throw error;
+      const cred = await createUserWithEmailAndPassword(
+        fbAuth(),
+        values.email.trim(),
+        values.password,
+      );
+      if (values.displayName) {
+        await updateProfile(cred.user, { displayName: values.displayName });
+      }
+      await ensureUserDoc(cred.user, { businessName: values.displayName });
       toast.success("Account created — welcome!");
       navigate({ to: "/dashboard" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create account");
+      toast.error(friendlyAuthError(err, "Could not create account"));
     }
   }
 

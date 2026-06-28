@@ -1,15 +1,27 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { fbAuth } from "@/integrations/firebase/client";
 import { SideRail } from "@/components/shell/SideRail";
 import { MobileTabBar } from "@/components/shell/MobileTabBar";
 import { FirebaseSessionProvider } from "@/hooks/useFirebaseSession";
 
+function waitForFirebaseUser(): Promise<User | null> {
+  const auth = fbAuth();
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  return new Promise<User | null>((resolve) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      unsub();
+      resolve(u);
+    });
+  });
+}
+
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+    const user = await waitForFirebaseUser();
+    if (!user) throw redirect({ to: "/auth" });
+    return { user };
   },
   component: AppShell,
 });

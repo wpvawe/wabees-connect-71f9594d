@@ -1,26 +1,28 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import { useState } from "react";
-import { lovable } from "@/integrations/lovable";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { fbAuth } from "@/integrations/firebase/client";
+import { ensureUserDoc } from "@/lib/firebase/users";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
 
 export function GoogleButton({ label = "Continue with Google" }: { label?: string }) {
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
   async function onClick() {
     setLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/auth/callback`,
-      });
-      if (result.error) {
-        toast.error("Google sign-in failed");
-        setLoading(false);
-        return;
-      }
-      if (result.redirected) return;
-    } catch {
-      toast.error("Google sign-in failed");
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const cred = await signInWithPopup(fbAuth(), provider);
+      await ensureUserDoc(cred.user);
+      toast.success("Welcome");
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      toast.error(friendlyAuthError(err, "Google sign-in failed"));
       setLoading(false);
     }
   }

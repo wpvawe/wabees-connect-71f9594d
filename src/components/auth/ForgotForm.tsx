@@ -5,7 +5,9 @@ import { isBotSubmission } from "@/lib/security/honeypot";
 import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
 import { HoneypotField } from "@/components/wb/HoneypotField";
-import { supabase } from "@/integrations/supabase/client";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { fbAuth } from "@/integrations/firebase/client";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { toast } from "sonner";
 
 export function ForgotForm() {
@@ -14,11 +16,12 @@ export function ForgotForm() {
   });
   async function onSubmit(v: ForgotValues) {
     if (isBotSubmission(v as unknown as Record<string, unknown>)) return;
-    const { error } = await supabase.auth.resetPasswordForEmail(v.email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
-    });
-    if (error) toast.error(error.message);
-    else toast.success("Check your inbox for the reset link");
+    try {
+      await sendPasswordResetEmail(fbAuth(), v.email.trim());
+      toast.success("Check your inbox for the reset link");
+    } catch (err) {
+      toast.error(friendlyAuthError(err, "Could not send reset link"));
+    }
   }
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>

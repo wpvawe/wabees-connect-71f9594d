@@ -1,16 +1,17 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserGroup } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
-import { createCampaign } from "@/lib/campaigns/run.functions";
+import { createCampaign } from "@/lib/firebase/campaigns";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignForm() {
   const navigate = useNavigate();
+  const uid = useFirebaseUid();
   const { data: contacts } = useContacts();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -18,7 +19,6 @@ export function CampaignForm() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState("");
   const [busy, setBusy] = useState(false);
-  const create = useServerFn(createCampaign);
 
   const allTags = useMemo(() => {
     if (!contacts) return [];
@@ -47,19 +47,17 @@ export function CampaignForm() {
   }
 
   async function save() {
-    if (!name.trim() || !messageBody.trim() || selected.size === 0) {
+    if (!uid || !name.trim() || !messageBody.trim() || selected.size === 0) {
       toast.error("Name, message, and at least one recipient are required");
       return;
     }
     setBusy(true);
     try {
-      const res = await create({
-        data: {
-          name: name.trim(),
-          description: description.trim(),
-          messageBody: messageBody.trim(),
-          audiencePhones: Array.from(selected),
-        },
+      const res = await createCampaign(uid, {
+        name: name.trim(),
+        description: description.trim(),
+        messageBody: messageBody.trim(),
+        audiencePhones: Array.from(selected),
       });
       toast.success("Campaign created");
       navigate({ to: "/campaigns/$id", params: { id: res.id } });

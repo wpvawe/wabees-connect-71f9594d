@@ -1,16 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { useEffect } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlug, faComments, faBullhorn, faRobot } from "@fortawesome/free-solid-svg-icons";
+import { faPlug, faComments, faBullhorn, faRobot, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
-import { getConnectionStatus } from "@/lib/meta/connect.functions";
-import { syncWhatsAppFromFirebase } from "@/lib/meta/sync.functions";
-import { Link } from "@tanstack/react-router";
+import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useProfile } from "@/hooks/useProfile";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Wabees" }] }),
@@ -18,44 +14,31 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardPage() {
-  const fn = useServerFn(getConnectionStatus);
-  const syncFn = useServerFn(syncWhatsAppFromFirebase);
-  const qc = useQueryClient();
-  const { data: row } = useSuspenseQuery({ queryKey: ["whatsapp-config"], queryFn: () => fn() });
-
-  // First load only: if web has no WA row, try pulling it from the Flutter app's Firestore.
-  useEffect(() => {
-    if (row) return;
-    let cancelled = false;
-    syncFn({ data: undefined })
-      .then((res) => {
-        if (!cancelled && res.synced) qc.invalidateQueries({ queryKey: ["whatsapp-config"] });
-      })
-      .catch(() => {
-        /* silent — user can still connect manually */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [row, syncFn, qc]);
+  const { data: wa, loading } = useWhatsAppConfig();
+  const { data: profile } = useProfile();
 
   return (
     <>
       <TopBar title="Dashboard" subtitle="Overview of your WhatsApp Business activity" />
       <div className="space-y-6 px-4 py-6 sm:px-6">
-        {!row ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
+            Loading…
+          </div>
+        ) : !wa ? (
           <WbEmpty
             icon={faPlug}
             title="Connect WhatsApp to get started"
-            description="One click sets up your number, webhook, and team inbox — no copy/paste tokens."
+            description="Link your WhatsApp Business number to unlock the inbox, templates, and campaigns."
             action={<Link to="/connect"><WbButton>Connect WhatsApp</WbButton></Link>}
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat icon={faComments} label="Conversations today" value="—" />
-            <Stat icon={faBullhorn} label="Campaigns sent" value="—" />
-            <Stat icon={faRobot} label="Bot replies" value="—" />
-            <Stat icon={faPlug} label="Number" value={row.display_phone ?? row.phone_number_id ?? "—"} />
+            <Stat icon={faComments} label="Conversations" value={String(profile?.totalMessages ?? "—")} />
+            <Stat icon={faBullhorn} label="Campaigns" value={String(profile?.totalCampaigns ?? "—")} />
+            <Stat icon={faRobot} label="Bots" value={String(profile?.totalBots ?? "—")} />
+            <Stat icon={faPlug} label="Number" value={wa.display_phone ?? wa.phone_number_id ?? "—"} />
           </div>
         )}
       </div>
@@ -76,3 +59,4 @@ function Stat({ icon, label, value }: { icon: typeof faPlug; label: string; valu
     </WbCard>
   );
 }
+
