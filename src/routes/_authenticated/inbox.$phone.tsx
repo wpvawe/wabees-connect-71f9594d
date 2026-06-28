@@ -33,6 +33,10 @@ function Thread({ phone }: { phone: string }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [data?.length]);
+  const name =
+    data && data.length > 0 && data[0].contactName && data[0].contactName !== phone
+      ? data[0].contactName
+      : phone;
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-background">
@@ -41,11 +45,11 @@ function Thread({ phone }: { phone: string }) {
           <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
         </Link>
         <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-          {phone.slice(-2)}
+          {(name || phone).slice(0, 2).toUpperCase()}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{phone}</p>
-          <p className="text-[11px] text-muted-foreground">WhatsApp</p>
+          <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+          <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
       </header>
       <div className="flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background">

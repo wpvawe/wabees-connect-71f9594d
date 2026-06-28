@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type CampaignLog = {
   id: string;
@@ -24,7 +24,7 @@ export function useCampaignLogs(campaignId: string | undefined): {
   data: CampaignLog[] | null;
   error: string | null;
 } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<CampaignLog[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ export function useCampaignLogs(campaignId: string | undefined): {
     if (!db) return;
     const q = query(
       collection(db, `users/${uid}/campaigns/${campaignId}/logs`),
-      orderBy("sentAt", "desc"),
+      orderBy("timestamp", "desc"),
       limit(500),
     );
     const unsub = onSnapshot(
@@ -46,8 +46,8 @@ export function useCampaignLogs(campaignId: string | undefined): {
             id: d.id,
             phone: (x.phone as string) ?? "",
             status: (x.status as string) ?? "pending",
-            error: (x.error as string | null) ?? null,
-            sentAt: toIso(x.sentAt),
+            error: ((x.reason as string | null) ?? (x.error as string | null)) ?? null,
+            sentAt: toIso(x.timestamp ?? x.sentAt ?? x.createdAt),
           };
         });
         setData(rows);

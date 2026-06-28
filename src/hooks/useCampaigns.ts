@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type Campaign = {
   id: string;
@@ -33,7 +33,7 @@ function toIso(v: unknown): string | null {
 }
 
 export function useCampaigns(): { data: Campaign[] | null; error: string | null } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<Campaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

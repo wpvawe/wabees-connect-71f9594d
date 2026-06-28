@@ -4,9 +4,11 @@ import { fbDb } from "@/integrations/firebase/client";
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
  *  - `users/{uid}` top-level fields (whatsappPhoneNumberId, whatsappAccessToken,
- *    whatsappConnected) — read for quick checks.
- *  - `users/{uid}/whatsapp_config/main` — the WhatsappConfig document with
- *    extended metadata (businessAccountId, qualityRating, etc).
+ *    whatsappConnected, whatsappBusinessAccountId, whatsappDisplayPhone,
+ *    whatsappQualityRating) — read for quick checks.
+ *  - `users/{uid}/whatsapp_config/config` — the WhatsappConfig document with
+ *    full metadata. Doc id is `config` to match the Flutter app
+ *    (FirestorePaths.whatsappConfig).
  */
 export type SaveWaConfigInput = {
   uid: string;
@@ -21,7 +23,7 @@ export type SaveWaConfigInput = {
 export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void> {
   const db = fbDb();
   const userRef = doc(db, "users", input.uid);
-  const subRef = doc(db, "users", input.uid, "whatsapp_config", "main");
+  const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
   const now = serverTimestamp();
   await Promise.all([
     setDoc(
@@ -29,6 +31,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       {
         whatsappPhoneNumberId: input.phone_number_id,
         whatsappAccessToken: input.access_token,
+        whatsappBusinessAccountId: input.waba_id ?? null,
+        whatsappDisplayPhone: input.display_phone ?? null,
+        whatsappQualityRating: input.quality_rating ?? null,
         whatsappConnected: true,
         updatedAt: now,
       },
@@ -40,6 +45,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         phoneNumberId: input.phone_number_id,
         accessToken: input.access_token,
         businessAccountId: input.waba_id ?? "",
+        webhookVerifyToken: "",
         displayPhoneNumber: input.display_phone ?? null,
         businessName: input.business_name ?? null,
         qualityRating: input.quality_rating ?? null,
@@ -58,11 +64,14 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     updateDoc(doc(db, "users", uid), {
       whatsappPhoneNumberId: null,
       whatsappAccessToken: null,
+      whatsappBusinessAccountId: null,
+      whatsappDisplayPhone: null,
+      whatsappQualityRating: null,
       whatsappConnected: false,
       updatedAt: serverTimestamp(),
     }),
     setDoc(
-      doc(db, "users", uid, "whatsapp_config", "main"),
+      doc(db, "users", uid, "whatsapp_config", "config"),
       { isConnected: false, accessToken: "", updatedAt: serverTimestamp() },
       { merge: true },
     ),

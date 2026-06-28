@@ -9,13 +9,13 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useCampaign } from "@/hooks/useCampaigns";
 import { useCampaignLogs } from "@/hooks/useCampaignLogs";
 import { runCampaign, deleteCampaign } from "@/lib/firebase/campaigns";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignDetail({ id }: { id: string }) {
   const { data, error } = useCampaign(id);
   const { data: logs } = useCampaignLogs(id);
   const navigate = useNavigate();
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [running, setRunning] = useState(false);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;

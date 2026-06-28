@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type Template = {
   id: string;
@@ -19,7 +19,7 @@ export type Template = {
 };
 
 export function useTemplates(): { data: Template[] | null; error: string | null } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<Template[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type Contact = {
   id: string;
@@ -26,7 +26,7 @@ function toIso(v: unknown): string | null {
 }
 
 export function useContacts(): { data: Contact[] | null; error: string | null } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<Contact[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

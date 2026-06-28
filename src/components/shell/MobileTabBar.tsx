@@ -1,13 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChartLine, faComments, faBullhorn, faPlug, faGear } from "@fortawesome/free-solid-svg-icons";
+import { faChartLine, faComments, faBullhorn, faAddressBook, faFileLines, faGear } from "@fortawesome/free-solid-svg-icons";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { to: "/dashboard", label: "Home", icon: faChartLine },
   { to: "/inbox", label: "Inbox", icon: faComments },
+  { to: "/contacts", label: "Contacts", icon: faAddressBook },
+  { to: "/templates", label: "Templates", icon: faFileLines },
   { to: "/campaigns", label: "Send", icon: faBullhorn },
-  { to: "/connect", label: "Connect", icon: faPlug },
   { to: "/settings", label: "Settings", icon: faGear },
 ];
 

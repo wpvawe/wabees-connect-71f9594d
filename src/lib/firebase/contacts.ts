@@ -13,24 +13,24 @@ export async function upsertContact(
   input: { id?: string; name: string; phone: string; email?: string; company?: string; notes?: string; tags?: string[]; group?: string },
 ): Promise<{ id: string }> {
   const db = fbDb();
-  const ref = input.id
-    ? doc(db, "users", uid, "contacts", input.id)
+  const isUpdate = Boolean(input.id);
+  const ref = isUpdate
+    ? doc(db, "users", uid, "contacts", input.id!)
     : doc(collection(db, "users", uid, "contacts"));
-  await setDoc(
-    ref,
-    {
-      name: input.name,
-      phone: input.phone,
-      email: input.email ?? null,
-      company: input.company ?? null,
-      notes: input.notes ?? null,
-      tags: input.tags ?? [],
-      group: input.group ?? null,
-      totalMessages: 0,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  const payload: Record<string, unknown> = {
+    name: input.name,
+    phone: input.phone,
+    email: input.email ?? null,
+    company: input.company ?? null,
+    notes: input.notes ?? null,
+    tags: input.tags ?? [],
+    group: input.group ?? null,
+  };
+  if (!isUpdate) {
+    payload.totalMessages = 0;
+    payload.createdAt = serverTimestamp();
+  }
+  await setDoc(ref, payload, { merge: true });
   return { id: ref.id };
 }
 
@@ -40,11 +40,10 @@ export async function deleteContact(uid: string, id: string): Promise<void> {
 
 export async function bulkImportContacts(
   uid: string,
-  rows: Array<{ name: string; phone: string; email?: string; company?: string; tags?: string[] }>,
+  rows: Array<{ name: string; phone: string; email?: string; company?: string; tags?: string[]; group?: string; notes?: string }>,
 ): Promise<{ imported: number }> {
   if (rows.length === 0) return { imported: 0 };
   const db = fbDb();
-  // Firestore batches max 500 writes.
   let imported = 0;
   for (let i = 0; i < rows.length; i += 400) {
     const chunk = rows.slice(i, i + 400);
@@ -56,7 +55,9 @@ export async function bulkImportContacts(
         phone: r.phone,
         email: r.email ?? null,
         company: r.company ?? null,
+        notes: r.notes ?? null,
         tags: r.tags ?? [],
+        group: r.group ?? null,
         totalMessages: 0,
         createdAt: serverTimestamp(),
       });

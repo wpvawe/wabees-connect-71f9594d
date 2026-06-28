@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type WhatsAppConfig = {
   phone_number_id: string | null;
@@ -15,7 +15,7 @@ export type WhatsAppConfig = {
 
 /** Live WhatsApp connection status, sourced from `users/{uid}`. */
 export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boolean; error: string | null } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<WhatsAppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
