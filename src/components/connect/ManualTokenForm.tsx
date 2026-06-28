@@ -42,25 +42,45 @@ export function ManualTokenForm() {
   const m = useMutation({
     mutationFn: async (v: ManualConnectValues) => {
       if (!uid) throw new Error("Not signed in");
-      // 1. Verify phone number id + token directly against Meta Graph.
-      const phone = await graphGet<PhoneInfo>(
-        `${encodeURIComponent(v.phone_number_id)}?fields=display_phone_number,verified_name,quality_rating`,
-        v.access_token,
-      );
-      // 2. Try to auto-discover WABA id if user did not provide one.
+      // Best-effort verify against Meta Graph. If the entered ID is a WABA
+      // (not a phone number) or token lacks the field, we still save —
+      // sending messages only needs phone_number_id + access_token.
+      let phone: PhoneInfo = {};
       let waba_id = v.waba_id?.trim() || undefined;
-      if (!waba_id) {
+      try {
+        phone = await graphGet<PhoneInfo>(
+          `${encodeURIComponent(v.phone_number_id)}?fields=display_phone_number,verified_name,quality_rating`,
+          v.access_token,
+        );
+      } catch {
+        // Fallback: try as WABA id and pull the first phone number.
         try {
-          const owner = await graphGet<{ id?: string; name?: string }>(
-            `${encodeURIComponent(v.phone_number_id)}/?fields=whatsapp_business_account`,
+          const list = await graphGet<{ data?: Array<PhoneInfo & { id?: string }> }>(
+            `${encodeURIComponent(v.phone_number_id)}/phone_numbers?fields=display_phone_number,verified_name,quality_rating`,
             v.access_token,
           );
-          // Some token scopes return whatsapp_business_account as an object
-          const acct = (owner as unknown as { whatsapp_business_account?: { id?: string } })
-            .whatsapp_business_account;
-          if (acct?.id) waba_id = acct.id;
+          const first = list.data?.[0];
+          if (first) {
+            phone = {
+              display_phone_number: first.display_phone_number,
+              verified_name: first.verified_name,
+              quality_rating: first.quality_rating,
+            };
+            if (!waba_id) waba_id = v.phone_number_id.trim();
+          }
         } catch {
-          // ignore — user can fill it manually next time
+          // Skip verification entirely — save raw credentials.
+        }
+      }
+      if (!waba_id) {
+        try {
+          const owner = await graphGet<{ whatsapp_business_account?: { id?: string } }>(
+            `${encodeURIComponent(v.phone_number_id)}?fields=whatsapp_business_account`,
+            v.access_token,
+          );
+          if (owner.whatsapp_business_account?.id) waba_id = owner.whatsapp_business_account.id;
+        } catch {
+          /* ignore */
         }
       }
       await saveWhatsAppConfig({
