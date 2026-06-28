@@ -7,11 +7,11 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
 import { createCampaign } from "@/lib/firebase/campaigns";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignForm() {
   const navigate = useNavigate();
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const { data: contacts } = useContacts();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

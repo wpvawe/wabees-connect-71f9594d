@@ -6,13 +6,13 @@ import { faFileImport, faFileExport, faPlus } from "@fortawesome/free-solid-svg-
 import { WbButton } from "@/components/wb/WbButton";
 import { bulkImportContacts, upsertContact } from "@/lib/firebase/contacts";
 import { useContacts } from "@/hooks/useContacts";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 type CsvRow = { name?: string; phone?: string; email?: string; company?: string; tags?: string };
 
 export function ImportExportBar() {
   const { data } = useContacts();
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [showAdd, setShowAdd] = useState(false);

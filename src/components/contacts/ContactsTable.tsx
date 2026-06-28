@@ -5,12 +5,12 @@ import { faCircleNotch, faTrash, faMagnifyingGlass, faAddressBook } from "@forta
 import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { deleteContact } from "@/lib/firebase/contacts";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 
 export function ContactsTable() {
   const { data, error } = useContacts();
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {

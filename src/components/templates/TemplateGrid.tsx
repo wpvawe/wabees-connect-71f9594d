@@ -6,13 +6,13 @@ import {
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
 
