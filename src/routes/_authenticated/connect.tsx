@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch, faMobileScreen } from "@fortawesome/free-solid-svg-icons";
+import { faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { ManualTokenForm } from "@/components/connect/ManualTokenForm";
+import { EmbeddedSignupButton } from "@/components/connect/EmbeddedSignupButton";
 import { ConnectedCard } from "@/components/connect/ConnectedCard";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 
@@ -29,20 +30,13 @@ function ConnectPage() {
         ) : (
           <>
             <WbCard>
-              <WbCardHeader title="Connect with the mobile app" subtitle="Recommended" />
+              <WbCardHeader title="Connect with Facebook" subtitle="Fully automatic — recommended" />
               <WbCardBody>
-                <div className="flex items-start gap-3 rounded-md border border-border bg-muted/60 p-3 text-sm">
-                  <FontAwesomeIcon icon={faMobileScreen} className="mt-0.5 h-4 w-4 text-primary" />
-                  <p className="text-muted-foreground">
-                    Sign in to the Wabees mobile app with this account and run Embedded Signup
-                    there. The connection appears here instantly — both platforms share the
-                    same data.
-                  </p>
-                </div>
+                <EmbeddedSignupButton />
               </WbCardBody>
             </WbCard>
             <WbCard>
-              <WbCardHeader title="Use a manual token" subtitle="For Meta Apps in review" />
+              <WbCardHeader title="Use a manual token" subtitle="Fallback for advanced setups" />
               <WbCardBody>
                 <ManualTokenForm />
               </WbCardBody>
