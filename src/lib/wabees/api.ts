@@ -32,6 +32,20 @@ export function verifyWhatsAppToken(args: { phone_number_id: string; access_toke
   return postJson("verify-token.php", args);
 }
 
+/**
+ * Auto-detects WABA, business id/name, display phone, and quality rating
+ * from just a phone_number_id + access_token. Mirrors the Flutter app's
+ * "Smart Connect" flow (backend/api/whatsapp-smart-connect.php).
+ */
+export function smartConnectWhatsApp(args: { phone_number_id: string; access_token: string }) {
+  return postJson<{
+    phone?: { id?: string; display_phone_number?: string; verified_name?: string; quality_rating?: string };
+    waba_id?: string;
+    business_id?: string;
+    business_name?: string;
+  }>("whatsapp-smart-connect.php", args);
+}
+
 export function sendTextMessage(args: {
   phone_number_id: string;
   access_token: string;
