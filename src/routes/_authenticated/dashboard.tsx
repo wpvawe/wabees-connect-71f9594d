@@ -35,7 +35,7 @@ function DashboardPage() {
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat icon={faComments} label="Conversations" value={String(profile?.totalMessages ?? "—")} />
+            <Stat icon={faComments} label="Messages" value={String(profile?.totalMessages ?? "—")} />
             <Stat icon={faBullhorn} label="Campaigns" value={String(profile?.totalCampaigns ?? "—")} />
             <Stat icon={faRobot} label="Bots" value={String(profile?.totalBots ?? "—")} />
             <Stat icon={faPlug} label="Number" value={wa.display_phone ?? wa.phone_number_id ?? "—"} />
