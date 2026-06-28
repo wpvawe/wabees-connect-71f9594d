@@ -2,8 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
-import { WbFirebaseGate } from "@/components/wb/WbFirebaseGate";
-import { ConversationList } from "@/components/inbox/ConversationList";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages } from "@/hooks/useMessages";
@@ -15,16 +13,7 @@ export const Route = createFileRoute("/_authenticated/inbox/$phone")({
 
 function InboxThread() {
   const { phone } = Route.useParams();
-  return (
-    <WbFirebaseGate>
-      <div className="flex h-[calc(100vh-3.5rem)] md:h-screen">
-        <div className="hidden md:block">
-          <ConversationList activePhone={phone} />
-        </div>
-        <Thread phone={phone} />
-      </div>
-    </WbFirebaseGate>
-  );
+  return <Thread phone={phone} />;
 }
 
 function Thread({ phone }: { phone: string }) {
