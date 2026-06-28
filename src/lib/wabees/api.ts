@@ -46,6 +46,23 @@ export function smartConnectWhatsApp(args: { phone_number_id: string; access_tok
   }>("whatsapp-smart-connect.php", args);
 }
 
+/**
+ * Server-side exchange of a Meta Embedded Signup short-lived `code` for a
+ * long-lived business access token + auto-discovered WABA / phone metadata.
+ * Endpoint: backend/api/whatsapp-exchange-code.php (App Secret stays on the
+ * Hostinger PHP server — never shipped to the browser).
+ */
+export function exchangeWhatsAppCode(args: { code: string }) {
+  return postJson<{
+    access_token: string;
+    phone_number_id: string;
+    waba_id: string;
+    business_name?: string | null;
+    display_phone?: string | null;
+    quality_rating?: string | null;
+  }>("whatsapp-exchange-code.php", args);
+}
+
 export function sendTextMessage(args: {
   phone_number_id: string;
   access_token: string;
