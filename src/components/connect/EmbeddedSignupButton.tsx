@@ -36,6 +36,7 @@ type FBStatic = {
     cb: (r: FBLoginResponse) => void,
     opts: {
       config_id: string;
+      scope: string;
       response_type: "code";
       override_default_response_type: boolean;
       extras?: Record<string, unknown>;
@@ -131,9 +132,10 @@ export function EmbeddedSignupButton() {
       const resp: FBLoginResponse = await new Promise((res) =>
         FB.login(res, {
           config_id: FB_CONFIG_ID,
+          scope: "public_profile,business_management,whatsapp_business_management,whatsapp_business_messaging",
           response_type: "code",
           override_default_response_type: true,
-          extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+          extras: { setup: {}, feature: "whatsapp_embedded_signup", featureType: "", sessionInfoVersion: "3" },
         }),
       );
       const code = resp?.authResponse?.code;
