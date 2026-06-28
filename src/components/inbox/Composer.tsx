@@ -2,37 +2,80 @@ import { useState, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
+import {
+  addDoc,
+  collection,
+  doc,
+  increment,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { fbDb } from "@/integrations/firebase/client";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export function Composer({ phone }: { phone: string }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
 
   async function send() {
     const body = text.trim();
     if (!body || sending || !uid) return;
     setSending(true);
+    const to = phone.replace(/[^0-9]/g, "");
+    const db = fbDb();
+    let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
       const creds = await loadWaCredentials(uid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
       }
+      // Optimistic write — message doc + conversation summary (Flutter pattern).
+      msgRef = await addDoc(collection(db, "users", uid, "messages"), {
+        contactPhone: to,
+        contactName: phone,
+        type: "text",
+        direction: "outgoing",
+        status: "pending",
+        body,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(
+        doc(db, "users", uid, "conversations", to),
+        {
+          contactName: phone,
+          lastMessage: body,
+          lastMessageType: "text",
+          lastMessageAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      setText("");
       const res = await sendTextMessage({
         phone_number_id: creds.phone_number_id,
         access_token: creds.access_token,
-        to: phone.replace(/[^0-9]/g, ""),
+        to,
         message: body,
       });
+      const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
       if (!res.success) {
+        await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
         toast.error(res.message ?? "Could not send");
         return;
       }
-      setText("");
+      await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
+      await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
     } catch (err) {
+      if (msgRef) {
+        await updateDoc(msgRef, {
+          status: "failed",
+          errorReason: err instanceof Error ? err.message : "Send failed",
+        }).catch(() => {});
+      }
       toast.error(err instanceof Error ? err.message : "Could not send");
     } finally {
       setSending(false);
