@@ -4,7 +4,8 @@ import { faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { ManualTokenForm } from "@/components/connect/ManualTokenForm";
-import { EmbeddedSignupButton } from "@/components/connect/EmbeddedSignupButton";
+// Embedded Signup UI hidden for now (Meta BSP/TP gate). Keep import commented for future use.
+// import { EmbeddedSignupButton } from "@/components/connect/EmbeddedSignupButton";
 import { ConnectedCard } from "@/components/connect/ConnectedCard";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 
@@ -29,12 +30,15 @@ function ConnectPage() {
           <ConnectedCard row={data} />
         ) : (
           <>
+            {/* Auto (Embedded Signup) flow hidden — requires Meta BSP/TP approval.
+                Re-enable later by uncommenting this block and the import above.
             <WbCard>
               <WbCardHeader title="Connect with Facebook" subtitle="Fully automatic — recommended" />
               <WbCardBody>
                 <EmbeddedSignupButton />
               </WbCardBody>
             </WbCard>
+            */}
             <WbCard>
               <WbCardHeader title="Use a manual token" subtitle="Fallback for advanced setups" />
               <WbCardBody>
