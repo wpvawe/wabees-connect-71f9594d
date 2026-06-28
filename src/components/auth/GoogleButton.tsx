@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
 
@@ -10,16 +10,15 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
   async function onClick() {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: `${window.location.origin}/auth/callback`,
       });
-      if (error) {
+      if (result.error) {
         toast.error("Google sign-in failed");
         setLoading(false);
         return;
       }
-      // Browser redirects to Google; nothing else to do here.
+      if (result.redirected) return;
     } catch {
       toast.error("Google sign-in failed");
       setLoading(false);
