@@ -26,37 +26,70 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
       return;
     }
     setLoading(true);
-    const unsub = onSnapshot(
+    // Mirror the Flutter app: source of truth is `whatsapp_config/config`.
+    // Also watch the top-level user doc for legacy fields written by older
+    // website builds (whatsappPhoneNumberId, whatsappConnected, etc.).
+    let userDoc: Record<string, unknown> | null = null;
+    let subDoc: Record<string, unknown> | null = null;
+    let userReady = false;
+    let subReady = false;
+    function merge() {
+      if (!userReady || !subReady) return;
+      setLoading(false);
+      const sub = subDoc ?? {};
+      const usr = userDoc ?? {};
+      const phone_number_id =
+        (sub.phoneNumberId as string | undefined) ??
+        (usr.whatsappPhoneNumberId as string | undefined) ??
+        null;
+      const connected =
+        Boolean(phone_number_id) &&
+        (Boolean(sub.isConnected) || Boolean(usr.whatsappConnected));
+      if (!connected) {
+        setData(null);
+        return;
+      }
+      setData({
+        phone_number_id,
+        waba_id:
+          (sub.businessAccountId as string | undefined) ??
+          (usr.whatsappBusinessAccountId as string | undefined) ??
+          null,
+        display_phone:
+          (sub.displayPhoneNumber as string | undefined) ??
+          (usr.whatsappDisplayPhone as string | undefined) ??
+          null,
+        business_name:
+          (sub.businessName as string | undefined) ??
+          (usr.businessName as string | undefined) ??
+          null,
+        quality_rating:
+          (sub.qualityRating as string | undefined) ??
+          (usr.whatsappQualityRating as string | undefined) ??
+          null,
+        connected: true,
+        method: "manual",
+      });
+    }
+    const unsubUser = onSnapshot(
       doc(fbDb(), "users", uid),
       (snap) => {
-        setLoading(false);
-        if (!snap.exists()) {
-          setData(null);
-          return;
-        }
-        const d = snap.data();
-        const phone_number_id = (d.whatsappPhoneNumberId as string | null) ?? null;
-        const connected = Boolean(d.whatsappConnected) && Boolean(phone_number_id);
-        setData(
-          connected
-            ? {
-                phone_number_id,
-                waba_id: (d.whatsappBusinessAccountId as string | null) ?? null,
-                display_phone: (d.whatsappDisplayPhone as string | null) ?? null,
-                business_name: (d.businessName as string | null) ?? null,
-                quality_rating: (d.whatsappQualityRating as string | null) ?? null,
-                connected: true,
-                method: "manual",
-              }
-            : null,
-        );
+        userReady = true;
+        userDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
+        merge();
       },
-      (err) => {
-        setLoading(false);
-        setError(err.message);
-      },
+      (err) => { setLoading(false); setError(err.message); },
     );
-    return () => unsub();
+    const unsubSub = onSnapshot(
+      doc(fbDb(), "users", uid, "whatsapp_config", "config"),
+      (snap) => {
+        subReady = true;
+        subDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
+        merge();
+      },
+      (err) => { setLoading(false); setError(err.message); },
+    );
+    return () => { unsubUser(); unsubSub(); };
   }, [uid]);
 
   return { data, loading, error };

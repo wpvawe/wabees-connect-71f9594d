@@ -79,11 +79,23 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
 }
 
 export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
-  const snap = await getDoc(doc(fbDb(), "users", uid));
-  if (!snap.exists()) return null;
-  const d = snap.data();
-  const phone_number_id = d.whatsappPhoneNumberId as string | undefined;
-  const access_token = d.whatsappAccessToken as string | undefined;
-  if (!phone_number_id || !access_token) return null;
-  return { phone_number_id, access_token };
+  const db = fbDb();
+  // Prefer the subcollection doc the Flutter app writes
+  // (`users/{uid}/whatsapp_config/config`). Fall back to the top-level
+  // mirrored fields the website used before, for older website-only setups.
+  const sub = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
+  if (sub.exists()) {
+    const d = sub.data();
+    const phone_number_id = (d.phoneNumberId as string | undefined) ?? undefined;
+    const access_token = (d.accessToken as string | undefined) ?? undefined;
+    if (phone_number_id && access_token) return { phone_number_id, access_token };
+  }
+  const snap = await getDoc(doc(db, "users", uid));
+  if (snap.exists()) {
+    const d = snap.data();
+    const phone_number_id = d.whatsappPhoneNumberId as string | undefined;
+    const access_token = d.whatsappAccessToken as string | undefined;
+    if (phone_number_id && access_token) return { phone_number_id, access_token };
+  }
+  return null;
 }

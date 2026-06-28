@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
-import { useMessages } from "@/hooks/useMessages";
+import { useMessages, type Message } from "@/hooks/useMessages";
+import { format, isToday, isYesterday, isSameDay } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   head: ({ params }) => ({ meta: [{ title: `Chat ${params.phone} — Wabees` }] }),
@@ -51,11 +53,40 @@ function Thread({ phone }: { phone: string }) {
         ) : data.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Say hi 👋</p>
         ) : (
-          data.map((m) => <MessageBubble key={m.id} m={m} />)
+          renderWithDayDividers(data)
         )}
         <div ref={bottomRef} />
       </div>
       <Composer phone={phone} />
     </section>
   );
+}
+
+function dayLabel(d: Date): string {
+  if (isToday(d)) return "Today";
+  if (isYesterday(d)) return "Yesterday";
+  // Within last 7 days: weekday name; otherwise full date
+  const diff = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+  if (diff < 7) return format(d, "EEEE");
+  return format(d, "d MMM yyyy");
+}
+
+function renderWithDayDividers(msgs: Message[]) {
+  const nodes: ReactNode[] = [];
+  let prev: Date | null = null;
+  for (const m of msgs) {
+    const d = m.createdAt ? new Date(m.createdAt) : null;
+    if (d && (!prev || !isSameDay(prev, d))) {
+      nodes.push(
+        <div key={`sep-${m.id}`} className="my-2 flex justify-center">
+          <span className="rounded-full bg-card px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-soft">
+            {dayLabel(d)}
+          </span>
+        </div>,
+      );
+      prev = d;
+    }
+    nodes.push(<MessageBubble key={m.id} m={m} />);
+  }
+  return nodes;
 }
