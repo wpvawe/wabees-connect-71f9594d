@@ -80,17 +80,37 @@ export function EmbeddedSignupButton() {
   // Capture the WA_EMBEDDED_SIGNUP postMessage (carries phone_number_id +
   // waba_id even before our server-side discovery runs). Useful for logging
   // / fallback, not required for success.
-  const sessionInfoRef = useRef<{ phone_number_id?: string; waba_id?: string } | null>(null);
+  const sessionInfoRef = useRef<{
+    event?: "FINISH" | "ERROR" | "CANCEL";
+    phone_number_id?: string;
+    waba_id?: string;
+    error_message?: string;
+    current_step?: string;
+  } | null>(null);
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
+      if (!String(ev.origin).endsWith("facebook.com")) return;
       if (typeof ev.data !== "string") return;
       try {
         const d = JSON.parse(ev.data);
-        if (d?.type === "WA_EMBEDDED_SIGNUP" && d?.event === "FINISH") {
-          sessionInfoRef.current = {
-            phone_number_id: d?.data?.phone_number_id,
-            waba_id: d?.data?.waba_id,
-          };
+        if (d?.type === "WA_EMBEDDED_SIGNUP") {
+          if (d?.event === "FINISH") {
+            sessionInfoRef.current = {
+              event: "FINISH",
+              phone_number_id: d?.data?.phone_number_id,
+              waba_id: d?.data?.waba_id,
+            };
+          } else if (d?.event === "ERROR") {
+            sessionInfoRef.current = {
+              event: "ERROR",
+              error_message: d?.data?.error_message ?? d?.data?.error,
+            };
+          } else if (d?.event === "CANCEL") {
+            sessionInfoRef.current = {
+              event: "CANCEL",
+              current_step: d?.data?.current_step ?? d?.data?.current,
+            };
+          }
         }
       } catch {
         /* not our message */
@@ -103,6 +123,7 @@ export function EmbeddedSignupButton() {
   async function start() {
     if (!uid) { toast.error("Sign in first"); return; }
     setBusy(true);
+    sessionInfoRef.current = null;
     try {
       const FB = await loadFbSdk();
       const resp: FBLoginResponse = await new Promise((res) =>
@@ -115,7 +136,14 @@ export function EmbeddedSignupButton() {
       );
       const code = resp?.authResponse?.code;
       if (!code) {
-        toast.error("Sign-up cancelled");
+        const sessionInfo = sessionInfoRef.current;
+        if (sessionInfo?.event === "ERROR" && sessionInfo.error_message) {
+          toast.error(sessionInfo.error_message);
+        } else if (resp?.status === "not_authorized" || resp?.status === "unknown") {
+          toast.error("Facebook Login blocked by Meta. If the popup shows Feature Unavailable, the Meta app still needs public_profile Advanced Access / Live access.");
+        } else {
+          toast.error("Sign-up cancelled before Meta returned a code");
+        }
         return;
       }
       const ex = await exchangeWhatsAppCode({ code });
