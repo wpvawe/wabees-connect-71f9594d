@@ -24,7 +24,7 @@ export function useCampaignLogs(campaignId: string | undefined): {
   data: CampaignLog[] | null;
   error: string | null;
 } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<CampaignLog[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
