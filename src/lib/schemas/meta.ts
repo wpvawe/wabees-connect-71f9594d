@@ -9,5 +9,6 @@ export const metaExchangeSchema = z.object({
 export const manualConnectSchema = z.object({
   phone_number_id: z.string().trim().min(3).max(64),
   access_token: z.string().trim().min(20).max(4096),
+  waba_id: z.string().trim().max(64).optional().or(z.literal("")),
 });
 export type ManualConnectValues = z.infer<typeof manualConnectSchema>;
