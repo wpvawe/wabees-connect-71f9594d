@@ -42,6 +42,13 @@ type FBStatic = {
     },
   ) => void;
 };
+type EmbeddedSignupSessionInfo = {
+  event?: "FINISH" | "ERROR" | "CANCEL";
+  phone_number_id?: string;
+  waba_id?: string;
+  error_message?: string;
+  current_step?: string;
+};
 declare global {
   interface Window {
     FB?: FBStatic;
@@ -80,13 +87,8 @@ export function EmbeddedSignupButton() {
   // Capture the WA_EMBEDDED_SIGNUP postMessage (carries phone_number_id +
   // waba_id even before our server-side discovery runs). Useful for logging
   // / fallback, not required for success.
-  const sessionInfoRef = useRef<{
-    event?: "FINISH" | "ERROR" | "CANCEL";
-    phone_number_id?: string;
-    waba_id?: string;
-    error_message?: string;
-    current_step?: string;
-  } | null>(null);
+  const sessionInfoRef = useRef<EmbeddedSignupSessionInfo | null>(null);
+  const getSessionInfo = () => sessionInfoRef.current as EmbeddedSignupSessionInfo | null;
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
       if (!String(ev.origin).endsWith("facebook.com")) return;
@@ -136,7 +138,7 @@ export function EmbeddedSignupButton() {
       );
       const code = resp?.authResponse?.code;
       if (!code) {
-        const sessionInfo = sessionInfoRef.current;
+        const sessionInfo = getSessionInfo();
         if (sessionInfo?.event === "ERROR" && sessionInfo.error_message) {
           toast.error(sessionInfo.error_message);
         } else if (resp?.status === "not_authorized" || resp?.status === "unknown") {
