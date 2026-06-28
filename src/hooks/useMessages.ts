@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
 export type Message = {
   id: string;
@@ -28,7 +28,7 @@ function toIso(v: unknown): string | null {
 }
 
 export function useMessages(phone: string | undefined): { data: Message[] | null; error: string | null } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const [data, setData] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
