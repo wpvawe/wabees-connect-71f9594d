@@ -12,6 +12,7 @@ export type Campaign = {
   messageBody: string;
   templateName?: string | null;
   totalRecipients: number;
+  audiencePhones?: string[];
   sentCount: number;
   deliveredCount: number;
   readCount: number;
@@ -55,6 +56,7 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
             messageBody: (x.messageBody as string) ?? "",
             templateName: (x.templateName as string | null) ?? null,
             totalRecipients: (x.totalRecipients as number) ?? 0,
+            audiencePhones: (x.audiencePhones as string[] | undefined) ?? [],
             sentCount: (x.sentCount as number) ?? 0,
             deliveredCount: (x.deliveredCount as number) ?? 0,
             readCount: (x.readCount as number) ?? 0,

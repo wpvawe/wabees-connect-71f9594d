@@ -1,40 +1,58 @@
 /**
- * Firebase Web SDK singleton (auth + firestore only — tree-shaken).
- * Init is lazy: call `initFirebase(config)` once before using the helpers.
+ * Firebase Web SDK singleton. Auto-initialized from VITE_FIREBASE_* env vars.
+ * Mirrors the Flutter app's Firebase project so app & website share the same
+ * users and Firestore data.
  */
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
-export type FirebasePublicConfig = {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  appId: string;
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined,
 };
 
-let app: FirebaseApp | null = null;
-let auth: Auth | null = null;
-let db: Firestore | null = null;
-
-export function initFirebase(config: FirebasePublicConfig): FirebaseApp {
-  if (app) return app;
+function ensureApp(): FirebaseApp {
   const existing = getApps();
-  app = existing[0] ?? initializeApp(config);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  return app;
+  if (existing.length > 0) return existing[0];
+  if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+    throw new Error("Firebase env vars missing (VITE_FIREBASE_API_KEY / VITE_FIREBASE_PROJECT_ID)");
+  }
+  return initializeApp(firebaseConfig);
 }
 
-export function getFb(): { app: FirebaseApp; auth: Auth; db: Firestore } {
-  if (!app || !auth || !db) throw new Error("Firebase not initialized — call initFirebase() first");
-  return { app, auth, db };
+// SSR-safe lazy accessors — Firebase Auth touches `window`, so only run in browser.
+let _auth: Auth | null = null;
+let _db: Firestore | null = null;
+
+export function fbAuth(): Auth {
+  if (typeof window === "undefined") {
+    throw new Error("fbAuth() called in non-browser context");
+  }
+  if (!_auth) _auth = getAuth(ensureApp());
+  return _auth;
 }
 
+export function fbDb(): Firestore {
+  if (!_db) _db = getFirestore(ensureApp());
+  return _db;
+}
+
+/** Browser-only: returns the auth instance, or null when called during SSR. */
 export function fbAuthOrNull(): Auth | null {
-  return auth;
+  if (typeof window === "undefined") return null;
+  return fbAuth();
 }
 
+export const WABEES_API_BASE =
+  (import.meta.env.VITE_WABEES_API_BASE as string | undefined) ?? "https://api.wabees.live/api";
+
+/** Browser-only: returns the Firestore instance, or null in SSR. */
 export function fbDbOrNull(): Firestore | null {
-  return db;
+  if (typeof window === "undefined") return null;
+  return fbDb();
 }

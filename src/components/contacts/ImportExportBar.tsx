@@ -1,26 +1,25 @@
 import { useRef, useState } from "react";
 import Papa from "papaparse";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileImport, faFileExport, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { WbButton } from "@/components/wb/WbButton";
-import { bulkImportContacts, upsertContact } from "@/lib/contacts/crud.functions";
+import { bulkImportContacts, upsertContact } from "@/lib/firebase/contacts";
 import { useContacts } from "@/hooks/useContacts";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 type CsvRow = { name?: string; phone?: string; email?: string; company?: string; tags?: string };
 
 export function ImportExportBar() {
   const { data } = useContacts();
+  const uid = useFirebaseUid();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const importFn = useServerFn(bulkImportContacts);
-  const upsertFn = useServerFn(upsertContact);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !uid) return;
     setBusy(true);
     Papa.parse<CsvRow>(file, {
       header: true,
@@ -40,7 +39,7 @@ export function ImportExportBar() {
             toast.error("CSV needs columns: name, phone (also email, company, tags)");
             return;
           }
-          const res = await importFn({ data: { contacts } });
+          const res = await bulkImportContacts(uid, contacts);
           toast.success(`Imported ${res.imported} contacts`);
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Import failed");
@@ -93,7 +92,12 @@ export function ImportExportBar() {
         Export CSV
       </WbButton>
       <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
-      {showAdd && <QuickAdd onClose={() => setShowAdd(false)} onSave={upsertFn} />}
+      {showAdd && (
+        <QuickAdd
+          onClose={() => setShowAdd(false)}
+          onSave={(args) => upsertContact(uid!, args.data)}
+        />
+      )}
     </div>
   );
 }

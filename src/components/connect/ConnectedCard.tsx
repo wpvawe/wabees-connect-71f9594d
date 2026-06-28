@@ -2,9 +2,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleCheck, faPhone, faBuilding, faStar } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { disconnectWhatsApp } from "@/lib/meta/connect.functions";
+import { useMutation } from "@tanstack/react-query";
+import { disconnectWhatsApp } from "@/lib/firebase/whatsapp-config";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
 
 interface Row {
@@ -17,14 +17,10 @@ interface Row {
 }
 
 export function ConnectedCard({ row }: { row: Row }) {
-  const qc = useQueryClient();
-  const disFn = useServerFn(disconnectWhatsApp);
+  const uid = useFirebaseUid();
   const dis = useMutation({
-    mutationFn: () => disFn(),
-    onSuccess: () => {
-      toast.success("Disconnected");
-      qc.invalidateQueries({ queryKey: ["whatsapp-config"] });
-    },
+    mutationFn: () => disconnectWhatsApp(uid!),
+    onSuccess: () => toast.success("Disconnected"),
     onError: (e: Error) => toast.error(e.message),
   });
   return (

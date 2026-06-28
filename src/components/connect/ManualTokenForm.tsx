@@ -3,23 +3,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { manualConnectSchema, type ManualConnectValues } from "@/lib/schemas/meta";
 import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { manualConnect } from "@/lib/meta/connect.functions";
+import { useMutation } from "@tanstack/react-query";
+import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
+import { verifyWhatsAppToken } from "@/lib/wabees/api";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
 
 export function ManualTokenForm() {
-  const qc = useQueryClient();
-  const fn = useServerFn(manualConnect);
+  const uid = useFirebaseUid();
   const { register, handleSubmit, formState: { errors } } = useForm<ManualConnectValues>({
     resolver: zodResolver(manualConnectSchema),
   });
   const m = useMutation({
-    mutationFn: (v: ManualConnectValues) => fn({ data: v }),
-    onSuccess: () => {
-      toast.success("WhatsApp connected (manual)");
-      qc.invalidateQueries({ queryKey: ["whatsapp-config"] });
+    mutationFn: async (v: ManualConnectValues) => {
+      if (!uid) throw new Error("Not signed in");
+      const verify = await verifyWhatsAppToken({
+        phone_number_id: v.phone_number_id,
+        access_token: v.access_token,
+      });
+      if (!verify.success) {
+        throw new Error(verify.message ?? "Token verification failed");
+      }
+      await saveWhatsAppConfig({ uid, ...v });
     },
+    onSuccess: () => toast.success("WhatsApp connected"),
     onError: (e: Error) => toast.error(e.message),
   });
   return (

@@ -3,23 +3,24 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch, faFileLines, faMagnifyingGlass, faRotate, faCircleCheck, faClock, faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
-import { syncTemplatesFromMeta } from "@/lib/templates/sync.functions";
+import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
+  const uid = useFirebaseUid();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const sync = useServerFn(syncTemplatesFromMeta);
 
   async function onSync() {
+    if (!uid) return;
     setSyncing(true);
     try {
-      const r = await sync({ data: undefined });
+      const r = await syncTemplatesFromMeta(uid);
       toast.success(`Synced ${r.synced} templates`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");

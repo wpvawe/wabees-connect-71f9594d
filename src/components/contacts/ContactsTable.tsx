@@ -2,16 +2,16 @@ import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleNotch, faTrash, faMagnifyingGlass, faAddressBook } from "@fortawesome/free-solid-svg-icons";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
-import { deleteContact } from "@/lib/contacts/crud.functions";
+import { deleteContact } from "@/lib/firebase/contacts";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 
 export function ContactsTable() {
   const { data, error } = useContacts();
+  const uid = useFirebaseUid();
   const [q, setQ] = useState("");
-  const del = useServerFn(deleteContact);
 
   const filtered = useMemo(() => {
     if (!data) return data;
@@ -23,9 +23,10 @@ export function ContactsTable() {
   }, [data, q]);
 
   async function remove(id: string, name: string) {
+    if (!uid) return;
     if (!confirm(`Delete ${name}?`)) return;
     try {
-      await del({ data: { id } });
+      await deleteContact(uid, id);
       toast.success("Deleted");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
