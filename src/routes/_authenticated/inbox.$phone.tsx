@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
@@ -71,7 +72,7 @@ function dayLabel(d: Date): string {
 }
 
 function renderWithDayDividers(msgs: Message[]) {
-  const nodes: React.ReactNode[] = [];
+  const nodes: ReactNode[] = [];
   let prev: Date | null = null;
   for (const m of msgs) {
     const d = m.createdAt ? new Date(m.createdAt) : null;
