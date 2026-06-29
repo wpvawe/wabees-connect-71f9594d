@@ -35,7 +35,8 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // `whatsappPhoneNumberId`; otherwise a brand-new email becomes a candidate
   // and can hijack an already-connected phone from the mobile app owner.
   const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
-  if (serverIdToken) {
+  if (!serverIdToken) throw new Error("Please sign in again before connecting WhatsApp");
+  try {
     const serverRepair = await repairWhatsAppOwnerServer({
       data: {
         idToken: serverIdToken,
@@ -47,8 +48,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         qualityRating: input.quality_rating ?? "",
         connectedVia: input.connected_via ?? "manual",
       },
-    }).catch(() => null);
+    });
     if (serverRepair?.ownerId) return;
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
