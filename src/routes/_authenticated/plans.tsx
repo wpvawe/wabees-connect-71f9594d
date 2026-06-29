@@ -111,5 +111,5 @@ function PlanStat({ label, value }: { label: string; value: string }) {
 }
 
 function limitLabel(value: number): string {
-  return value === 0 ? "Unlimited" : String(value);
+  return value <= 0 ? "Unlimited" : String(value);
 }

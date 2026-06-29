@@ -43,7 +43,12 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // first; it reads `wa_map` server-side and returns the real ownerId. This is
   // the critical fix that prevents website reconnects from creating a separate
   // owner/data island while the mobile app continues reading the old owner.
-  const existingOwnerId = await resolveExistingOwnerForPhone(input.phone_number_id, input.uid);
+  const currentUserSnap = await getDoc(userRef).catch(() => null);
+  const currentUserData = currentUserSnap?.exists() ? (currentUserSnap.data() as Record<string, unknown>) : {};
+  const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
+    ? currentUserData.dataOwner.trim()
+    : null;
+  const existingOwnerId = existingDataOwner ?? await resolveExistingOwnerForPhone(input.phone_number_id, input.uid);
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
 

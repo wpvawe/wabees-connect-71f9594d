@@ -57,7 +57,7 @@ export function usePlans(): { data: Plan[] | null; error: string | null } {
             id: d.id,
             name: str(x.name),
             description: str(x.description),
-            priceMonthly: num(x.priceMonthly),
+            priceMonthly: num(x.priceMonthly, num(x.price)),
             priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
             currency: str(x.currency, "PKR"),
             maxMessages: num(x.maxMessages, 1000),
