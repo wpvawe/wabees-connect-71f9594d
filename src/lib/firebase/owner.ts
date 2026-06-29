@@ -25,12 +25,14 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
   const phone = phoneNumberId.trim();
   if (!phone) return null;
   const db = fbDb();
+  let sameUidOwner: string | null = null;
 
   try {
     const mapSnap = await getDoc(doc(db, "wa_map", phone));
     if (mapSnap.exists()) {
       const owner = ownerFromMapData(mapSnap.data() as Record<string, unknown>);
-      if (owner) return owner;
+      if (owner && owner !== selfUid) return owner;
+      if (owner) sameUidOwner = owner;
     }
   } catch {
     // Firestore rules may block cross-owner map reads; try backend + legacy query.
@@ -38,7 +40,8 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
 
   try {
     const { ownerId } = await clearWebhookOwnerCache(phone);
-    if (ownerId) return ownerId;
+    if (ownerId && ownerId !== selfUid) return ownerId;
+    if (ownerId) sameUidOwner = ownerId;
   } catch {
     // Non-fatal fallback below.
   }
@@ -53,5 +56,5 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
     // Some rules do not allow users collection queries.
   }
 
-  return null;
+  return sameUidOwner;
 }
