@@ -67,16 +67,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     : (mapOwnerOther ?? null);
   const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
 
-  // Only subscribe the webhook once we know who the real owner is. When this
-  // UID is actually an agent under another owner, skip subscribe entirely so
-  // the backend's owner cache is never reseeded with the wrong UID.
-  if (!treatAsAgent) {
-    await subscribeWhatsAppWebhook({
-      phone_number_id: input.phone_number_id,
-      access_token: input.access_token,
-    }).catch(() => null);
-  }
-
   await Promise.all([
     setDoc(
       userRef,
@@ -199,6 +189,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       },
       { merge: true },
     ).catch(() => {});
+  }
+
+  // Subscribe only AFTER wa_map has the final owner. Otherwise the PHP backend
+  // can re-cache the wrong owner while handling subscribe-webhook.php.
+  if (!treatAsAgent) {
+    await subscribeWhatsAppWebhook({
+      phone_number_id: input.phone_number_id,
+      access_token: input.access_token,
+    }).catch(() => null);
   }
 
   await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
