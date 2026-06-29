@@ -1,16 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
-import { MessageBubble } from "@/components/inbox/MessageBubble";
+import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { doc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { phoneQueryCandidates } from "@/lib/firebase/normalizers";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { sendReactionMessage } from "@/lib/wabees/api";
+import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   head: ({ params }) => ({ meta: [{ title: `Chat ${params.phone} — Wabees` }] }),
@@ -25,6 +28,8 @@ function InboxThread() {
 function Thread({ phone }: { phone: string }) {
   const { data, error } = useMessages(phone);
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
@@ -89,6 +94,61 @@ function Thread({ phone }: { phone: string }) {
     })();
   }, [uid, phone, data]);
 
+  const onReact = useCallback(
+    async (m: Message, emoji: string) => {
+      if (!uid || !selfUid) return;
+      try {
+        await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+          reactionEmoji: emoji,
+          reactionMsgId: m.whatsappMessageId ?? null,
+        });
+      } catch {
+        /* local update best-effort */
+      }
+      if (m.whatsappMessageId) {
+        try {
+          const creds = await loadWaCredentials(selfUid);
+          if (!creds) return;
+          await sendReactionMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: creds.access_token,
+            to: whatsappRecipientId(phone),
+            message_id: m.whatsappMessageId,
+            emoji,
+          });
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Reaction failed");
+        }
+      }
+    },
+    [uid, selfUid, phone],
+  );
+
+  const onDelete = useCallback(
+    async (m: Message) => {
+      if (!uid) return;
+      if (!confirm("Delete this message? This hides it on the website and the app.")) return;
+      try {
+        await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+          status: "deleted",
+          body: "",
+          mediaUrl: null,
+          caption: null,
+          deletedAt: serverTimestamp(),
+        });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Delete failed");
+      }
+    },
+    [uid],
+  );
+
+  const actions: MessageActions = {
+    onReply: setReplyTo,
+    onReact,
+    onDelete,
+  };
+
   const name =
     data && data.length > 0 && data[0].contactName && data[0].contactName !== phone
       ? data[0].contactName
@@ -123,11 +183,11 @@ function Thread({ phone }: { phone: string }) {
             No messages yet. Say hi 👋
           </p>
         ) : (
-          renderWithDayDividers(data)
+          renderWithDayDividers(data, actions)
         )}
         <div ref={bottomRef} />
       </div>
-      <Composer phone={phone} />
+      <Composer phone={phone} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
     </section>
   );
 }
@@ -141,7 +201,7 @@ function dayLabel(d: Date): string {
   return format(d, "d MMM yyyy");
 }
 
-function renderWithDayDividers(msgs: Message[]) {
+function renderWithDayDividers(msgs: Message[], actions: MessageActions) {
   const nodes: ReactNode[] = [];
   let prev: Date | null = null;
   for (const m of msgs) {
@@ -156,7 +216,7 @@ function renderWithDayDividers(msgs: Message[]) {
       );
       prev = d;
     }
-    nodes.push(<MessageBubble key={m.id} m={m} />);
+    nodes.push(<MessageBubble key={m.id} m={m} actions={actions} />);
   }
   return nodes;
 }
