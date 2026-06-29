@@ -40,7 +40,10 @@ function businessDataScore(id: string, data: Record<string, unknown> | null, sel
   if (!data) return id === selfUid ? -50 : 25;
   const isAgent = hasString(data.dataOwner);
   let score = 0;
-  if (id !== selfUid) score += 250;
+  // If any other account already has this WhatsApp phone, it should almost
+  // always remain the owner. A new website email connecting the same phone is
+  // an agent, not a fresh owner.
+  if (id !== selfUid) score += 5_000;
   if (!isAgent) score += 2_000;
   else score -= 2_000;
   if (data.whatsappConnected === true) score += 120;
@@ -98,7 +101,8 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
     const matches = await getDocs(query(collection(db, "users"), where("whatsappPhoneNumberId", "==", phone), limit(10)));
     const candidates = matches.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
     for (const c of candidates) candidateIds.add(c.id);
-    const scored = candidates
+    const historicalOwners = candidates.filter((c) => c.id !== selfUid && !hasString(c.data.dataOwner));
+    const scored = (historicalOwners.length > 0 ? historicalOwners : candidates)
       .slice()
       .sort((a, b) => businessDataScore(b.id, b.data, selfUid) - businessDataScore(a.id, a.data, selfUid));
     const best = scored[0];
