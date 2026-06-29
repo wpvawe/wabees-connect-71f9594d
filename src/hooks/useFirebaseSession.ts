@@ -28,7 +28,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
-    let repairTimer: ReturnType<typeof window.setInterval> | null = null;
+    let repairTimer: number | null = null;
     let currentPhoneNumberId = "";
     let currentDataOwner: string | null = null;
     function clearRepairTimer() {
