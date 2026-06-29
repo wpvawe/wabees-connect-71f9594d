@@ -11,9 +11,17 @@ export type Bot = {
   isActive: boolean;
   triggerType: string;
   triggerKeywords: string[];
+  caseSensitive: boolean;
   responseText: string;
+  headerText?: string | null;
   templateName?: string | null;
   delaySeconds: number;
+  quickReplies: Array<Record<string, unknown>>;
+  ctaButton: Record<string, unknown> | null;
+  footerText?: string | null;
+  maxTriggersPerContact?: number | null;
+  cooldownMinutes?: number | null;
+  additionalResponses: Array<Record<string, unknown>>;
   totalTriggered: number;
   createdAt: string | null;
   updatedAt: string | null;
@@ -40,9 +48,17 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
             isActive: x.isActive !== false,
             triggerType: str(x.triggerType, "keyword"),
             triggerKeywords: listOfStrings(x.triggerKeywords),
+            caseSensitive: Boolean(x.caseSensitive),
             responseText: str(x.responseText),
+            headerText: strOrNull(x.headerText),
             templateName: strOrNull(x.templateName),
             delaySeconds: typeof x.delaySeconds === "number" ? x.delaySeconds : 0,
+            quickReplies: Array.isArray(x.quickReplies) ? x.quickReplies as Array<Record<string, unknown>> : [],
+            ctaButton: x.ctaButton && typeof x.ctaButton === "object" ? x.ctaButton as Record<string, unknown> : null,
+            footerText: strOrNull(x.footerText),
+            maxTriggersPerContact: typeof x.maxTriggersPerContact === "number" ? x.maxTriggersPerContact : null,
+            cooldownMinutes: typeof x.cooldownMinutes === "number" ? x.cooldownMinutes : null,
+            additionalResponses: Array.isArray(x.additionalResponses) ? x.additionalResponses as Array<Record<string, unknown>> : [],
             totalTriggered: typeof x.totalTriggered === "number" ? x.totalTriggered : 0,
             createdAt: toIso(x.createdAt),
             updatedAt: toIso(x.updatedAt),

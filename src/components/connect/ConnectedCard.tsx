@@ -18,7 +18,7 @@ import { WbInput } from "@/components/wb/WbInput";
 import { useMutation } from "@tanstack/react-query";
 import { disconnectWhatsApp, updateWhatsAppBusinessAccountId } from "@/lib/firebase/whatsapp-config";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
 
 interface Row {
@@ -31,20 +31,21 @@ interface Row {
 }
 
 export function ConnectedCard({ row }: { row: Row }) {
-  const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
+  const effectiveUid = useEffectiveUid();
   const [wabaInput, setWabaInput] = useState(row.waba_id ?? "");
   const dis = useMutation({
-    mutationFn: () => disconnectWhatsApp(uid!),
+    mutationFn: () => disconnectWhatsApp(selfUid!),
     onSuccess: () => toast.success("Disconnected"),
     onError: (e: Error) => toast.error(e.message),
   });
   const sync = useMutation({
-    mutationFn: () => syncTemplatesFromMeta(uid!),
+    mutationFn: () => syncTemplatesFromMeta(effectiveUid!),
     onSuccess: (r) => toast.success(`Synced ${r.synced} templates`),
     onError: (e: Error) => toast.error(e.message),
   });
   const saveWaba = useMutation({
-    mutationFn: () => updateWhatsAppBusinessAccountId(uid!, wabaInput),
+    mutationFn: () => updateWhatsAppBusinessAccountId(selfUid!, wabaInput),
     onSuccess: () => toast.success("WABA ID saved"),
     onError: (e: Error) => toast.error(e.message),
   });

@@ -8,8 +8,7 @@ import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
 import { useMutation } from "@tanstack/react-query";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
-import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { smartConnectWhatsApp, verifyWhatsAppToken } from "@/lib/wabees/api";
 import { toast } from "sonner";
 
@@ -25,7 +24,10 @@ type PhoneInfo = {
  * display phone, and quality rating, mirroring the mobile app.
  */
 export function ManualTokenForm() {
-  const uid = useEffectiveUid();
+  // Connect must save credentials on the signed-in user's own doc, exactly
+  // like the mobile app's userIdProvider. Shared business data is still read
+  // through dataOwner/effective UID after saveWhatsAppConfig resolves ownership.
+  const uid = useFirebaseUid();
   const { register, handleSubmit, formState: { errors } } = useForm<ManualConnectValues>({
     resolver: zodResolver(manualConnectSchema),
   });
@@ -79,17 +81,6 @@ export function ManualTokenForm() {
         business_name: businessName ?? phone.verified_name,
         quality_rating: phone.quality_rating,
       });
-      // Auto-pull templates from Meta so the Templates page is not empty
-      // right after connect (mirrors what the Flutter app does).
-      try {
-        const r = await syncTemplatesFromMeta(uid);
-        if (r.synced > 0) toast.success(`Synced ${r.synced} templates from Meta`);
-      } catch (e) {
-        // Non-fatal — user can click Sync from Meta on the Templates page.
-        toast.message(
-          e instanceof Error ? `Templates auto-sync skipped: ${e.message}` : "Templates auto-sync skipped",
-        );
-      }
     },
     onSuccess: () => toast.success("WhatsApp connected — details auto-detected"),
     onError: (e: Error) => toast.error(e.message),

@@ -12,9 +12,12 @@ export type Template = {
   body: string;
   header?: string | null;
   footer?: string | null;
+  buttons: Array<Record<string, unknown>>;
   status: string;
   isSynced: boolean;
   variables: string[];
+  variableSamples: Record<string, string>;
+  variableTypes: Record<string, string>;
   qualityScore?: string | null;
 };
 
@@ -41,9 +44,16 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
             body: (x.body as string) ?? "",
             header: (x.header as string | null) ?? null,
             footer: (x.footer as string | null) ?? null,
+            buttons: Array.isArray(x.buttons) ? x.buttons as Array<Record<string, unknown>> : [],
             status: (x.status as string) ?? "PENDING",
             isSynced: (x.isSynced as boolean) ?? false,
             variables: (x.variables as string[]) ?? [],
+            variableSamples: x.variableSamples && typeof x.variableSamples === "object"
+              ? x.variableSamples as Record<string, string>
+              : {},
+            variableTypes: x.variableTypes && typeof x.variableTypes === "object"
+              ? x.variableTypes as Record<string, string>
+              : {},
             qualityScore: (x.qualityScore as string | null) ?? null,
           };
         }).sort((a, b) => a.name.localeCompare(b.name));

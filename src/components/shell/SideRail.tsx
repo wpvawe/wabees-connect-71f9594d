@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
   faChartLine, faComments, faAddressBook, faBullhorn, faRobot, faFileLines,
-  faPlug, faGear, faRightFromBracket,
+  faPlug, faGear, faRightFromBracket, faCrown,
 } from "@fortawesome/free-solid-svg-icons";
 import { signOut as fbSignOut } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
@@ -17,6 +17,7 @@ const NAV: { to: string; label: string; icon: IconDefinition }[] = [
   { to: "/campaigns", label: "Campaigns", icon: faBullhorn },
   { to: "/bots", label: "Bots", icon: faRobot },
   { to: "/templates", label: "Templates", icon: faFileLines },
+  { to: "/plans", label: "Plans", icon: faCrown },
   { to: "/connect", label: "Connect", icon: faPlug },
 ];
 
