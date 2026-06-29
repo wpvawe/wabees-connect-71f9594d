@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { normalizePhone, phoneQueryCandidates, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 
 export type Message = {
   id: string;
@@ -15,17 +16,16 @@ export type Message = {
   mimeType?: string | null;
   caption?: string | null;
   fileName?: string | null;
+  mediaId?: string | null;
+  templateName?: string | null;
+  headerText?: string | null;
+  footerText?: string | null;
+  quickReplies?: Array<Record<string, unknown>> | null;
+  ctaButton?: Record<string, unknown> | null;
+  whatsappMessageId?: string | null;
+  errorReason?: string | null;
   createdAt: string | null;
 };
-
-function toIso(v: unknown): string | null {
-  if (!v) return null;
-  if (typeof v === "string") return v;
-  if (typeof v === "object" && v && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
-    return (v as { toDate: () => Date }).toDate().toISOString();
-  }
-  return null;
-}
 
 export function useMessages(phone: string | undefined): { data: Message[] | null; error: string | null } {
   const uid = useEffectiveUid();
@@ -36,34 +36,43 @@ export function useMessages(phone: string | undefined): { data: Message[] | null
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
+    setData(null);
+    const candidates = phoneQueryCandidates(phone);
     const q = query(
       collection(db, `users/${uid}/messages`),
-      where("contactPhone", "==", phone),
-      orderBy("createdAt", "asc"),
-      limit(500),
+      candidates.length === 1 ? where("contactPhone", "==", candidates[0]) : where("contactPhone", "in", candidates),
     );
     const unsub = onSnapshot(
       q,
       (snap) => {
         const rows: Message[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
+          const contactPhone = str(x.contactPhone, phone);
           return {
             id: d.id,
-            contactPhone: (x.contactPhone as string) ?? phone,
-            contactName: (x.contactName as string) ?? phone,
-            type: (x.type as string) ?? "text",
+            contactPhone: normalizePhone(contactPhone),
+            contactName: str(x.contactName, normalizePhone(contactPhone)),
+            type: str(x.type, "text"),
             direction: ((x.direction as string) === "outgoing" ? "outgoing" : "incoming") as
               | "incoming"
               | "outgoing",
-            status: (x.status as string) ?? "sent",
-            body: (x.body as string) ?? "",
-            mediaUrl: (x.mediaUrl as string | null) ?? null,
-            mimeType: (x.mimeType as string | null) ?? null,
-            caption: (x.caption as string | null) ?? null,
-            fileName: (x.fileName as string | null) ?? null,
+            status: str(x.status, "sent"),
+            body: str(x.body),
+            mediaUrl: strOrNull(x.mediaUrl),
+            mediaId: strOrNull(x.mediaId),
+            mimeType: strOrNull(x.mimeType),
+            caption: strOrNull(x.caption),
+            fileName: strOrNull(x.fileName),
+            templateName: strOrNull(x.templateName),
+            headerText: strOrNull(x.headerText),
+            footerText: strOrNull(x.footerText),
+            quickReplies: Array.isArray(x.quickReplies) ? x.quickReplies as Array<Record<string, unknown>> : null,
+            ctaButton: x.ctaButton && typeof x.ctaButton === "object" ? x.ctaButton as Record<string, unknown> : null,
+            whatsappMessageId: strOrNull(x.whatsappMessageId),
+            errorReason: strOrNull(x.errorReason),
             createdAt: toIso(x.createdAt),
           };
-        });
+        }).sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
         setData(rows);
       },
       (err) => setError(err.message),

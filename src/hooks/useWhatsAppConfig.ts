@@ -68,7 +68,7 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
           (usr.whatsappQualityRating as string | undefined) ??
           null,
         connected: true,
-        method: "manual",
+        method: (sub.connectedVia === "embedded_signup" ? "embedded_signup" : "manual"),
       });
     }
     const unsubUser = onSnapshot(

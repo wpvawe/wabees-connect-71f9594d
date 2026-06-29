@@ -33,8 +33,9 @@ function extractVariables(body: string): string[] {
 export async function syncTemplatesFromMeta(uid: string): Promise<{ synced: number }> {
   const creds = await loadWaCredentials(uid);
   if (!creds) throw new Error("Connect WhatsApp first");
-  // Load waba_id from the config doc — Meta's templates endpoint is
-  // `/<WABA_ID>/message_templates`, not the phone-number endpoint.
+  // Load WABA id from the same config doc the Flutter app uses. The PHP
+  // backend expects `business_account_id`; direct browser → Meta calls are
+  // intentionally avoided so website behavior matches the app.
   const db = fbDb();
   const cfg = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
   const userDoc = await getDoc(doc(db, "users", uid));
@@ -43,25 +44,17 @@ export async function syncTemplatesFromMeta(uid: string): Promise<{ synced: numb
     (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
     "";
 
-  let list: MetaTemplate[] = [];
-  if (waba_id) {
-    // Direct Meta Graph fetch — works without any backend dependency.
-    const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(waba_id)}/message_templates?limit=200&fields=id,name,category,language,status,components`;
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${creds.access_token}` } });
-    const j = (await r.json().catch(() => ({}))) as { data?: MetaTemplate[]; error?: { message?: string } };
-    if (!r.ok || j.error) {
-      throw new Error(j.error?.message ?? `Meta error (${r.status})`);
-    }
-    list = j.data ?? [];
-  } else {
-    // No WABA id — fall back to the PHP proxy which may derive it server-side.
-    const res = await fetchMetaTemplates(creds);
-    if (!res.success) throw new Error(res.message ?? "Could not fetch templates — WABA ID missing");
-    list =
-      (res.raw.templates as MetaTemplate[] | undefined) ??
-      (res.raw.data as MetaTemplate[] | undefined) ??
-      [];
+  if (!waba_id) throw new Error("WABA ID missing — add it on Connect page to sync templates");
+
+  const res = await fetchMetaTemplates({ business_account_id: waba_id, access_token: creds.access_token });
+  if (res.raw.error && typeof res.raw.error === "object") {
+    const msg = (res.raw.error as { message?: string }).message;
+    throw new Error(msg ?? "Could not fetch templates");
   }
+  const list =
+    (res.raw.templates as MetaTemplate[] | undefined) ??
+    (res.raw.data as MetaTemplate[] | undefined) ??
+    [];
   if (list.length === 0) return { synced: 0 };
 
   const col = collection(db, "users", uid, "templates");

@@ -15,6 +15,7 @@ import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 
 export function Composer({ phone }: { phone: string }) {
   const [text, setText] = useState("");
@@ -25,7 +26,8 @@ export function Composer({ phone }: { phone: string }) {
     const body = text.trim();
     if (!body || sending || !uid) return;
     setSending(true);
-    const to = phone.replace(/[^0-9]/g, "");
+    const normalizedPhone = normalizePhone(phone);
+    const to = normalizedPhone.replace(/[^0-9]/g, "");
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
@@ -36,8 +38,8 @@ export function Composer({ phone }: { phone: string }) {
       }
       // Optimistic write — message doc + conversation summary (Flutter pattern).
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
-        contactPhone: to,
-        contactName: phone,
+        contactPhone: normalizedPhone,
+        contactName: normalizedPhone,
         type: "text",
         direction: "outgoing",
         status: "pending",
@@ -45,9 +47,10 @@ export function Composer({ phone }: { phone: string }) {
         createdAt: serverTimestamp(),
       });
       await setDoc(
-        doc(db, "users", uid, "conversations", to),
+        doc(db, "users", uid, "conversations", normalizedPhone),
         {
-          contactName: phone,
+          contactPhone: normalizedPhone,
+          contactName: normalizedPhone,
           lastMessage: body,
           lastMessageType: "text",
           lastMessageAt: serverTimestamp(),

@@ -20,10 +20,17 @@ async function postJson<T = unknown>(path: string, body: Record<string, unknown>
     body: JSON.stringify(body),
   });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const explicitSuccess = typeof raw.success === "boolean" ? raw.success : undefined;
+  const rawError = raw.error;
+  const errorMessage = typeof rawError === "string"
+    ? rawError
+    : rawError && typeof rawError === "object" && "message" in rawError
+      ? String((rawError as { message?: unknown }).message ?? "")
+      : undefined;
   return {
-    success: Boolean(raw.success),
-    message: (raw.message as string | undefined) ?? (raw.error as string | undefined),
-    data: raw.data as T | undefined,
+    success: explicitSuccess ?? (res.ok && !raw.error),
+    message: (raw.message as string | undefined) ?? errorMessage,
+    data: (raw.data ?? raw) as T | undefined,
     raw,
   };
 }
@@ -83,7 +90,7 @@ export function sendTemplateMessage(args: {
   return postJson("send-message.php", { ...args, type: "template" });
 }
 
-export function fetchMetaTemplates(args: { phone_number_id: string; access_token: string }) {
+export function fetchMetaTemplates(args: { business_account_id: string; access_token: string }) {
   return postJson("get-templates.php", args);
 }
 

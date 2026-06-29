@@ -18,12 +18,14 @@ export type SaveWaConfigInput = {
   display_phone?: string;
   business_name?: string;
   quality_rating?: string;
+  connected_via?: "embedded_signup" | "manual";
 };
 
 export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void> {
   const db = fbDb();
   const userRef = doc(db, "users", input.uid);
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
+  const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
   await Promise.all([
     setDoc(
@@ -50,12 +52,26 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         businessName: input.business_name ?? null,
         qualityRating: input.quality_rating ?? null,
         isConnected: true,
+        connectedVia: input.connected_via ?? "manual",
         connectedAt: now,
         lastVerifiedAt: now,
       },
       { merge: true },
     ),
   ]);
+
+  // Webhook routing map used by the PHP backend. Rules allow owners to write
+  // their own map; if an agent reconnects an owner's number, do not fail the
+  // whole connection because owner subcollections are still readable/writable.
+  await setDoc(
+    mapRef,
+    {
+      userId: input.uid,
+      ownerId: input.uid,
+      updatedAt: now,
+    },
+    { merge: true },
+  ).catch(() => {});
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
@@ -73,6 +89,24 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     setDoc(
       doc(db, "users", uid, "whatsapp_config", "config"),
       { isConnected: false, accessToken: "", updatedAt: serverTimestamp() },
+      { merge: true },
+    ),
+  ]);
+}
+
+export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: string): Promise<void> {
+  const db = fbDb();
+  const clean = wabaId.trim();
+  if (!clean) throw new Error("WABA ID is required");
+  await Promise.all([
+    setDoc(
+      doc(db, "users", uid),
+      { whatsappBusinessAccountId: clean, updatedAt: serverTimestamp() },
+      { merge: true },
+    ),
+    setDoc(
+      doc(db, "users", uid, "whatsapp_config", "config"),
+      { businessAccountId: clean, updatedAt: serverTimestamp() },
       { merge: true },
     ),
   ]);

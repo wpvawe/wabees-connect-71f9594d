@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { toIso } from "@/lib/firebase/normalizers";
 
 export type Campaign = {
   id: string;
@@ -23,15 +24,6 @@ export type Campaign = {
   completedAt: string | null;
 };
 
-function toIso(v: unknown): string | null {
-  if (!v) return null;
-  if (typeof v === "string") return v;
-  if (typeof v === "object" && v && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
-    return (v as { toDate: () => Date }).toDate().toISOString();
-  }
-  return null;
-}
-
 export function useCampaigns(): { data: Campaign[] | null; error: string | null } {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Campaign[] | null>(null);
@@ -41,9 +33,8 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, `users/${uid}/campaigns`), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
-      q,
+      collection(db, `users/${uid}/campaigns`),
       (snap) => {
         const rows: Campaign[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
@@ -66,7 +57,7 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
             startedAt: toIso(x.startedAt),
             completedAt: toIso(x.completedAt),
           };
-        });
+        }).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
         setData(rows);
       },
       (err) => setError(err.message),

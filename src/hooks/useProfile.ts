@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export type Profile = {
   id: string;
@@ -17,8 +17,10 @@ export type Profile = {
   totalCampaigns: number;
 };
 
-export function useProfile(): { data: Profile | null; loading: boolean; error: string | null } {
-  const uid = useFirebaseUid();
+export function useProfile(scope: "self" | "effective" = "self"): { data: Profile | null; loading: boolean; error: string | null } {
+  const selfUid = useFirebaseUid();
+  const effectiveUid = useEffectiveUid();
+  const uid = scope === "effective" ? effectiveUid : selfUid;
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

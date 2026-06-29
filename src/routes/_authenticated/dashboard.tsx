@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const { data: wa, loading } = useWhatsAppConfig();
-  const { data: profile } = useProfile();
+  const { data: profile } = useProfile("effective");
 
   return (
     <>

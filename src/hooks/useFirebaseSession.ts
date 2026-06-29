@@ -30,9 +30,10 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(fbAuth(), (u) => {
       if (unsubProfile) { unsubProfile(); unsubProfile = null; }
       if (!u) { setState({ status: "no_uid" }); return; }
-      // Initial ready with self as effective owner; update as soon as the
-      // profile doc reveals a `dataOwner` (agent under another account).
-      setState({ status: "ready", uid: u.uid, effectiveUid: u.uid, dataOwner: null, user: u });
+      // Keep loading until the first profile snapshot arrives; otherwise
+      // agent accounts briefly subscribe to their own empty subcollections
+      // before `dataOwner` resolves to the owner UID.
+      setState({ status: "loading" });
       unsubProfile = onSnapshot(doc(fbDb(), "users", u.uid), (snap) => {
         const dataOwner = (snap.exists() ? (snap.data().dataOwner as string | null | undefined) : null) ?? null;
         setState({
@@ -42,7 +43,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
           dataOwner,
           user: u,
         });
-      });
+      }, () => setState({ status: "ready", uid: u.uid, effectiveUid: u.uid, dataOwner: null, user: u }));
     });
     return () => {
       unsub();

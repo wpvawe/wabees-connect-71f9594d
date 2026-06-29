@@ -7,6 +7,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 
 export async function upsertContact(
   uid: string,
@@ -19,7 +20,7 @@ export async function upsertContact(
     : doc(collection(db, "users", uid, "contacts"));
   const payload: Record<string, unknown> = {
     name: input.name,
-    phone: input.phone,
+    phone: normalizePhone(input.phone),
     email: input.email ?? null,
     company: input.company ?? null,
     notes: input.notes ?? null,
@@ -52,7 +53,7 @@ export async function bulkImportContacts(
       const ref = doc(collection(db, "users", uid, "contacts"));
       batch.set(ref, {
         name: r.name,
-        phone: r.phone,
+        phone: normalizePhone(r.phone),
         email: r.email ?? null,
         company: r.company ?? null,
         notes: r.notes ?? null,
