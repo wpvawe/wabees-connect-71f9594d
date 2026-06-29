@@ -561,12 +561,13 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
 
     const candidates = new Map<string, Candidate>();
     const callerAccessToken = getString(callerCfgFields ?? undefined, "accessToken") || getString(callerUserFields ?? undefined, "whatsappAccessToken");
+    const lookupAccessToken = data.accessToken || callerAccessToken;
 
     const [topLevelMatches, configMatches, topLevelTokenMatches, configTokenMatches, emailMatches, waMapFields] = await Promise.all([
       queryUsersByTopLevelPhone(projectId, accessToken, data.phoneNumberId),
       queryUsersByConfigPhone(projectId, accessToken, data.phoneNumberId),
-      queryUsersByTopLevelAccessToken(projectId, accessToken, callerAccessToken || data.accessToken || ""),
-      queryUsersByConfigAccessToken(projectId, accessToken, callerAccessToken || data.accessToken || ""),
+      queryUsersByTopLevelAccessToken(projectId, accessToken, lookupAccessToken),
+      queryUsersByConfigAccessToken(projectId, accessToken, lookupAccessToken),
       queryUsersByEmail(projectId, accessToken, email),
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
