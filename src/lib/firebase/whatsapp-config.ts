@@ -30,19 +30,13 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  await subscribeWhatsAppWebhook({
-    phone_number_id: input.phone_number_id,
-    access_token: input.access_token,
-  }).catch(() => null);
-
   // --- dataOwner detection (mirrors the Flutter app) ---------------------
-  // Direct client reads of `wa_map/{phoneNumberId}` are intentionally allowed
-  // only to the owner by Firestore rules. If this website user reconnects a
-  // number that already belongs to a different owner, that direct read fails.
-  // Therefore resolve the owner through the PHP backend cache-clear endpoint
-  // first; it reads `wa_map` server-side and returns the real ownerId. This is
-  // the critical fix that prevents website reconnects from creating a separate
-  // owner/data island while the mobile app continues reading the old owner.
+  // CRITICAL: resolve the real owner BEFORE calling subscribe-webhook so the
+  // PHP backend never caches the website UID as the owner for a phone that
+  // already belongs to a mobile-app user. `resolveExistingOwnerForPhone` now
+  // queries the `users` collection first (authoritative) and only falls back
+  // to `wa_map` / backend cache (which may be stale from a previous bad
+  // reconnect).
   const currentUserSnap = await getDoc(userRef).catch(() => null);
   const currentUserData = currentUserSnap?.exists() ? (currentUserSnap.data() as Record<string, unknown>) : {};
   const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
@@ -51,6 +45,37 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const existingOwnerId = existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
+
+  // Inspect the current wa_map. If `ownerId` already points at someone other
+  // than this UID, we MUST NOT overwrite it — even if our local resolution
+  // came back as self. That's the bug that turned the website into a separate
+  // data island after a reconnect.
+  let mapOwnerOther: string | null = null;
+  try {
+    const mapSnap = await getDoc(mapRef);
+    if (mapSnap.exists()) {
+      const m = mapSnap.data() as Record<string, unknown>;
+      const owner = typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
+      if (owner && owner !== input.uid) mapOwnerOther = owner;
+    }
+  } catch {
+    /* rules may block — ignore */
+  }
+
+  const effectiveOwner = isAgent
+    ? existingOwnerId
+    : (mapOwnerOther ?? null);
+  const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
+
+  // Only subscribe the webhook once we know who the real owner is. When this
+  // UID is actually an agent under another owner, skip subscribe entirely so
+  // the backend's owner cache is never reseeded with the wrong UID.
+  if (!treatAsAgent) {
+    await subscribeWhatsAppWebhook({
+      phone_number_id: input.phone_number_id,
+      access_token: input.access_token,
+    }).catch(() => null);
+  }
 
   await Promise.all([
     setDoc(
@@ -63,9 +88,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         whatsappQualityRating: input.quality_rating ?? null,
         whatsappConnected: true,
         // Critical: link this UID to the owner whose Firestore subcollections
-        // hold the real data. `useEffectiveUid()` reads this. When user is
-        // the owner themselves, clear any stale dataOwner.
-        dataOwner: isAgent ? existingOwnerId : deleteField(),
+        // hold the real data. `useEffectiveUid()` reads this. When this user
+        // really is the owner, clear any stale dataOwner.
+        dataOwner: treatAsAgent ? effectiveOwner : deleteField(),
         updatedAt: now,
       },
       { merge: true },
@@ -90,14 +115,29 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   ]);
 
   // Webhook routing map used by the PHP backend.
-  if (isAgent && existingOwnerId) {
+  if (treatAsAgent && effectiveOwner) {
     // Register this UID as an agent under the existing owner. Do NOT
     // overwrite `wa_map.ownerId` — webhook keeps routing to the original
     // owner's subcollections, which both clients read via dataOwner.
     try {
-      await setDoc(mapRef, { users: arrayUnion(input.uid), updatedAt: now }, { merge: true }).catch(() => {});
+      // If wa_map.ownerId was previously hijacked by this UID (a bad earlier
+      // reconnect), restore the real owner so the PHP webhook routes to the
+      // correct subcollections again.
+      const needsRestore = mapOwnerOther !== effectiveOwner;
       await setDoc(
-        doc(db, "users", existingOwnerId, "agents", input.uid),
+        mapRef,
+        needsRestore
+          ? {
+              ownerId: effectiveOwner,
+              userId: effectiveOwner,
+              users: arrayUnion(input.uid, effectiveOwner),
+              updatedAt: now,
+            }
+          : { users: arrayUnion(input.uid), updatedAt: now },
+        { merge: true },
+      ).catch(() => {});
+      await setDoc(
+        doc(db, "users", effectiveOwner, "agents", input.uid),
         {
           email: fbAuth().currentUser?.email ?? null,
           joinedAt: now,
@@ -108,7 +148,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       // Non-fatal — owner's rules may not allow agent writes from this UID.
     }
   } else {
-    // Current user is the owner (first connect or reconnect).
+    // Current user is the owner (first connect or legitimate reconnect).
     await setDoc(
       mapRef,
       {
