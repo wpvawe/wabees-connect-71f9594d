@@ -5,6 +5,10 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { usePlans, type Plan } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { requestSubscription } from "@/lib/firebase/subscriptions";
+import { WbButton } from "@/components/wb/WbButton";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/plans")({
   head: () => ({ meta: [{ title: "Plans — Wabees" }] }),
@@ -14,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/plans")({
 function PlansPage() {
   const { data: plans, error } = usePlans();
   const { data: sub, loading } = useSubscription();
+  const uid = useFirebaseUid();
   return (
     <>
       <TopBar title="Plans" subtitle="Your current plan and active packages" />
@@ -48,7 +53,11 @@ function PlansPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => (
-              <PlanCard key={plan.id} plan={plan} active={sub?.planId === plan.id} />
+              <PlanCard key={plan.id} plan={plan} active={sub?.planId === plan.id} onRequest={async () => {
+                if (!uid) return;
+                await requestSubscription(uid, plan);
+                toast.success("Subscription request sent");
+              }} />
             ))}
           </div>
         )}
@@ -57,7 +66,7 @@ function PlansPage() {
   );
 }
 
-function PlanCard({ plan, active }: { plan: Plan; active: boolean }) {
+function PlanCard({ plan, active, onRequest }: { plan: Plan; active: boolean; onRequest: () => Promise<void> }) {
   return (
     <article className={active ? "rounded-xl border border-primary bg-card p-5 shadow-soft" : "rounded-xl border border-border bg-card p-5 shadow-soft"}>
       <div className="flex items-start justify-between gap-3">
@@ -97,6 +106,9 @@ function PlanCard({ plan, active }: { plan: Plan; active: boolean }) {
           Welcome plan
         </p>
       )}
+      <WbButton className="mt-4 w-full" variant={active ? "secondary" : "default"} disabled={active} onClick={() => void onRequest()}>
+        {active ? "Current plan" : "Request subscription"}
+      </WbButton>
     </article>
   );
 }
