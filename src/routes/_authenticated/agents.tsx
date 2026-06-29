@@ -9,8 +9,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAgents } from "@/hooks/useAgents";
-import { useProfile } from "@/hooks/useProfile";
-import { useFirebaseUid, useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -23,9 +22,10 @@ export const Route = createFileRoute("/_authenticated/agents")({
 function AgentsPage() {
   const selfUid = useFirebaseUid();
   const ownerUid = useEffectiveUid();
-  const { data: profile } = useProfile();
+  const session = useFirebaseSession();
+  const dataOwner = session.status === "ready" ? session.dataOwner : null;
   const { data: agents, error } = useAgents();
-  const isOwner = !profile?.dataOwner && selfUid === ownerUid;
+  const isOwner = !dataOwner && selfUid === ownerUid;
 
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -86,7 +86,7 @@ function AgentsPage() {
               <p className="text-sm text-foreground"><strong>You are the owner.</strong> Add team members below to share access to this WhatsApp number.</p>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-foreground">You are an <strong>agent</strong> connected to owner <span className="font-mono text-xs">{profile?.dataOwner}</span>.</p>
+                <p className="text-sm text-foreground">You are an <strong>agent</strong> connected to owner <span className="font-mono text-xs">{dataOwner}</span>.</p>
                 {selfUid && (
                   <WbButton variant="danger" size="sm" loading={removing === selfUid} onClick={() => removeAgent(selfUid)}>Disconnect from owner</WbButton>
                 )}
