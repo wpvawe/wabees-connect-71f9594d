@@ -56,16 +56,20 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       },
       { merge: true },
     ),
-    setDoc(
-      mapRef,
-      {
-        userId: input.uid,
-        ownerId: input.uid,
-        updatedAt: now,
-      },
-      { merge: true },
-    ),
   ]);
+
+  // Webhook routing map used by the PHP backend. Rules allow owners to write
+  // their own map; if an agent reconnects an owner's number, do not fail the
+  // whole connection because owner subcollections are still readable/writable.
+  await setDoc(
+    mapRef,
+    {
+      userId: input.uid,
+      ownerId: input.uid,
+      updatedAt: now,
+    },
+    { merge: true },
+  ).catch(() => {});
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
