@@ -1,6 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faCircleInfo, faLock, faPhone, faSitemap } from "@fortawesome/free-solid-svg-icons";
 import { manualConnectSchema, type ManualConnectValues } from "@/lib/schemas/meta";
 import { WbInput } from "@/components/wb/WbInput";
@@ -139,7 +140,7 @@ export function ManualTokenForm() {
   );
 }
 
-function MiniNote({ icon, title, text }: { icon: typeof faPhone; title: string; text: string }) {
+function MiniNote({ icon, title, text }: { icon: IconDefinition; title: string; text: string }) {
   return (
     <div className="flex gap-2 rounded-lg border border-border bg-card p-3">
       <FontAwesomeIcon icon={icon} className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

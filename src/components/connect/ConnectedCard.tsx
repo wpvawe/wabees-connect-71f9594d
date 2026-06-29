@@ -1,4 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
   faBuilding,
   faChartLine,
@@ -122,7 +123,7 @@ export function ConnectedCard({ row }: { row: Row }) {
   );
 }
 
-function Item({ icon, label, value, muted }: { icon: typeof faPhone; label: string; value: string; muted?: boolean }) {
+function Item({ icon, label, value, muted }: { icon: IconDefinition; label: string; value: string; muted?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-3">
       <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -134,7 +135,7 @@ function Item({ icon, label, value, muted }: { icon: typeof faPhone; label: stri
   );
 }
 
-function Feature({ icon, title, active }: { icon: typeof faPhone; title: string; active?: boolean }) {
+function Feature({ icon, title, active }: { icon: IconDefinition; title: string; active?: boolean }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
       <FontAwesomeIcon icon={icon} className={active ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5 text-muted-foreground"} />
