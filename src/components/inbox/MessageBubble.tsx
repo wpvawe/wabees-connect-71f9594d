@@ -35,7 +35,6 @@ export function MessageBubble({ m }: { m: Message }) {
         {m.mediaUrl && (
           <div className="mb-1 overflow-hidden rounded-md">
             {m.mimeType?.startsWith("image/") ? (
-              // eslint-disable-next-line jsx-a11y/img-redundant-alt
               <img
                 src={m.mediaUrl}
                 alt={m.caption ?? "image"}
