@@ -69,10 +69,12 @@ export async function clearWebhookOwnerCache(phoneNumberId: string): Promise<{ o
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
   const res = await fetch(url.toString());
-  const raw = (await res.json().catch(() => ({}))) as { cleared?: unknown };
+  const raw = (await res.json().catch(() => ({}))) as { cleared?: unknown; ownerId?: unknown; userId?: unknown };
+  const directOwner = typeof raw.ownerId === "string" ? raw.ownerId : typeof raw.userId === "string" ? raw.userId : null;
+  if (directOwner) return { ownerId: directOwner };
   const lines = Array.isArray(raw.cleared) ? raw.cleared.map(String) : [];
-  const ownerLine = lines.find((line) => line.includes("ownerId="));
-  const ownerId = ownerLine?.match(/ownerId=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+  const ownerLine = lines.find((line) => /(?:ownerId|owner|userId|uid)\s*=\s*[A-Za-z0-9_-]+/i.test(line));
+  const ownerId = ownerLine?.match(/(?:ownerId|owner|userId|uid)\s*=\s*([A-Za-z0-9_-]+)/i)?.[1] ?? null;
   return { ownerId };
 }
 
