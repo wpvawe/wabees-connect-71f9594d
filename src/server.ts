@@ -7,6 +7,25 @@ type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
+const RUNTIME_ENV_KEYS = [
+  "FIREBASE_SERVICE_ACCOUNT_JSON",
+  "FIREBASE_WEB_API_KEY",
+  "WABEES_API_BASE",
+  "VITE_FIREBASE_API_KEY",
+  "VITE_WABEES_API_BASE",
+];
+
+function hydrateRuntimeEnv(env: unknown) {
+  if (!env || typeof env !== "object") return;
+  const bindings = env as Record<string, unknown>;
+  for (const key of RUNTIME_ENV_KEYS) {
+    const value = bindings[key];
+    if (typeof value === "string" && value.trim() && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
@@ -40,6 +59,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      hydrateRuntimeEnv(env);
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
