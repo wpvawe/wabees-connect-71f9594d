@@ -9,6 +9,7 @@ import {
   faToggleOn,
   faPlus,
   faPen,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -17,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { useBots, type Bot } from "@/hooks/useBots";
 import { BotFormSheet } from "@/components/bots/BotFormSheet";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { doc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { toast } from "sonner";
 
@@ -93,6 +94,16 @@ function BotCard({ bot, onEdit }: { bot: Bot; onEdit: (b: Bot) => void }) {
       toast.error(e instanceof Error ? e.message : "Toggle failed");
     }
   }
+  async function remove() {
+    if (!uid) return;
+    if (!confirm(`Delete bot "${bot.name}"? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(fbDb(), "users", uid, "bots", bot.id));
+      toast.success("Bot deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
   return (
     <article className="rounded-xl border border-border bg-card p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
@@ -102,7 +113,7 @@ function BotCard({ bot, onEdit }: { bot: Bot; onEdit: (b: Bot) => void }) {
             {bot.description || bot.responseText || "Auto-reply bot"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Switch checked={bot.isActive} onCheckedChange={toggle} aria-label="Toggle active" />
           <button
             onClick={() => onEdit(bot)}
@@ -110,6 +121,13 @@ function BotCard({ bot, onEdit }: { bot: Bot; onEdit: (b: Bot) => void }) {
             aria-label="Edit bot"
           >
             <FontAwesomeIcon icon={faPen} className="h-3 w-3" />
+          </button>
+          <button
+            onClick={remove}
+            className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+            aria-label="Delete bot"
+          >
+            <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
           </button>
         </div>
       </div>
