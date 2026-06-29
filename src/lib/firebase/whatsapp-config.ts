@@ -1,6 +1,7 @@
 import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
+import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
@@ -42,25 +43,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // first; it reads `wa_map` server-side and returns the real ownerId. This is
   // the critical fix that prevents website reconnects from creating a separate
   // owner/data island while the mobile app continues reading the old owner.
-  let existingOwnerId: string | null = null;
-  try {
-    existingOwnerId = (await clearWebhookOwnerCache(input.phone_number_id)).ownerId;
-  } catch {
-    // Fallback below covers own mappings or first-time connects.
-  }
-  try {
-    if (!existingOwnerId) {
-      const existing = await getDoc(mapRef);
-      if (existing.exists()) {
-        const d = existing.data() as Record<string, unknown>;
-        existingOwnerId = (d.ownerId as string | undefined)
-          ?? (d.userId as string | undefined)
-          ?? null;
-      }
-    }
-  } catch {
-    // Non-fatal — treat as no existing owner.
-  }
+  const existingOwnerId = await resolveExistingOwnerForPhone(input.phone_number_id, input.uid);
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
 

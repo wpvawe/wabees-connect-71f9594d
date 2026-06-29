@@ -15,7 +15,7 @@ import {
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { clearWebhookOwnerCache } from "@/lib/wabees/api";
+import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 
 type State =
   | { status: "loading" }
@@ -43,8 +43,8 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
         if (phoneNumberId && !dataOwner && !repairedPhones.has(phoneNumberId)) {
           repairedPhones.add(phoneNumberId);
-          void clearWebhookOwnerCache(phoneNumberId)
-            .then(({ ownerId }) => {
+          void resolveExistingOwnerForPhone(phoneNumberId, u.uid)
+            .then((ownerId) => {
               if (ownerId && ownerId !== u.uid) {
                 return setDoc(doc(fbDb(), "users", u.uid), { dataOwner: ownerId }, { merge: true });
               }
