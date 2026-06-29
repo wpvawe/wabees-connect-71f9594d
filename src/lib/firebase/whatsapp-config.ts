@@ -1,4 +1,4 @@
-import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
@@ -90,6 +90,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     // overwrite `wa_map.ownerId` — webhook keeps routing to the original
     // owner's subcollections, which both clients read via dataOwner.
     try {
+      await setDoc(mapRef, { users: arrayUnion(input.uid), updatedAt: now }, { merge: true }).catch(() => {});
       await setDoc(
         doc(db, "users", existingOwnerId, "agents", input.uid),
         {
@@ -108,6 +109,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       {
         userId: input.uid,
         ownerId: input.uid,
+        users: arrayUnion(input.uid),
         accessTokenUpdatedAt: now,
         updatedAt: now,
       },
