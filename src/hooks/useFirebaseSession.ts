@@ -13,8 +13,9 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
+import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 
 type State =
   | { status: "loading" }
@@ -27,6 +28,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
+    const repairedPhones = new Set<string>();
     const unsub = onAuthStateChanged(fbAuth(), (u) => {
       if (unsubProfile) { unsubProfile(); unsubProfile = null; }
       if (!u) { setState({ status: "no_uid" }); return; }
@@ -35,7 +37,21 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
       // before `dataOwner` resolves to the owner UID.
       setState({ status: "loading" });
       unsubProfile = onSnapshot(doc(fbDb(), "users", u.uid), (snap) => {
-        const dataOwner = (snap.exists() ? (snap.data().dataOwner as string | null | undefined) : null) ?? null;
+        const profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+        const dataOwnerRaw = profile.dataOwner;
+        const dataOwner = typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw : null;
+        const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
+        if (phoneNumberId && !dataOwner && !repairedPhones.has(phoneNumberId)) {
+          repairedPhones.add(phoneNumberId);
+          void resolveExistingOwnerForPhone(phoneNumberId, u.uid)
+            .then((ownerId) => {
+              if (ownerId && ownerId !== u.uid) {
+                return setDoc(doc(fbDb(), "users", u.uid), { dataOwner: ownerId }, { merge: true });
+              }
+              return undefined;
+            })
+            .catch(() => undefined);
+        }
         setState({
           status: "ready",
           uid: u.uid,

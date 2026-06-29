@@ -38,15 +38,15 @@ function extractVariables(body: string): string[] {
   return Array.from(new Set(matches.map((m) => m.replace(/[{}\s]/g, ""))));
 }
 
-export async function syncTemplatesFromMeta(uid: string): Promise<{ synced: number }> {
-  const creds = await loadWaCredentials(uid);
+export async function syncTemplatesFromMeta(uid: string, credentialUid = uid): Promise<{ synced: number }> {
+  const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   // Load WABA id from the same config doc the Flutter app uses. The PHP
   // backend expects `business_account_id`; direct browser → Meta calls are
   // intentionally avoided so website behavior matches the app.
   const db = fbDb();
-  const cfg = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
-  const userDoc = await getDoc(doc(db, "users", uid));
+  const cfg = await getDoc(doc(db, "users", credentialUid, "whatsapp_config", "config"));
+  const userDoc = await getDoc(doc(db, "users", credentialUid));
   const waba_id =
     (cfg.data()?.businessAccountId as string | undefined) ||
     (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
@@ -88,7 +88,9 @@ export async function syncTemplatesFromMeta(uid: string): Promise<{ synced: numb
       qualityScore: qualityScore ?? null,
       updatedAt: serverTimestamp(),
     };
-    const existing = await getDocs(query(col, where("name", "==", t.name), limit(1)));
+    const existing = t.id
+      ? await getDocs(query(col, where("metaTemplateId", "==", t.id), limit(1)))
+      : await getDocs(query(col, where("name", "==", t.name), limit(1)));
     if (existing.empty) {
       batch.set(doc(col), { ...payload, createdAt: serverTimestamp() });
     } else {

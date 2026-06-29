@@ -40,7 +40,7 @@ export function ConnectedCard({ row }: { row: Row }) {
     onError: (e: Error) => toast.error(e.message),
   });
   const sync = useMutation({
-    mutationFn: () => syncTemplatesFromMeta(effectiveUid!),
+    mutationFn: () => syncTemplatesFromMeta(effectiveUid!, selfUid!),
     onSuccess: (r) => toast.success(`Synced ${r.synced} templates`),
     onError: (e: Error) => toast.error(e.message),
   });

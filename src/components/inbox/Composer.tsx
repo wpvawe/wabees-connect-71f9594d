@@ -14,24 +14,25 @@ import {
 import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 
 export function Composer({ phone }: { phone: string }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
 
   async function send() {
     const body = text.trim();
-    if (!body || sending || !uid) return;
+    if (!body || sending || !uid || !selfUid) return;
     setSending(true);
     const normalizedPhone = normalizePhone(phone);
     const to = normalizedPhone.replace(/[^0-9]/g, "");
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
-      const creds = await loadWaCredentials(uid);
+      const creds = await loadWaCredentials(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;

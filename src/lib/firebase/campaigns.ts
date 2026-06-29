@@ -48,11 +48,12 @@ export async function deleteCampaign(uid: string, id: string): Promise<void> {
  */
 export async function runCampaign(
   uid: string,
+  credentialUid: string,
   id: string,
   audience: string[],
   messageBody: string,
 ): Promise<{ sent: number; failed: number }> {
-  const creds = await loadWaCredentials(uid);
+  const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
