@@ -4,11 +4,6 @@ import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/a
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
-function isFirebaseBackendCredentialError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /Firebase backend credentials are not configured|Firebase web API key is not configured/i.test(message);
-}
-
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
  *  - `users/{uid}` top-level fields (whatsappPhoneNumberId, whatsappAccessToken,
@@ -54,18 +49,48 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         connectedVia: input.connected_via ?? "manual",
       },
     });
+    await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
     if (serverRepair?.ownerId) {
-      // Server repair handled wa_map + config writes already. Still clear the
-      // PHP webhook cache from the client too — server-side clearRemoteCache
-      // depends on env vars and we want a second chance to invalidate stale
-      // owner routing.
-      await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
+      // Server repair handled wa_map + owner writes. Mirror the caller's own
+      // docs client-side as well so the active onSnapshot immediately switches
+      // to users/{ownerId} through dataOwner, matching Flutter's dataOwner flow.
+      await Promise.all([
+        setDoc(
+          userRef,
+          {
+            whatsappPhoneNumberId: input.phone_number_id,
+            whatsappAccessToken: input.access_token,
+            whatsappBusinessAccountId: input.waba_id ?? null,
+            whatsappDisplayPhone: input.display_phone ?? null,
+            whatsappQualityRating: input.quality_rating ?? null,
+            whatsappConnected: true,
+            dataOwner: serverRepair.ownerId !== input.uid ? serverRepair.ownerId : deleteField(),
+            updatedAt: now,
+          },
+          { merge: true },
+        ),
+        setDoc(
+          subRef,
+          {
+            phoneNumberId: input.phone_number_id,
+            accessToken: input.access_token,
+            businessAccountId: input.waba_id ?? "",
+            webhookVerifyToken: "",
+            displayPhoneNumber: input.display_phone ?? null,
+            businessName: input.business_name ?? null,
+            qualityRating: input.quality_rating ?? null,
+            isConnected: true,
+            connectedVia: input.connected_via ?? "manual",
+            connectedAt: now,
+            lastVerifiedAt: now,
+          },
+          { merge: true },
+        ),
+      ]);
       return;
     }
   } catch (error) {
-    if (!isFirebaseBackendCredentialError(error)) {
-      throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
-    }
+    throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
