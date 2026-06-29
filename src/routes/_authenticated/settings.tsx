@@ -61,10 +61,16 @@ function SettingsPage() {
           <WbCardHeader title="Profile" />
           <WbCardBody className="space-y-4">
             <WbInput label="Business name" value={name} onChange={(e) => setName(e.target.value)} />
-            <WbInput label="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <WbInput
+              label="Phone number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
             <WbInput label="Email" value={profile?.email ?? ""} disabled />
             <div className="flex justify-end">
-              <WbButton onClick={save} loading={saving}>Save changes</WbButton>
+              <WbButton onClick={save} loading={saving}>
+                Save changes
+              </WbButton>
             </div>
           </WbCardBody>
         </WbCard>
@@ -72,7 +78,9 @@ function SettingsPage() {
         <WbCard>
           <WbCardHeader title="Session" />
           <WbCardBody>
-            <WbButton variant="danger" onClick={signOut}>Sign out</WbButton>
+            <WbButton variant="danger" onClick={signOut}>
+              Sign out
+            </WbButton>
           </WbCardBody>
         </WbCard>
       </div>

@@ -13,7 +13,10 @@ export type WabeesApiResult<T = unknown> = {
   raw: Record<string, unknown>;
 };
 
-async function postJson<T = unknown>(path: string, body: Record<string, unknown>): Promise<WabeesApiResult<T>> {
+async function postJson<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<WabeesApiResult<T>> {
   const res = await fetch(`${WABEES_API_BASE}/${path.replace(/^\//, "")}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -22,11 +25,12 @@ async function postJson<T = unknown>(path: string, body: Record<string, unknown>
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   const explicitSuccess = typeof raw.success === "boolean" ? raw.success : undefined;
   const rawError = raw.error;
-  const errorMessage = typeof rawError === "string"
-    ? rawError
-    : rawError && typeof rawError === "object" && "message" in rawError
-      ? String((rawError as { message?: unknown }).message ?? "")
-      : undefined;
+  const errorMessage =
+    typeof rawError === "string"
+      ? rawError
+      : rawError && typeof rawError === "object" && "message" in rawError
+        ? String((rawError as { message?: unknown }).message ?? "")
+        : undefined;
   return {
     success: explicitSuccess ?? (res.ok && !raw.error),
     message: (raw.message as string | undefined) ?? errorMessage,
@@ -46,14 +50,22 @@ export function verifyWhatsAppToken(args: { phone_number_id: string; access_toke
  */
 export function smartConnectWhatsApp(args: { phone_number_id: string; access_token: string }) {
   return postJson<{
-    phone?: { id?: string; display_phone_number?: string; verified_name?: string; quality_rating?: string };
+    phone?: {
+      id?: string;
+      display_phone_number?: string;
+      verified_name?: string;
+      quality_rating?: string;
+    };
     waba_id?: string;
     business_id?: string;
     business_name?: string;
   }>("whatsapp-smart-connect.php", args);
 }
 
-export async function subscribeWhatsAppWebhook(args: { phone_number_id: string; access_token: string }) {
+export async function subscribeWhatsAppWebhook(args: {
+  phone_number_id: string;
+  access_token: string;
+}) {
   return postJson("subscribe-webhook.php", args);
 }
 
@@ -64,17 +76,31 @@ export async function subscribeWhatsAppWebhook(args: { phone_number_id: string; 
  * owner resolver when Firestore rules block direct client reads of another
  * owner's mapping.
  */
-export async function clearWebhookOwnerCache(phoneNumberId: string): Promise<{ ownerId: string | null }> {
+export async function clearWebhookOwnerCache(
+  phoneNumberId: string,
+): Promise<{ ownerId: string | null }> {
   const url = new URL(`${WABEES_API_BASE}/clear-cache.php`);
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
   const res = await fetch(url.toString());
-  const raw = (await res.json().catch(() => ({}))) as { cleared?: unknown; ownerId?: unknown; userId?: unknown };
-  const directOwner = typeof raw.ownerId === "string" ? raw.ownerId : typeof raw.userId === "string" ? raw.userId : null;
+  const raw = (await res.json().catch(() => ({}))) as {
+    cleared?: unknown;
+    ownerId?: unknown;
+    userId?: unknown;
+  };
+  const directOwner =
+    typeof raw.ownerId === "string"
+      ? raw.ownerId
+      : typeof raw.userId === "string"
+        ? raw.userId
+        : null;
   if (directOwner) return { ownerId: directOwner };
   const lines = Array.isArray(raw.cleared) ? raw.cleared.map(String) : [];
-  const ownerLine = lines.find((line) => /(?:ownerId|owner|userId|uid)\s*=\s*[A-Za-z0-9_-]+/i.test(line));
-  const ownerId = ownerLine?.match(/(?:ownerId|owner|userId|uid)\s*=\s*([A-Za-z0-9_-]+)/i)?.[1] ?? null;
+  const ownerLine = lines.find((line) =>
+    /(?:ownerId|owner|userId|uid)\s*=\s*[A-Za-z0-9_-]+/i.test(line),
+  );
+  const ownerId =
+    ownerLine?.match(/(?:ownerId|owner|userId|uid)\s*=\s*([A-Za-z0-9_-]+)/i)?.[1] ?? null;
   return { ownerId };
 }
 
@@ -138,7 +164,7 @@ export async function uploadMedia(args: {
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return {
     success: Boolean(raw.success),
-    message: (raw.message as string | undefined),
+    message: raw.message as string | undefined,
     data: { url: raw.url as string | undefined, id: raw.media_id as string | undefined },
     raw,
   };

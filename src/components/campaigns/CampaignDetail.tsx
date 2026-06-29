@@ -85,7 +85,9 @@ export function CampaignDetail({ id }: { id: string }) {
       </div>
       <WbCard>
         <WbCardBody>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Message</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Message
+          </p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{data.messageBody}</p>
         </WbCardBody>
       </WbCard>
@@ -115,7 +117,9 @@ export function CampaignDetail({ id }: { id: string }) {
                 {logs.map((l) => (
                   <tr key={l.id} className="border-t border-border/60">
                     <td className="px-4 py-2 text-muted-foreground">{l.phone}</td>
-                    <td className={`px-4 py-2 font-medium ${l.status === "sent" ? "text-primary" : "text-destructive"}`}>
+                    <td
+                      className={`px-4 py-2 font-medium ${l.status === "sent" ? "text-primary" : "text-destructive"}`}
+                    >
                       {l.status}
                     </td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{l.error ?? "—"}</td>
@@ -138,7 +142,9 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
     <WbCard>
       <WbCardBody>
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className={`mt-1 text-2xl font-semibold ${tone === "danger" ? "text-destructive" : "text-foreground"}`}>
+        <p
+          className={`mt-1 text-2xl font-semibold ${tone === "danger" ? "text-destructive" : "text-foreground"}`}
+        >
           {value}
         </p>
       </WbCardBody>

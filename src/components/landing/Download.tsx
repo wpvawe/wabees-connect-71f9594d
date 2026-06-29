@@ -12,13 +12,15 @@ export function Download() {
     <section id="download" className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
       <div className="grid items-center gap-12 lg:grid-cols-2">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wider text-primary">Web + Mobile</p>
+          <p className="text-sm font-semibold uppercase tracking-wider text-primary">
+            Web + Mobile
+          </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
             Use Wabees anywhere.
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Sign in on the web for the full workspace experience, or grab the Android app to chat on the
-            move. Both stay in perfect sync.
+            Sign in on the web for the full workspace experience, or grab the Android app to chat on
+            the move. Both stay in perfect sync.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
@@ -40,7 +42,10 @@ export function Download() {
                 </span>
                 Android (APK)
               </span>
-              <FontAwesomeIcon icon={faDownload} className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
+              <FontAwesomeIcon
+                icon={faDownload}
+                className="ml-1 h-3.5 w-3.5 text-muted-foreground"
+              />
             </a>
           </div>
           <ul className="mt-6 grid gap-2 text-sm text-muted-foreground">

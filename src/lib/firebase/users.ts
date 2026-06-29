@@ -1,5 +1,15 @@
 import type { User } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 
 /**
@@ -59,35 +69,45 @@ async function ensureWelcomeSubscription(uid: string): Promise<void> {
   const existing = await getDoc(subRef);
   if (existing.exists()) return;
 
-  const plans = await getDocs(query(collection(db, "plans"), where("isWelcomePlan", "==", true), limit(1))).catch(() => null);
+  const plans = await getDocs(
+    query(collection(db, "plans"), where("isWelcomePlan", "==", true), limit(1)),
+  ).catch(() => null);
   const planDoc = plans && !plans.empty ? plans.docs[0] : null;
   const plan = planDoc?.data() as Record<string, unknown> | undefined;
-  const num = (v: unknown, fallback: number) => typeof v === "number" ? v : fallback;
-  const str = (v: unknown, fallback: string) => typeof v === "string" && v ? v : fallback;
+  const num = (v: unknown, fallback: number) => (typeof v === "number" ? v : fallback);
+  const str = (v: unknown, fallback: string) => (typeof v === "string" && v ? v : fallback);
 
-  await setDoc(subRef, {
-    planId: planDoc?.id ?? "welcome",
-    planName: str(plan?.name, "Welcome"),
-    status: "active",
-    maxMessages: num(plan?.maxMessages, 100),
-    maxContacts: num(plan?.maxContacts, 50),
-    maxCampaigns: num(plan?.maxCampaigns, 1),
-    maxBots: num(plan?.maxBots, 1),
-    maxTemplates: num(plan?.maxTemplates, 5),
-    maxAiMessages: num(plan?.maxAiMessages, 0),
-    messagesUsed: 0,
-    contactsUsed: 0,
-    campaignsUsed: 0,
-    botsUsed: 0,
-    templatesUsed: 0,
-    aiMessagesUsed: 0,
-    expiryType: str(plan?.expiryType, "monthly"),
-    expiryDays: num(plan?.expiryDays, 30),
-    startDate: serverTimestamp(),
-    createdAt: serverTimestamp(),
-  }, { merge: true });
-  await setDoc(doc(db, "users", uid, "bot_usage", "current"), {
-    monthlyLimit: num(plan?.maxAiMessages, 0),
-    updatedAt: serverTimestamp(),
-  }, { merge: true }).catch(() => undefined);
+  await setDoc(
+    subRef,
+    {
+      planId: planDoc?.id ?? "welcome",
+      planName: str(plan?.name, "Welcome"),
+      status: "active",
+      maxMessages: num(plan?.maxMessages, 100),
+      maxContacts: num(plan?.maxContacts, 50),
+      maxCampaigns: num(plan?.maxCampaigns, 1),
+      maxBots: num(plan?.maxBots, 1),
+      maxTemplates: num(plan?.maxTemplates, 5),
+      maxAiMessages: num(plan?.maxAiMessages, 0),
+      messagesUsed: 0,
+      contactsUsed: 0,
+      campaignsUsed: 0,
+      botsUsed: 0,
+      templatesUsed: 0,
+      aiMessagesUsed: 0,
+      expiryType: str(plan?.expiryType, "monthly"),
+      expiryDays: num(plan?.expiryDays, 30),
+      startDate: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await setDoc(
+    doc(db, "users", uid, "bot_usage", "current"),
+    {
+      monthlyLimit: num(plan?.maxAiMessages, 0),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  ).catch(() => undefined);
 }

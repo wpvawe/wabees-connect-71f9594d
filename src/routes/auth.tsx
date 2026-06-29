@@ -22,7 +22,11 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — Wabees" },
-      { name: "description", content: "Sign in or create your free Wabees account and connect your WhatsApp Business in one click." },
+      {
+        name: "description",
+        content:
+          "Sign in or create your free Wabees account and connect your WhatsApp Business in one click.",
+      },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -34,7 +38,11 @@ function AuthPage() {
     <AuthLayout
       title="Welcome to Wabees"
       subtitle="Run your WhatsApp Business like a real team."
-      footer={<Link to="/" className="hover:text-foreground">← Back to home</Link>}
+      footer={
+        <Link to="/" className="hover:text-foreground">
+          ← Back to home
+        </Link>
+      }
     >
       <AuthTabs />
     </AuthLayout>

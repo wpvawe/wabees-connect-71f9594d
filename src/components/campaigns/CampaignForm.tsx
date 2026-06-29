@@ -97,8 +97,8 @@ export function CampaignForm() {
                 className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Free-form text only. To send approved templates with variables, open a template
-                from the Templates page.
+                Free-form text only. To send approved templates with variables, open a template from
+                the Templates page.
               </p>
             </Field>
           </WbCardBody>
@@ -116,7 +116,11 @@ export function CampaignForm() {
               <FontAwesomeIcon icon={faUserGroup} className="h-3.5 w-3.5" />
               Recipients ({selected.size})
             </p>
-            <button type="button" onClick={selectAllVisible} className="text-xs text-primary hover:underline">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="text-xs text-primary hover:underline"
+            >
               Select all visible
             </button>
           </div>
@@ -127,15 +131,24 @@ export function CampaignForm() {
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
             >
               <option value="">All tags</option>
-              {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+              {allTags.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           )}
           <div className="max-h-[420px] overflow-y-auto rounded-md border border-border">
             {visible.length === 0 ? (
-              <p className="p-4 text-xs text-muted-foreground">No contacts. Import some on the Contacts page.</p>
+              <p className="p-4 text-xs text-muted-foreground">
+                No contacts. Import some on the Contacts page.
+              </p>
             ) : (
               visible.map((c) => (
-                <label key={c.id} className="flex cursor-pointer items-center gap-2 border-b border-border/60 px-3 py-2 text-sm last:border-b-0 hover:bg-muted">
+                <label
+                  key={c.id}
+                  className="flex cursor-pointer items-center gap-2 border-b border-border/60 px-3 py-2 text-sm last:border-b-0 hover:bg-muted"
+                >
                   <input
                     type="checkbox"
                     checked={selected.has(c.phone)}

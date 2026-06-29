@@ -40,7 +40,11 @@ function str(x: unknown, fallback = ""): string {
   return typeof x === "string" ? x : fallback;
 }
 
-export function useSubscription(): { data: Subscription | null; loading: boolean; error: string | null } {
+export function useSubscription(): {
+  data: Subscription | null;
+  loading: boolean;
+  error: string | null;
+} {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);

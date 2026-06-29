@@ -48,7 +48,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
             <WbEmpty
               icon={faComments}
               title={q ? "No matches" : "No conversations yet"}
-              description={q ? undefined : "Incoming WhatsApp messages will appear here in realtime."}
+              description={
+                q ? undefined : "Incoming WhatsApp messages will appear here in realtime."
+              }
             />
           </div>
         ) : (

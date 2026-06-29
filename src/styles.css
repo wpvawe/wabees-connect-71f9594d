@@ -68,10 +68,10 @@
    *  1) WhatsApp green (brand)  2) Deep ink (text/dark surfaces)  3) Off-white (light surfaces)
    *  Everything else is an opacity tint of these three.
    */
-  --wb-green: oklch(0.72 0.18 152);          /* #25D366 WhatsApp green */
-  --wb-green-deep: oklch(0.55 0.13 165);     /* darker hover */
-  --wb-ink: oklch(0.18 0.018 230);           /* #0B141A */
-  --wb-paper: oklch(0.985 0.003 220);        /* #F7F9FA */
+  --wb-green: oklch(0.72 0.18 152); /* #25D366 WhatsApp green */
+  --wb-green-deep: oklch(0.55 0.13 165); /* darker hover */
+  --wb-ink: oklch(0.18 0.018 230); /* #0B141A */
+  --wb-paper: oklch(0.985 0.003 220); /* #F7F9FA */
 
   --background: var(--wb-paper);
   --foreground: var(--wb-ink);
@@ -106,8 +106,13 @@
   --sidebar-border: oklch(0.28 0.018 230);
   --sidebar-ring: var(--wb-green);
 
-  --gradient-hero: radial-gradient(1200px 600px at 70% -10%, color-mix(in oklab, var(--wb-green) 22%, transparent), transparent 60%),
-                   linear-gradient(180deg, var(--wb-paper), oklch(0.97 0.006 152));
+  --gradient-hero:
+    radial-gradient(
+      1200px 600px at 70% -10%,
+      color-mix(in oklab, var(--wb-green) 22%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--wb-paper), oklch(0.97 0.006 152));
   --shadow-soft: 0 1px 2px oklch(0.18 0.018 230 / 0.06), 0 8px 24px oklch(0.18 0.018 230 / 0.08);
   --shadow-glow: 0 10px 40px -10px color-mix(in oklab, var(--wb-green) 50%, transparent);
 }
@@ -155,7 +160,12 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+    font-family:
+      "Inter Variable",
+      "Inter",
+      system-ui,
+      -apple-system,
+      sans-serif;
     font-feature-settings: "cv11", "ss01", "ss03";
     -webkit-font-smoothing: antialiased;
   }

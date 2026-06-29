@@ -22,7 +22,11 @@ export function ResetForm() {
     const code = new URLSearchParams(window.location.search).get("oobCode");
     setOobCode(code);
   }, []);
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ResetValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<ResetValues>({
     resolver: zodResolver(resetSchema),
   });
   async function onSubmit(v: ResetValues) {
@@ -40,8 +44,16 @@ export function ResetForm() {
   }
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-      <WbInput label="New password" type="password" autoComplete="new-password" {...register("password")} error={errors.password?.message} />
-      <WbButton type="submit" fullWidth loading={isSubmitting}>Update password</WbButton>
+      <WbInput
+        label="New password"
+        type="password"
+        autoComplete="new-password"
+        {...register("password")}
+        error={errors.password?.message}
+      />
+      <WbButton type="submit" fullWidth loading={isSubmitting}>
+        Update password
+      </WbButton>
     </form>
   );
 }

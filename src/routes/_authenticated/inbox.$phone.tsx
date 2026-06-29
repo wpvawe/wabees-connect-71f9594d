@@ -42,14 +42,18 @@ function Thread({ phone }: { phone: string }) {
           { unreadCount: 0 },
           { merge: true },
         );
-      } catch { /* permissions/race — ignore */ }
+      } catch {
+        /* permissions/race — ignore */
+      }
     })();
   }, [uid, phone]);
 
   // When new incoming messages arrive while this thread is open, mark them as read.
   useEffect(() => {
     if (!uid || !data) return;
-    const unread = data.filter((m) => m.direction === "incoming" && m.status !== "read" && !m.readAt);
+    const unread = data.filter(
+      (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
+    );
     if (unread.length === 0) return;
     void (async () => {
       try {
@@ -71,7 +75,9 @@ function Thread({ phone }: { phone: string }) {
             { merge: true },
           ).catch(() => {});
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     })();
   }, [uid, phone, data]);
 
@@ -83,7 +89,10 @@ function Thread({ phone }: { phone: string }) {
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-background">
       <header className="flex items-center gap-3 border-b border-border bg-card px-3 py-3">
-        <Link to="/inbox" className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden">
+        <Link
+          to="/inbox"
+          className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden"
+        >
           <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
         </Link>
         <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
@@ -102,7 +111,9 @@ function Thread({ phone }: { phone: string }) {
             Loading…
           </div>
         ) : data.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Say hi 👋</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No messages yet. Say hi 👋
+          </p>
         ) : (
           renderWithDayDividers(data)
         )}

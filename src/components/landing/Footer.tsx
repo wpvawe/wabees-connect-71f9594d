@@ -16,9 +16,29 @@ export function Footer() {
           </p>
         </div>
         {[
-          { title: "Product", links: [["Features", "#features"], ["Pricing", "#pricing"], ["Download", "#download"]] },
-          { title: "Company", links: [["About", "/about"], ["Contact", "/contact"], ["Privacy", "/privacy"]] },
-          { title: "Legal", links: [["Terms", "/terms"], ["Data deletion", "/data-deletion"]] },
+          {
+            title: "Product",
+            links: [
+              ["Features", "#features"],
+              ["Pricing", "#pricing"],
+              ["Download", "#download"],
+            ],
+          },
+          {
+            title: "Company",
+            links: [
+              ["About", "/about"],
+              ["Contact", "/contact"],
+              ["Privacy", "/privacy"],
+            ],
+          },
+          {
+            title: "Legal",
+            links: [
+              ["Terms", "/terms"],
+              ["Data deletion", "/data-deletion"],
+            ],
+          },
         ].map((c) => (
           <div key={c.title}>
             <h4 className="text-sm font-semibold text-foreground">{c.title}</h4>
@@ -37,7 +57,12 @@ export function Footer() {
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-xs text-muted-foreground sm:px-6">
           <p>© {new Date().getFullYear()} Wabees. All rights reserved.</p>
-          <a href="https://wa.me/" target="_blank" rel="noopener" className="inline-flex items-center gap-2 hover:text-foreground">
+          <a
+            href="https://wa.me/"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-2 hover:text-foreground"
+          >
             <FontAwesomeIcon icon={faWhatsapp} className="h-3.5 w-3.5 text-primary" />
             Chat with us
           </a>

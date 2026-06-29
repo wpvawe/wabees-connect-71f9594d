@@ -11,7 +11,11 @@ import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { toast } from "sonner";
 
 export function ForgotForm() {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ForgotValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<ForgotValues>({
     resolver: zodResolver(forgotSchema),
   });
   async function onSubmit(v: ForgotValues) {
@@ -26,8 +30,16 @@ export function ForgotForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <HoneypotField register={(name) => register(name as keyof ForgotValues)} />
-      <WbInput label="Email" type="email" autoComplete="email" {...register("email")} error={errors.email?.message} />
-      <WbButton type="submit" fullWidth loading={isSubmitting}>Send reset link</WbButton>
+      <WbInput
+        label="Email"
+        type="email"
+        autoComplete="email"
+        {...register("email")}
+        error={errors.email?.message}
+      />
+      <WbButton type="submit" fullWidth loading={isSubmitting}>
+        Send reset link
+      </WbButton>
     </form>
   );
 }

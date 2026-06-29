@@ -51,34 +51,37 @@ export function usePlans(): { data: Plan[] | null; error: string | null } {
     const unsub = onSnapshot(
       collection(db, "plans"),
       (snap) => {
-        const rows: Plan[] = snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            name: str(x.name),
-            description: str(x.description),
-            priceMonthly: num(x.priceMonthly, num(x.price)),
-            priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
-            currency: str(x.currency, "PKR"),
-            maxMessages: num(x.maxMessages, 1000),
-            maxContacts: num(x.maxContacts, 100),
-            maxCampaigns: num(x.maxCampaigns, 5),
-            maxBots: num(x.maxBots, 2),
-            maxTemplates: num(x.maxTemplates, 10),
-            maxAiMessages: num(x.maxAiMessages, 300),
-            hasAnalytics: bool(x.hasAnalytics),
-            hasPrioritySupport: bool(x.hasPrioritySupport),
-            hasApiAccess: bool(x.hasApiAccess),
-            features: Array.isArray(x.features) ? x.features.filter((v): v is string => typeof v === "string") : [],
-            expiryType: str(x.expiryType, "monthly"),
-            expiryDays: num(x.expiryDays, 30),
-            isActive: x.isActive !== false,
-            sortOrder: num(x.sortOrder),
-            isPopular: bool(x.isPopular),
-            isWelcomePlan: bool(x.isWelcomePlan),
-            createdAt: toIso(x.createdAt),
-          };
-        })
+        const rows: Plan[] = snap.docs
+          .map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              name: str(x.name),
+              description: str(x.description),
+              priceMonthly: num(x.priceMonthly, num(x.price)),
+              priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
+              currency: str(x.currency, "PKR"),
+              maxMessages: num(x.maxMessages, 1000),
+              maxContacts: num(x.maxContacts, 100),
+              maxCampaigns: num(x.maxCampaigns, 5),
+              maxBots: num(x.maxBots, 2),
+              maxTemplates: num(x.maxTemplates, 10),
+              maxAiMessages: num(x.maxAiMessages, 300),
+              hasAnalytics: bool(x.hasAnalytics),
+              hasPrioritySupport: bool(x.hasPrioritySupport),
+              hasApiAccess: bool(x.hasApiAccess),
+              features: Array.isArray(x.features)
+                ? x.features.filter((v): v is string => typeof v === "string")
+                : [],
+              expiryType: str(x.expiryType, "monthly"),
+              expiryDays: num(x.expiryDays, 30),
+              isActive: x.isActive !== false,
+              sortOrder: num(x.sortOrder),
+              isPopular: bool(x.isPopular),
+              isWelcomePlan: bool(x.isWelcomePlan),
+              createdAt: toIso(x.createdAt),
+            };
+          })
           .filter((p) => p.isActive)
           .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
         setData(rows);

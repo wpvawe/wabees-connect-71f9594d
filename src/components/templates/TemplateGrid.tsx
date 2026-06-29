@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faCircleNotch, faFileLines, faMagnifyingGlass, faRotate, faCircleCheck, faClock, faCircleXmark,
+  faCircleNotch,
+  faFileLines,
+  faMagnifyingGlass,
+  faRotate,
+  faCircleCheck,
+  faClock,
+  faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
@@ -41,7 +47,10 @@ export function TemplateGrid() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <FontAwesomeIcon
+            icon={faMagnifyingGlass}
+            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -69,7 +78,9 @@ export function TemplateGrid() {
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((t) => <TemplateCard key={t.id} t={t} />)}
+          {filtered.map((t) => (
+            <TemplateCard key={t.id} t={t} />
+          ))}
         </div>
       )}
     </div>
@@ -100,12 +111,17 @@ function TemplateCard({ t }: { t: Template }) {
         </span>
       </div>
       {t.header && <p className="mt-3 text-xs font-semibold text-foreground">{t.header}</p>}
-      <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-xs text-muted-foreground">{t.body}</p>
+      <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-xs text-muted-foreground">
+        {t.body}
+      </p>
       {t.footer && <p className="mt-2 text-[11px] italic text-muted-foreground">{t.footer}</p>}
       {t.variables.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
           {t.variables.map((v) => (
-            <span key={v} className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-accent-foreground">{`{{${v}}}`}</span>
+            <span
+              key={v}
+              className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-accent-foreground"
+            >{`{{${v}}}`}</span>
           ))}
         </div>
       )}

@@ -14,7 +14,11 @@ import { useNavigate } from "@tanstack/react-router";
 
 export function SignUpForm() {
   const navigate = useNavigate();
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<SignUpValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
   });
 
@@ -40,11 +44,33 @@ export function SignUpForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <HoneypotField register={(name) => register(name as keyof SignUpValues)} />
-      <WbInput label="Your name" autoComplete="name" {...register("displayName")} error={errors.displayName?.message} />
-      <WbInput label="Work email" type="email" autoComplete="email" {...register("email")} error={errors.email?.message} />
-      <WbInput label="Password" type="password" autoComplete="new-password" hint="8 characters or more" {...register("password")} error={errors.password?.message} />
-      <WbButton type="submit" fullWidth loading={isSubmitting}>Create account</WbButton>
-      <p className="text-center text-[11px] text-muted-foreground">By creating an account you agree to our Terms & Privacy policy.</p>
+      <WbInput
+        label="Your name"
+        autoComplete="name"
+        {...register("displayName")}
+        error={errors.displayName?.message}
+      />
+      <WbInput
+        label="Work email"
+        type="email"
+        autoComplete="email"
+        {...register("email")}
+        error={errors.email?.message}
+      />
+      <WbInput
+        label="Password"
+        type="password"
+        autoComplete="new-password"
+        hint="8 characters or more"
+        {...register("password")}
+        error={errors.password?.message}
+      />
+      <WbButton type="submit" fullWidth loading={isSubmitting}>
+        Create account
+      </WbButton>
+      <p className="text-center text-[11px] text-muted-foreground">
+        By creating an account you agree to our Terms & Privacy policy.
+      </p>
     </form>
   );
 }

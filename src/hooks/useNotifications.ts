@@ -14,7 +14,11 @@ export type AppNotification = {
   createdAt: string | null;
 };
 
-export function useNotifications(): { data: AppNotification[] | null; unread: number; error: string | null } {
+export function useNotifications(): {
+  data: AppNotification[] | null;
+  unread: number;
+  error: string | null;
+} {
   const uid = useFirebaseUid();
   const [data, setData] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +39,7 @@ export function useNotifications(): { data: AppNotification[] | null; unread: nu
               title: str(x.title),
               body: str(x.body),
               type: str(x.type, "system"),
-              data: (x.data && typeof x.data === "object" ? (x.data as Record<string, unknown>) : {}),
+              data: x.data && typeof x.data === "object" ? (x.data as Record<string, unknown>) : {},
               read: Boolean(x.read),
               createdAt: toIso(x.createdAt),
             };

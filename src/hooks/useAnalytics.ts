@@ -45,7 +45,10 @@ export function useAnalytics(range: "7d" | "30d" | "month" | "lastMonth"): {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone_number_id: phoneNumberId, start, end, id_token: idToken }),
         });
-        const raw = (await res.json().catch(() => ({}))) as { data?: InsightSeries[]; error?: unknown };
+        const raw = (await res.json().catch(() => ({}))) as {
+          data?: InsightSeries[];
+          error?: unknown;
+        };
         if (cancelled) return;
         if (!res.ok || raw.error) {
           setError(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
@@ -59,7 +62,9 @@ export function useAnalytics(range: "7d" | "30d" | "month" | "lastMonth"): {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [hasConfig, wa, range, nonce]);
 
   return { data, loading, error, reload: () => setNonce((n) => n + 1), hasConfig };
@@ -76,7 +81,10 @@ function computeRange(range: "7d" | "30d" | "month" | "lastMonth"): { start: num
   }
   const firstThis = new Date(now.getFullYear(), now.getMonth(), 1);
   const firstLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return { start: Math.floor(firstLast.getTime() / 1000), end: Math.floor(firstThis.getTime() / 1000) };
+  return {
+    start: Math.floor(firstLast.getTime() / 1000),
+    end: Math.floor(firstThis.getTime() / 1000),
+  };
 }
 
 function aggregate(series: InsightSeries[]): AnalyticsData {

@@ -1,7 +1,12 @@
 export function toIso(v: unknown): string | null {
   if (!v) return null;
   if (typeof v === "string") return v;
-  if (typeof v === "object" && v && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
+  if (
+    typeof v === "object" &&
+    v &&
+    "toDate" in v &&
+    typeof (v as { toDate: () => Date }).toDate === "function"
+  ) {
     return (v as { toDate: () => Date }).toDate().toISOString();
   }
   return null;

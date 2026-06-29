@@ -16,7 +16,9 @@ export function AuthTabs({ initial = "in" }: { initial?: "in" | "up" }) {
             onClick={() => setTab(k)}
             className={cn(
               "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-              tab === k ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground",
+              tab === k
+                ? "bg-card text-foreground shadow-soft"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {k === "in" ? "Sign in" : "Create account"}

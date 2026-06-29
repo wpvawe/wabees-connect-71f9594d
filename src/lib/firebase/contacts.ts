@@ -11,7 +11,16 @@ import { normalizePhone } from "@/lib/firebase/normalizers";
 
 export async function upsertContact(
   uid: string,
-  input: { id?: string; name: string; phone: string; email?: string; company?: string; notes?: string; tags?: string[]; group?: string },
+  input: {
+    id?: string;
+    name: string;
+    phone: string;
+    email?: string;
+    company?: string;
+    notes?: string;
+    tags?: string[];
+    group?: string;
+  },
 ): Promise<{ id: string }> {
   const db = fbDb();
   const isUpdate = Boolean(input.id);
@@ -41,7 +50,15 @@ export async function deleteContact(uid: string, id: string): Promise<void> {
 
 export async function bulkImportContacts(
   uid: string,
-  rows: Array<{ name: string; phone: string; email?: string; company?: string; tags?: string[]; group?: string; notes?: string }>,
+  rows: Array<{
+    name: string;
+    phone: string;
+    email?: string;
+    company?: string;
+    tags?: string[];
+    group?: string;
+    notes?: string;
+  }>,
 ): Promise<{ imported: number }> {
   if (rows.length === 0) return { imported: 0 };
   const db = fbDb();

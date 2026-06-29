@@ -52,7 +52,10 @@ export function useAiBotConfig(): { data: AiBotConfig | null; error: string | nu
     const unsub = onSnapshot(
       doc(db, `users/${uid}/bot_config/settings`),
       (snap) => {
-        if (!snap.exists()) { setData({ ...EMPTY_AI_CONFIG }); return; }
+        if (!snap.exists()) {
+          setData({ ...EMPTY_AI_CONFIG });
+          return;
+        }
         const x = snap.data() as Record<string, unknown>;
         setData({
           enabled: Boolean(x.enabled),

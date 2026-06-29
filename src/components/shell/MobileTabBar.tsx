@@ -1,6 +1,13 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChartLine, faComments, faBullhorn, faAddressBook, faCrown, faGear } from "@fortawesome/free-solid-svg-icons";
+import {
+  faChartLine,
+  faComments,
+  faBullhorn,
+  faAddressBook,
+  faCrown,
+  faGear,
+} from "@fortawesome/free-solid-svg-icons";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [

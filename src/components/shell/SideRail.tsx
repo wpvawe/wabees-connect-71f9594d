@@ -2,9 +2,22 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
-  faChartLine, faComments, faAddressBook, faBullhorn, faRobot, faFileLines,
-  faPlug, faGear, faRightFromBracket, faCrown,
-  faChartColumn, faBrain, faUsers, faHeadset, faLink, faBell,
+  faChartLine,
+  faComments,
+  faAddressBook,
+  faBullhorn,
+  faRobot,
+  faFileLines,
+  faPlug,
+  faGear,
+  faRightFromBracket,
+  faCrown,
+  faChartColumn,
+  faBrain,
+  faUsers,
+  faHeadset,
+  faLink,
+  faBell,
 } from "@fortawesome/free-solid-svg-icons";
 import { signOut as fbSignOut } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
@@ -49,7 +62,9 @@ export function SideRail() {
               title={n.label}
               className={cn(
                 "grid h-11 w-11 place-items-center rounded-lg transition-colors",
-                active ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                active
+                  ? "bg-sidebar-accent text-sidebar-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
               )}
             >
               <FontAwesomeIcon icon={n.icon} className="h-4 w-4" />
@@ -57,10 +72,18 @@ export function SideRail() {
           );
         })}
       </nav>
-      <Link to="/settings" title="Settings" className="grid h-11 w-11 place-items-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground">
+      <Link
+        to="/settings"
+        title="Settings"
+        className="grid h-11 w-11 place-items-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      >
         <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
       </Link>
-      <button onClick={signOut} title="Sign out" className="grid h-11 w-11 place-items-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground">
+      <button
+        onClick={signOut}
+        title="Sign out"
+        className="grid h-11 w-11 place-items-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      >
         <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
       </button>
     </aside>

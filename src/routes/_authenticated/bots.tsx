@@ -2,7 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import { faBolt, faCircleNotch, faRobot, faToggleOn, faPlus, faPen } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBolt,
+  faCircleNotch,
+  faRobot,
+  faToggleOn,
+  faPlus,
+  faPen,
+} from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
@@ -24,15 +31,25 @@ function BotsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Bot | null>(null);
 
-  function openNew() { setEditing(null); setOpen(true); }
-  function openEdit(b: Bot) { setEditing(b); setOpen(true); }
+  function openNew() {
+    setEditing(null);
+    setOpen(true);
+  }
+  function openEdit(b: Bot) {
+    setEditing(b);
+    setOpen(true);
+  }
 
   return (
     <>
       <TopBar
         title="Bots"
         subtitle="AI + rule-based auto-replies"
-        right={<WbButton size="sm" onClick={openNew}><FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> New bot</WbButton>}
+        right={
+          <WbButton size="sm" onClick={openNew}>
+            <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> New bot
+          </WbButton>
+        }
       />
       <div className="px-4 py-6 sm:px-6">
         {error ? (
@@ -47,11 +64,17 @@ function BotsPage() {
             icon={faRobot}
             title="No bots yet"
             description="App me create kiye gaye AI aur keyword bots yahan realtime show hon ge."
-            action={<WbButton onClick={openNew}><FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Create bot</WbButton>}
+            action={
+              <WbButton onClick={openNew}>
+                <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Create bot
+              </WbButton>
+            }
           />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.map((bot) => <BotCard key={bot.id} bot={bot} onEdit={openEdit} />)}
+            {data.map((bot) => (
+              <BotCard key={bot.id} bot={bot} onEdit={openEdit} />
+            ))}
           </div>
         )}
       </div>
@@ -64,19 +87,28 @@ function BotCard({ bot, onEdit }: { bot: Bot; onEdit: (b: Bot) => void }) {
   const uid = useEffectiveUid();
   async function toggle() {
     if (!uid) return;
-    try { await updateDoc(doc(fbDb(), "users", uid, "bots", bot.id), { isActive: !bot.isActive }); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Toggle failed"); }
+    try {
+      await updateDoc(doc(fbDb(), "users", uid, "bots", bot.id), { isActive: !bot.isActive });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Toggle failed");
+    }
   }
   return (
     <article className="rounded-xl border border-border bg-card p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-foreground">{bot.name}</h3>
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{bot.description || bot.responseText || "Auto-reply bot"}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+            {bot.description || bot.responseText || "Auto-reply bot"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Switch checked={bot.isActive} onCheckedChange={toggle} aria-label="Toggle active" />
-          <button onClick={() => onEdit(bot)} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted" aria-label="Edit bot">
+          <button
+            onClick={() => onEdit(bot)}
+            className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+            aria-label="Edit bot"
+          >
             <FontAwesomeIcon icon={faPen} className="h-3 w-3" />
           </button>
         </div>
@@ -88,7 +120,12 @@ function BotCard({ bot, onEdit }: { bot: Bot; onEdit: (b: Bot) => void }) {
       {bot.triggerKeywords.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
           {bot.triggerKeywords.slice(0, 6).map((k) => (
-            <span key={k} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{k}</span>
+            <span
+              key={k}
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            >
+              {k}
+            </span>
           ))}
         </div>
       )}

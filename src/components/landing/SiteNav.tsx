@@ -28,7 +28,10 @@ export function SiteNav() {
           ))}
         </nav>
         <div className="hidden items-center gap-2 md:flex">
-          <a href="/auth" className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:text-foreground">
+          <a
+            href="/auth"
+            className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:text-foreground"
+          >
             Sign in
           </a>
           <a

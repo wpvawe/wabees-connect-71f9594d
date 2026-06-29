@@ -65,7 +65,12 @@ function loadFbSdk(): Promise<FBStatic> {
   sdkPromise = new Promise<FBStatic>((resolve, reject) => {
     window.fbAsyncInit = () => {
       try {
-        window.FB!.init({ appId: FB_APP_ID, cookie: true, xfbml: false, version: FB_GRAPH_VERSION });
+        window.FB!.init({
+          appId: FB_APP_ID,
+          cookie: true,
+          xfbml: false,
+          version: FB_GRAPH_VERSION,
+        });
         resolve(window.FB!);
       } catch (e) {
         reject(e);
@@ -124,7 +129,10 @@ export function EmbeddedSignupButton() {
   }, []);
 
   async function start() {
-    if (!uid) { toast.error("Sign in first"); return; }
+    if (!uid) {
+      toast.error("Sign in first");
+      return;
+    }
     setBusy(true);
     sessionInfoRef.current = null;
     try {
@@ -132,10 +140,16 @@ export function EmbeddedSignupButton() {
       const resp: FBLoginResponse = await new Promise((res) =>
         FB.login(res, {
           config_id: FB_CONFIG_ID,
-          scope: "public_profile,business_management,whatsapp_business_management,whatsapp_business_messaging",
+          scope:
+            "public_profile,business_management,whatsapp_business_management,whatsapp_business_messaging",
           response_type: "code",
           override_default_response_type: true,
-          extras: { setup: {}, feature: "whatsapp_embedded_signup", featureType: "", sessionInfoVersion: "3" },
+          extras: {
+            setup: {},
+            feature: "whatsapp_embedded_signup",
+            featureType: "",
+            sessionInfoVersion: "3",
+          },
         }),
       );
       const code = resp?.authResponse?.code;
@@ -144,7 +158,9 @@ export function EmbeddedSignupButton() {
         if (sessionInfo?.event === "ERROR" && sessionInfo.error_message) {
           toast.error(sessionInfo.error_message);
         } else if (resp?.status === "not_authorized" || resp?.status === "unknown") {
-          toast.error("Facebook Login blocked by Meta. If the popup shows Feature Unavailable, the Meta app still needs public_profile Advanced Access / Live access.");
+          toast.error(
+            "Facebook Login blocked by Meta. If the popup shows Feature Unavailable, the Meta app still needs public_profile Advanced Access / Live access.",
+          );
         } else {
           toast.error("Sign-up cancelled before Meta returned a code");
         }
@@ -175,13 +191,16 @@ export function EmbeddedSignupButton() {
   return (
     <div className="space-y-2">
       <WbButton onClick={start} loading={busy} className="w-full">
-        <FontAwesomeIcon icon={busy ? faCircleNotch : faFacebook} className={busy ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
+        <FontAwesomeIcon
+          icon={busy ? faCircleNotch : faFacebook}
+          className={busy ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"}
+        />
         Continue with Facebook
       </WbButton>
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <FontAwesomeIcon icon={faBolt} className="mt-0.5 h-3 w-3 text-primary" />
-        One popup — select your business, pick a phone number, done. No tokens
-        to copy, no IDs to find. Same auto-flow as the mobile app.
+        One popup — select your business, pick a phone number, done. No tokens to copy, no IDs to
+        find. Same auto-flow as the mobile app.
       </p>
     </div>
   );
