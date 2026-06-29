@@ -13,9 +13,9 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
+import { repairWhatsAppOwnership } from "@/lib/firebase/whatsapp-config";
 
 type State =
   | { status: "loading" }
@@ -43,12 +43,11 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
         if (phoneNumberId && !dataOwner && !repairedPhones.has(phoneNumberId)) {
           repairedPhones.add(phoneNumberId);
-          void resolveExistingOwnerForPhone(phoneNumberId, u.uid)
+          void repairWhatsAppOwnership(u.uid)
             .then((ownerId) => {
               if (ownerId && ownerId !== u.uid) {
-                return setDoc(doc(fbDb(), "users", u.uid), { dataOwner: ownerId }, { merge: true });
+                setState({ status: "ready", uid: u.uid, effectiveUid: ownerId, dataOwner: ownerId, user: u });
               }
-              return undefined;
             })
             .catch(() => undefined);
         }

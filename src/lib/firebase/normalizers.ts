@@ -29,10 +29,15 @@ export function phoneQueryCandidates(phone: string): string[] {
 
 /**
  * Canonical Firestore document ID for a phone number.
- * Matches WhatsApp `wa_id` (digits only, no "+") used by the PHP webhook
- * and the Flutter app — keeps "+92xxx" and "92xxx" from forking into two docs.
+ * Matches Flutter PhoneUtils.normalize and the PHP webhook: +E.164.
+ * Keeps "+92xxx" and "92xxx" from forking into two docs.
  */
 export function phoneDocId(phone: string): string {
+  return normalizePhone(phone);
+}
+
+/** WhatsApp Cloud API recipient id: digits only, no plus. */
+export function whatsappRecipientId(phone: string): string {
   return normalizePhone(phone).replace(/[^0-9]/g, "");
 }
 

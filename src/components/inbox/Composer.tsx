@@ -15,7 +15,7 @@ import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
-import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 
 export function Composer({ phone }: { phone: string }) {
   const [text, setText] = useState("");
@@ -63,7 +63,7 @@ export function Composer({ phone }: { phone: string }) {
       const res = await sendTextMessage({
         phone_number_id: creds.phone_number_id,
         access_token: creds.access_token,
-        to,
+        to: whatsappRecipientId(phone),
         message: body,
       });
       const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
