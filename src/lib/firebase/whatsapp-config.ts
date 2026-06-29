@@ -120,7 +120,22 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     // overwrite `wa_map.ownerId` — webhook keeps routing to the original
     // owner's subcollections, which both clients read via dataOwner.
     try {
-      await setDoc(mapRef, { users: arrayUnion(input.uid), updatedAt: now }, { merge: true }).catch(() => {});
+      // If wa_map.ownerId was previously hijacked by this UID (a bad earlier
+      // reconnect), restore the real owner so the PHP webhook routes to the
+      // correct subcollections again.
+      const needsRestore = mapOwnerOther !== effectiveOwner;
+      await setDoc(
+        mapRef,
+        needsRestore
+          ? {
+              ownerId: effectiveOwner,
+              userId: effectiveOwner,
+              users: arrayUnion(input.uid, effectiveOwner),
+              updatedAt: now,
+            }
+          : { users: arrayUnion(input.uid), updatedAt: now },
+        { merge: true },
+      ).catch(() => {});
       await setDoc(
         doc(db, "users", effectiveOwner, "agents", input.uid),
         {
