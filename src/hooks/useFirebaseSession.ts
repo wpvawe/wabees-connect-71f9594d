@@ -104,7 +104,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
             .catch(() => {
               // Keep retrying through the interval instead of permanently
               // treating this account as owner after a transient repair error.
-              setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
+              setState({ status: "loading" });
             });
           return;
         }
