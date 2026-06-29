@@ -17,7 +17,11 @@ export type Profile = {
   totalCampaigns: number;
 };
 
-export function useProfile(scope: "self" | "effective" = "self"): { data: Profile | null; loading: boolean; error: string | null } {
+export function useProfile(scope: "self" | "effective" = "self"): {
+  data: Profile | null;
+  loading: boolean;
+  error: string | null;
+} {
   const selfUid = useFirebaseUid();
   const effectiveUid = useEffectiveUid();
   const uid = scope === "effective" ? effectiveUid : selfUid;

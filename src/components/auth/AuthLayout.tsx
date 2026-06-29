@@ -2,11 +2,24 @@ import { Link } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import wbIcon from "@/assets/wabees-icon.png";
 
-export function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle?: string; children: ReactNode; footer?: ReactNode }) {
+export function AuthLayout({
+  title,
+  subtitle,
+  children,
+  footer,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
   return (
     <div className="hero-bg flex min-h-screen items-center justify-center px-4 py-12 sm:px-6">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-8 flex items-center justify-center gap-2 font-semibold tracking-tight text-foreground">
+        <Link
+          to="/"
+          className="mb-8 flex items-center justify-center gap-2 font-semibold tracking-tight text-foreground"
+        >
           <img src={wbIcon} alt="" className="h-9 w-9 rounded-lg" />
           <span className="text-lg">Wabees</span>
         </Link>

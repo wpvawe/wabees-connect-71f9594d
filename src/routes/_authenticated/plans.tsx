@@ -34,8 +34,14 @@ function PlansPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <PlanStat label="Current" value={sub.planName || sub.planId || "Active"} />
                 <PlanStat label="Status" value={sub.status} />
-                <PlanStat label="Messages" value={`${sub.messagesUsed}/${limitLabel(sub.maxMessages)}`} />
-                <PlanStat label="Contacts" value={`${sub.contactsUsed}/${limitLabel(sub.maxContacts)}`} />
+                <PlanStat
+                  label="Messages"
+                  value={`${sub.messagesUsed}/${limitLabel(sub.maxMessages)}`}
+                />
+                <PlanStat
+                  label="Contacts"
+                  value={`${sub.contactsUsed}/${limitLabel(sub.maxContacts)}`}
+                />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No active subscription found.</p>
@@ -53,15 +59,20 @@ function PlansPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => (
-              <PlanCard key={plan.id} plan={plan} active={sub?.planId === plan.id} onRequest={async () => {
-                if (!uid) return;
-                try {
-                  await requestSubscription(uid, plan);
-                  toast.success("Subscription request sent");
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Request failed");
-                }
-              }} />
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                active={sub?.planId === plan.id}
+                onRequest={async () => {
+                  if (!uid) return;
+                  try {
+                    await requestSubscription(uid, plan);
+                    toast.success("Subscription request sent");
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Request failed");
+                  }
+                }}
+              />
             ))}
           </div>
         )}
@@ -70,9 +81,23 @@ function PlansPage() {
   );
 }
 
-function PlanCard({ plan, active, onRequest }: { plan: Plan; active: boolean; onRequest: () => Promise<void> }) {
+function PlanCard({
+  plan,
+  active,
+  onRequest,
+}: {
+  plan: Plan;
+  active: boolean;
+  onRequest: () => Promise<void>;
+}) {
   return (
-    <article className={active ? "rounded-xl border border-primary bg-card p-5 shadow-soft" : "rounded-xl border border-border bg-card p-5 shadow-soft"}>
+    <article
+      className={
+        active
+          ? "rounded-xl border border-primary bg-card p-5 shadow-soft"
+          : "rounded-xl border border-border bg-card p-5 shadow-soft"
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">{plan.name}</h3>
@@ -86,7 +111,9 @@ function PlanCard({ plan, active, onRequest }: { plan: Plan; active: boolean; on
       </div>
       <p className="mt-4 text-2xl font-semibold text-foreground">
         {plan.priceMonthly === 0 ? "Free" : `${plan.currency} ${plan.priceMonthly}`}
-        {plan.priceMonthly > 0 && <span className="text-sm font-normal text-muted-foreground">/mo</span>}
+        {plan.priceMonthly > 0 && (
+          <span className="text-sm font-normal text-muted-foreground">/mo</span>
+        )}
       </p>
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
         <PlanStat label="Messages" value={limitLabel(plan.maxMessages)} />
@@ -110,7 +137,12 @@ function PlanCard({ plan, active, onRequest }: { plan: Plan; active: boolean; on
           Welcome plan
         </p>
       )}
-      <WbButton className="mt-4 w-full" variant={active ? "secondary" : "primary"} disabled={active} onClick={() => void onRequest()}>
+      <WbButton
+        className="mt-4 w-full"
+        variant={active ? "secondary" : "primary"}
+        disabled={active}
+        onClick={() => void onRequest()}
+      >
         {active ? "Current plan" : "Request subscription"}
       </WbButton>
     </article>

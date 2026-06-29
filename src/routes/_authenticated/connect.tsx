@@ -1,7 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import { faCircleNotch, faCloudArrowDown, faFileLines, faKey, faPlugCircleBolt, faRoute } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleNotch,
+  faCloudArrowDown,
+  faFileLines,
+  faKey,
+  faPlugCircleBolt,
+  faRoute,
+} from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -31,15 +38,35 @@ function ConnectPage() {
                   <FontAwesomeIcon icon={faWhatsapp} className="h-6 w-6" />
                 </span>
                 <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-foreground">Business API connection</h2>
-                  <p className="text-sm text-muted-foreground">Website ab app ke same backend flow aur Firestore schema use karti hai.</p>
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                    Business API connection
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Website ab app ke same backend flow aur Firestore schema use karti hai.
+                  </p>
                 </div>
               </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <FlowItem icon={faKey} title="Manual credentials" text="Phone Number ID + permanent token save hota hai." />
-                <FlowItem icon={faRoute} title="Webhook routing" text="wa_map owner routing doc auto-create hota hai." />
-                <FlowItem icon={faCloudArrowDown} title="Template sync" text="WABA ID ho to templates PHP backend se sync hoti hain." />
-                <FlowItem icon={faFileLines} title="Shared data" text="Contacts, inbox, bots effective owner UID se read hote hain." />
+                <FlowItem
+                  icon={faKey}
+                  title="Manual credentials"
+                  text="Phone Number ID + permanent token save hota hai."
+                />
+                <FlowItem
+                  icon={faRoute}
+                  title="Webhook routing"
+                  text="wa_map owner routing doc auto-create hota hai."
+                />
+                <FlowItem
+                  icon={faCloudArrowDown}
+                  title="Template sync"
+                  text="WABA ID ho to templates PHP backend se sync hoti hain."
+                />
+                <FlowItem
+                  icon={faFileLines}
+                  title="Shared data"
+                  text="Contacts, inbox, bots effective owner UID se read hote hain."
+                />
               </div>
             </div>
             <div className="border-t border-border bg-background p-5 sm:p-7 lg:border-l lg:border-t-0">
@@ -78,7 +105,10 @@ function ConnectPage() {
             </WbCard>
             */}
             <WbCard>
-              <WbCardHeader title="Manual connection" subtitle="Use the same safe backend flow as the mobile app" />
+              <WbCardHeader
+                title="Manual connection"
+                subtitle="Use the same safe backend flow as the mobile app"
+              />
               <WbCardBody>
                 <ManualTokenForm />
               </WbCardBody>
@@ -104,7 +134,15 @@ function AuditLine({ label, ok, soft }: { label: string; ok: boolean; soft?: boo
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className={ok ? "text-xs font-semibold text-primary" : soft ? "text-xs font-semibold text-muted-foreground" : "text-xs font-semibold text-destructive"}>
+      <span
+        className={
+          ok
+            ? "text-xs font-semibold text-primary"
+            : soft
+              ? "text-xs font-semibold text-muted-foreground"
+              : "text-xs font-semibold text-destructive"
+        }
+      >
         {ok ? "Ready" : soft ? "Optional" : "Needed"}
       </span>
     </div>

@@ -17,8 +17,8 @@ export function Hero() {
             Run your WhatsApp like a <span className="text-primary">real business</span>.
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
-            Shared team inbox, AI replies, broadcast campaigns, templates, catalog and analytics — all on the
-            official Meta Cloud API. One click connect, no manual tokens.
+            Shared team inbox, AI replies, broadcast campaigns, templates, catalog and analytics —
+            all on the official Meta Cloud API. One click connect, no manual tokens.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <a
@@ -41,14 +41,18 @@ export function Hero() {
               <FontAwesomeIcon icon={faShield} className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <dt className="font-medium text-foreground">End-to-end secure</dt>
-                <dd className="text-muted-foreground">Encrypted tokens, JWT sessions, signed webhooks.</dd>
+                <dd className="text-muted-foreground">
+                  Encrypted tokens, JWT sessions, signed webhooks.
+                </dd>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <FontAwesomeIcon icon={faBolt} className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <dt className="font-medium text-foreground">Realtime</dt>
-                <dd className="text-muted-foreground">No reloads. Messages stream live to every device.</dd>
+                <dd className="text-muted-foreground">
+                  No reloads. Messages stream live to every device.
+                </dd>
               </div>
             </div>
           </dl>
@@ -64,7 +68,12 @@ export function Hero() {
                 <span className="text-sm font-semibold">Wabees Inbox</span>
               </div>
               <ul className="divide-y divide-white/5">
-                {["Aisha — order #2189", "Hassan — pricing question", "Bot · Welcome flow", "Bilal — invoice sent"].map((m, i) => (
+                {[
+                  "Aisha — order #2189",
+                  "Hassan — pricing question",
+                  "Bot · Welcome flow",
+                  "Bilal — invoice sent",
+                ].map((m, i) => (
                   <li key={m} className="flex items-center gap-3 px-3 py-3 text-sm text-white/90">
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/30 text-xs font-semibold text-primary-foreground">
                       {m.charAt(0)}
@@ -73,7 +82,11 @@ export function Hero() {
                       <p className="truncate font-medium">{m}</p>
                       <p className="truncate text-xs text-white/50">Tap to open conversation</p>
                     </div>
-                    {i < 2 && <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">{i + 1}</span>}
+                    {i < 2 && (
+                      <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                        {i + 1}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

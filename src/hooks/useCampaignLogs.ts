@@ -14,7 +14,12 @@ export type CampaignLog = {
 function toIso(v: unknown): string | null {
   if (!v) return null;
   if (typeof v === "string") return v;
-  if (typeof v === "object" && v && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
+  if (
+    typeof v === "object" &&
+    v &&
+    "toDate" in v &&
+    typeof (v as { toDate: () => Date }).toDate === "function"
+  ) {
     return (v as { toDate: () => Date }).toDate().toISOString();
   }
   return null;
@@ -46,7 +51,7 @@ export function useCampaignLogs(campaignId: string | undefined): {
             id: d.id,
             phone: (x.phone as string) ?? "",
             status: (x.status as string) ?? "pending",
-            error: ((x.reason as string | null) ?? (x.error as string | null)) ?? null,
+            error: (x.reason as string | null) ?? (x.error as string | null) ?? null,
             sentAt: toIso(x.timestamp ?? x.sentAt ?? x.createdAt),
           };
         });

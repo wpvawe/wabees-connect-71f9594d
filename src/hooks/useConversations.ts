@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { collection, deleteDoc, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { listOfStrings, normalizePhone, phoneDocId, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
+import {
+  listOfStrings,
+  normalizePhone,
+  phoneDocId,
+  str,
+  strOrNull,
+  toIso,
+} from "@/lib/firebase/normalizers";
 
 export type Conversation = {
   contactPhone: string;
@@ -66,18 +73,25 @@ export function useConversations(): { data: Conversation[] | null; error: string
             grouped.set(phone, {
               ...existing,
               ...row,
-              contactName: existing.contactName.length >= row.contactName.length ? existing.contactName : row.contactName,
+              contactName:
+                existing.contactName.length >= row.contactName.length
+                  ? existing.contactName
+                  : row.contactName,
               unreadCount: Math.max(existing.unreadCount, row.unreadCount),
               tags: Array.from(new Set([...(existing.tags ?? []), ...(row.tags ?? [])])),
               profileImageUrl: existing.profileImageUrl ?? row.profileImageUrl,
               isPinned: existing.isPinned || row.isPinned,
               isBlocked: existing.isBlocked || row.isBlocked,
-              lastMessageAt: row.lastMessageAt && (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
-                ? row.lastMessageAt
-                : existing.lastMessageAt,
-              lastMessage: row.lastMessageAt && (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
-                ? row.lastMessage
-                : existing.lastMessage,
+              lastMessageAt:
+                row.lastMessageAt &&
+                (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
+                  ? row.lastMessageAt
+                  : existing.lastMessageAt,
+              lastMessage:
+                row.lastMessageAt &&
+                (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
+                  ? row.lastMessage
+                  : existing.lastMessage,
             });
           }
         }

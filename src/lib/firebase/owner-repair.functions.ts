@@ -48,9 +48,11 @@ type Candidate = {
 };
 
 function readRuntimeEnv(...keys: string[]): string {
-  const runtimeBindings = (globalThis as typeof globalThis & {
-    __WABEES_RUNTIME_ENV__?: Record<string, unknown>;
-  }).__WABEES_RUNTIME_ENV__;
+  const runtimeBindings = (
+    globalThis as typeof globalThis & {
+      __WABEES_RUNTIME_ENV__?: Record<string, unknown>;
+    }
+  ).__WABEES_RUNTIME_ENV__;
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   const viteEnv = import.meta.env as Record<string, unknown>;
   for (const key of keys) {
@@ -69,7 +71,8 @@ function parseInput(raw: unknown): RepairInput {
     idToken,
     phoneNumberId,
     accessToken: typeof data?.accessToken === "string" ? data.accessToken.trim() : undefined,
-    businessAccountId: typeof data?.businessAccountId === "string" ? data.businessAccountId.trim() : undefined,
+    businessAccountId:
+      typeof data?.businessAccountId === "string" ? data.businessAccountId.trim() : undefined,
     displayPhone: typeof data?.displayPhone === "string" ? data.displayPhone.trim() : undefined,
     businessName: typeof data?.businessName === "string" ? data.businessName.trim() : undefined,
     qualityRating: typeof data?.qualityRating === "string" ? data.qualityRating.trim() : undefined,
@@ -88,7 +91,8 @@ function getBool(fields: FsFields | undefined, key: string): boolean {
 function getNumber(fields: FsFields | undefined, key: string): number {
   const value = fields?.[key];
   if (!value) return 0;
-  if (typeof value.doubleValue === "number" && Number.isFinite(value.doubleValue)) return value.doubleValue;
+  if (typeof value.doubleValue === "number" && Number.isFinite(value.doubleValue))
+    return value.doubleValue;
   if (typeof value.integerValue === "string") {
     const n = Number(value.integerValue);
     return Number.isFinite(n) ? n : 0;
@@ -136,7 +140,8 @@ function base64Url(input: string | ArrayBuffer): string {
 }
 
 function pemToArrayBuffer(pem: string): ArrayBuffer {
-  const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "")
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
     .replace(/-----END PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
   const binary = atob(b64);
@@ -169,13 +174,15 @@ function readServiceAccount(): ServiceAccount {
 async function getAccessToken(account: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = base64Url(JSON.stringify({
-    iss: account.client_email,
-    scope: "https://www.googleapis.com/auth/datastore",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600,
-  }));
+  const payload = base64Url(
+    JSON.stringify({
+      iss: account.client_email,
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    }),
+  );
   const signingInput = `${header}.${payload}`;
   const key = await crypto.subtle.importKey(
     "pkcs8",
@@ -198,26 +205,40 @@ async function getAccessToken(account: ServiceAccount): Promise<string> {
       assertion,
     }),
   });
-  const json = await res.json().catch(() => ({})) as { access_token?: string; error_description?: string };
-  if (!res.ok || !json.access_token) throw new Error(json.error_description ?? "Could not authorize Firebase backend");
+  const json = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    error_description?: string;
+  };
+  if (!res.ok || !json.access_token)
+    throw new Error(json.error_description ?? "Could not authorize Firebase backend");
   return json.access_token;
 }
 
 async function verifyFirebaseUser(idToken: string): Promise<{ uid: string; email: string | null }> {
   const apiKey = readRuntimeEnv("FIREBASE_WEB_API_KEY", "VITE_FIREBASE_API_KEY");
   if (!apiKey) throw new Error("Firebase web API key is not configured");
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ idToken }),
-  });
-  const json = await res.json().catch(() => ({})) as { users?: Array<{ localId?: string; email?: string }> };
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    },
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    users?: Array<{ localId?: string; email?: string }>;
+  };
   const user = json.users?.[0];
   if (!res.ok || !user?.localId) throw new Error("Firebase session could not be verified");
   return { uid: user.localId, email: user.email ?? null };
 }
 
-async function firestoreFetch(projectId: string, accessToken: string, path: string, init: RequestInit = {}) {
+async function firestoreFetch(
+  projectId: string,
+  accessToken: string,
+  path: string,
+  init: RequestInit = {},
+) {
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
   return fetch(`${base}${path}`, {
     ...init,
@@ -229,15 +250,24 @@ async function firestoreFetch(projectId: string, accessToken: string, path: stri
   });
 }
 
-async function getDocFields(projectId: string, accessToken: string, path: string): Promise<FsFields | null> {
+async function getDocFields(
+  projectId: string,
+  accessToken: string,
+  path: string,
+): Promise<FsFields | null> {
   const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}`);
   if (res.status === 404) return null;
-  const json = await res.json().catch(() => ({})) as { fields?: FsFields };
+  const json = (await res.json().catch(() => ({}))) as { fields?: FsFields };
   if (!res.ok) return null;
   return json.fields ?? {};
 }
 
-async function patchDoc(projectId: string, accessToken: string, path: string, fields: FsFields): Promise<void> {
+async function patchDoc(
+  projectId: string,
+  accessToken: string,
+  path: string,
+  fields: FsFields,
+): Promise<void> {
   const mask = Object.keys(fields)
     .map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`)
     .join("&");
@@ -251,15 +281,27 @@ async function patchDoc(projectId: string, accessToken: string, path: string, fi
   }
 }
 
-async function listDocs(projectId: string, accessToken: string, path: string, pageSize = 100): Promise<Array<{ id: string; fields: FsFields }>> {
+async function listDocs(
+  projectId: string,
+  accessToken: string,
+  path: string,
+  pageSize = 100,
+): Promise<Array<{ id: string; fields: FsFields }>> {
   const rows: Array<{ id: string; fields: FsFields }> = [];
   let pageToken = "";
   for (let page = 0; page < 5; page += 1) {
     const qs = new URLSearchParams({ pageSize: String(pageSize) });
     if (pageToken) qs.set("pageToken", pageToken);
-    const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${qs.toString()}`);
+    const res = await firestoreFetch(
+      projectId,
+      accessToken,
+      `/${encodePath(path)}?${qs.toString()}`,
+    );
     if (!res.ok) return rows;
-    const json = await res.json().catch(() => ({})) as { documents?: Array<{ name?: string; fields?: FsFields }>; nextPageToken?: string };
+    const json = (await res.json().catch(() => ({}))) as {
+      documents?: Array<{ name?: string; fields?: FsFields }>;
+      nextPageToken?: string;
+    };
     for (const doc of json.documents ?? []) {
       const id = doc.name?.split("/").pop();
       if (id) rows.push({ id, fields: doc.fields ?? {} });
@@ -270,25 +312,39 @@ async function listDocs(projectId: string, accessToken: string, path: string, pa
   return rows;
 }
 
-async function mergeDataIsland(projectId: string, accessToken: string, sourceUid: string, ownerUid: string): Promise<void> {
+async function mergeDataIsland(
+  projectId: string,
+  accessToken: string,
+  sourceUid: string,
+  ownerUid: string,
+): Promise<void> {
   const collections = ["conversations", "messages", "contacts", "templates", "bots", "campaigns"];
   for (const collectionId of collections) {
     const docs = await listDocs(projectId, accessToken, `users/${sourceUid}/${collectionId}`, 100);
-    await Promise.all(docs.map((row) => patchDoc(
-      projectId,
-      accessToken,
-      `users/${ownerUid}/${collectionId}/${row.id}`,
-      { ...row.fields, migratedFromUid: { stringValue: sourceUid }, migratedAt: timestampValue() },
-    ).catch(() => undefined)));
+    await Promise.all(
+      docs.map((row) =>
+        patchDoc(projectId, accessToken, `users/${ownerUid}/${collectionId}/${row.id}`, {
+          ...row.fields,
+          migratedFromUid: { stringValue: sourceUid },
+          migratedAt: timestampValue(),
+        }).catch(() => undefined),
+      ),
+    );
   }
 }
 
-async function runQuery(projectId: string, accessToken: string, body: Record<string, unknown>): Promise<Array<{ name: string; fields: FsFields }>> {
+async function runQuery(
+  projectId: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<Array<{ name: string; fields: FsFields }>> {
   const res = await firestoreFetch(projectId, accessToken, ":runQuery", {
     method: "POST",
     body: JSON.stringify(body),
   });
-  const json = await res.json().catch(() => []) as Array<{ document?: { name?: string; fields?: FsFields } }>;
+  const json = (await res.json().catch(() => [])) as Array<{
+    document?: { name?: string; fields?: FsFields };
+  }>;
   if (!res.ok || !Array.isArray(json)) return [];
   return json
     .map((row) => row.document)
@@ -296,7 +352,11 @@ async function runQuery(projectId: string, accessToken: string, body: Record<str
     .map((doc) => ({ name: doc.name, fields: doc.fields ?? {} }));
 }
 
-async function queryUsersByTopLevelPhone(projectId: string, accessToken: string, phoneNumberId: string) {
+async function queryUsersByTopLevelPhone(
+  projectId: string,
+  accessToken: string,
+  phoneNumberId: string,
+) {
   return runQuery(projectId, accessToken, {
     structuredQuery: {
       from: [{ collectionId: "users" }],
@@ -312,7 +372,11 @@ async function queryUsersByTopLevelPhone(projectId: string, accessToken: string,
   });
 }
 
-async function queryUsersByConfigPhone(projectId: string, accessToken: string, phoneNumberId: string) {
+async function queryUsersByConfigPhone(
+  projectId: string,
+  accessToken: string,
+  phoneNumberId: string,
+) {
   return runQuery(projectId, accessToken, {
     structuredQuery: {
       from: [{ collectionId: "whatsapp_config", allDescendants: true }],
@@ -328,7 +392,11 @@ async function queryUsersByConfigPhone(projectId: string, accessToken: string, p
   });
 }
 
-async function queryUsersByTopLevelAccessToken(projectId: string, accessToken: string, whatsappAccessToken: string) {
+async function queryUsersByTopLevelAccessToken(
+  projectId: string,
+  accessToken: string,
+  whatsappAccessToken: string,
+) {
   if (!whatsappAccessToken) return [];
   return runQuery(projectId, accessToken, {
     structuredQuery: {
@@ -345,7 +413,11 @@ async function queryUsersByTopLevelAccessToken(projectId: string, accessToken: s
   });
 }
 
-async function queryUsersByConfigAccessToken(projectId: string, accessToken: string, whatsappAccessToken: string) {
+async function queryUsersByConfigAccessToken(
+  projectId: string,
+  accessToken: string,
+  whatsappAccessToken: string,
+) {
   if (!whatsappAccessToken) return [];
   return runQuery(projectId, accessToken, {
     structuredQuery: {
@@ -393,7 +465,10 @@ function mergeCandidate(map: Map<string, Candidate>, id: string, patch: Partial<
 }
 
 function mapUserIds(fields: FsFields | null): { owners: string[]; users: string[] } {
-  const owners = [getString(fields ?? undefined, "ownerId"), getString(fields ?? undefined, "userId")].filter(Boolean);
+  const owners = [
+    getString(fields ?? undefined, "ownerId"),
+    getString(fields ?? undefined, "userId"),
+  ].filter(Boolean);
   const values = fields?.users?.arrayValue?.values ?? [];
   const users = values
     .map((entry) => getString(entry.mapValue?.fields, "userId") || entry.stringValue || "")
@@ -401,15 +476,27 @@ function mapUserIds(fields: FsFields | null): { owners: string[]; users: string[
   return { owners, users };
 }
 
-async function countCollection(projectId: string, accessToken: string, path: string, max = 500): Promise<number> {
+async function countCollection(
+  projectId: string,
+  accessToken: string,
+  path: string,
+  max = 500,
+): Promise<number> {
   let count = 0;
   let pageToken = "";
   for (let page = 0; page < 5 && count < max; page += 1) {
     const qs = new URLSearchParams({ pageSize: String(Math.min(100, max - count)) });
     if (pageToken) qs.set("pageToken", pageToken);
-    const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${qs.toString()}`);
+    const res = await firestoreFetch(
+      projectId,
+      accessToken,
+      `/${encodePath(path)}?${qs.toString()}`,
+    );
     if (!res.ok) return count;
-    const json = await res.json().catch(() => ({})) as { documents?: unknown[]; nextPageToken?: string };
+    const json = (await res.json().catch(() => ({}))) as {
+      documents?: unknown[];
+      nextPageToken?: string;
+    };
     count += Array.isArray(json.documents) ? json.documents.length : 0;
     pageToken = json.nextPageToken ?? "";
     if (!pageToken) break;
@@ -417,20 +504,26 @@ async function countCollection(projectId: string, accessToken: string, path: str
   return count;
 }
 
-async function enrichCandidates(projectId: string, accessToken: string, candidates: Map<string, Candidate>) {
-  await Promise.all(Array.from(candidates.values()).map(async (candidate) => {
-    const fields = await getDocFields(projectId, accessToken, `users/${candidate.id}`);
-    if (fields) candidate.fields = { ...candidate.fields, ...fields };
-    const [conversations, messages, contacts, bots, campaigns, templates] = await Promise.all([
-      countCollection(projectId, accessToken, `users/${candidate.id}/conversations`),
-      countCollection(projectId, accessToken, `users/${candidate.id}/messages`),
-      countCollection(projectId, accessToken, `users/${candidate.id}/contacts`),
-      countCollection(projectId, accessToken, `users/${candidate.id}/bots`),
-      countCollection(projectId, accessToken, `users/${candidate.id}/campaigns`),
-      countCollection(projectId, accessToken, `users/${candidate.id}/templates`),
-    ]);
-    candidate.samples = { conversations, messages, contacts, bots, campaigns, templates };
-  }));
+async function enrichCandidates(
+  projectId: string,
+  accessToken: string,
+  candidates: Map<string, Candidate>,
+) {
+  await Promise.all(
+    Array.from(candidates.values()).map(async (candidate) => {
+      const fields = await getDocFields(projectId, accessToken, `users/${candidate.id}`);
+      if (fields) candidate.fields = { ...candidate.fields, ...fields };
+      const [conversations, messages, contacts, bots, campaigns, templates] = await Promise.all([
+        countCollection(projectId, accessToken, `users/${candidate.id}/conversations`),
+        countCollection(projectId, accessToken, `users/${candidate.id}/messages`),
+        countCollection(projectId, accessToken, `users/${candidate.id}/contacts`),
+        countCollection(projectId, accessToken, `users/${candidate.id}/bots`),
+        countCollection(projectId, accessToken, `users/${candidate.id}/campaigns`),
+        countCollection(projectId, accessToken, `users/${candidate.id}/templates`),
+      ]);
+      candidate.samples = { conversations, messages, contacts, bots, campaigns, templates };
+    }),
+  );
 }
 
 function scoreCandidate(candidate: Candidate, selfUid: string): number {
@@ -438,7 +531,12 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
   const samples = candidate.samples ?? {};
   const dataOwner = getString(fields, "dataOwner");
   let score = 0;
-  const hasPhoneMatch = Boolean(candidate.fromTopLevel || candidate.fromConfig || candidate.fromMapOwner || candidate.fromMapUsers);
+  const hasPhoneMatch = Boolean(
+    candidate.fromTopLevel ||
+    candidate.fromConfig ||
+    candidate.fromMapOwner ||
+    candidate.fromMapUsers,
+  );
   const hasOwnershipSignal = Boolean(hasPhoneMatch || candidate.fromToken);
   if (candidate.id !== selfUid) score += 400;
   // An email match only proves the same login, not ownership of this WhatsApp
@@ -478,8 +576,13 @@ function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candi
   // the old mobile-app owner still appears as a non-agent top/config match.
   // Prefer that owner over the just-connected self, then use score only to
   // break ties between multiple historical owners.
-  const phoneLinkedRows = rows.filter((row) => row.fromTopLevel || row.fromConfig || row.fromMapOwner || row.fromMapUsers || row.fromToken);
-  const historicalOwners = phoneLinkedRows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
+  const phoneLinkedRows = rows.filter(
+    (row) =>
+      row.fromTopLevel || row.fromConfig || row.fromMapOwner || row.fromMapUsers || row.fromToken,
+  );
+  const historicalOwners = phoneLinkedRows.filter(
+    (row) => row.id !== selfUid && !getString(row.fields, "dataOwner"),
+  );
   if (historicalOwners.length > 0) {
     historicalOwners.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
     return historicalOwners[0] ?? null;
@@ -489,12 +592,31 @@ function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candi
   return ownerPool[0] ?? null;
 }
 
-function readCredentials(input: RepairInput, userFields: FsFields | null, cfgFields: FsFields | null): FsFields {
-  const accessToken = input.accessToken || getString(cfgFields ?? undefined, "accessToken") || getString(userFields ?? undefined, "whatsappAccessToken");
-  const businessAccountId = input.businessAccountId || getString(cfgFields ?? undefined, "businessAccountId") || getString(userFields ?? undefined, "whatsappBusinessAccountId");
-  const displayPhone = input.displayPhone || getString(cfgFields ?? undefined, "displayPhoneNumber") || getString(userFields ?? undefined, "whatsappDisplayPhone");
-  const businessName = input.businessName || getString(cfgFields ?? undefined, "businessName") || getString(userFields ?? undefined, "businessName");
-  const qualityRating = input.qualityRating || getString(cfgFields ?? undefined, "qualityRating") || getString(userFields ?? undefined, "whatsappQualityRating");
+function readCredentials(
+  input: RepairInput,
+  userFields: FsFields | null,
+  cfgFields: FsFields | null,
+): FsFields {
+  const accessToken =
+    input.accessToken ||
+    getString(cfgFields ?? undefined, "accessToken") ||
+    getString(userFields ?? undefined, "whatsappAccessToken");
+  const businessAccountId =
+    input.businessAccountId ||
+    getString(cfgFields ?? undefined, "businessAccountId") ||
+    getString(userFields ?? undefined, "whatsappBusinessAccountId");
+  const displayPhone =
+    input.displayPhone ||
+    getString(cfgFields ?? undefined, "displayPhoneNumber") ||
+    getString(userFields ?? undefined, "whatsappDisplayPhone");
+  const businessName =
+    input.businessName ||
+    getString(cfgFields ?? undefined, "businessName") ||
+    getString(userFields ?? undefined, "businessName");
+  const qualityRating =
+    input.qualityRating ||
+    getString(cfgFields ?? undefined, "qualityRating") ||
+    getString(userFields ?? undefined, "whatsappQualityRating");
   return {
     phoneNumberId: { stringValue: input.phoneNumberId },
     accessToken: { stringValue: accessToken },
@@ -523,7 +645,8 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
 }
 
 async function clearRemoteCache(phoneNumberId: string) {
-  const base = readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
+  const base =
+    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
   const url = new URL(`${base.replace(/\/$/, "")}/clear-cache.php`);
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
@@ -532,7 +655,8 @@ async function clearRemoteCache(phoneNumberId: string) {
 
 async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
   if (!accessToken) return;
-  const base = readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
+  const base =
+    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
   await fetch(`${base.replace(/\/$/, "")}/subscribe-webhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -554,16 +678,27 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `users/${uid}`),
       getDocFields(projectId, accessToken, `users/${uid}/whatsapp_config/config`),
     ]);
-    const callerPhone = getString(callerUserFields ?? undefined, "whatsappPhoneNumberId") || getString(callerCfgFields ?? undefined, "phoneNumberId");
+    const callerPhone =
+      getString(callerUserFields ?? undefined, "whatsappPhoneNumberId") ||
+      getString(callerCfgFields ?? undefined, "phoneNumberId");
     if (!data.accessToken && callerPhone && callerPhone !== data.phoneNumberId) {
       throw new Error("This WhatsApp number is not connected on the signed-in account");
     }
 
     const candidates = new Map<string, Candidate>();
-    const callerAccessToken = getString(callerCfgFields ?? undefined, "accessToken") || getString(callerUserFields ?? undefined, "whatsappAccessToken");
+    const callerAccessToken =
+      getString(callerCfgFields ?? undefined, "accessToken") ||
+      getString(callerUserFields ?? undefined, "whatsappAccessToken");
     const lookupAccessToken = data.accessToken || callerAccessToken;
 
-    const [topLevelMatches, configMatches, topLevelTokenMatches, configTokenMatches, emailMatches, waMapFields] = await Promise.all([
+    const [
+      topLevelMatches,
+      configMatches,
+      topLevelTokenMatches,
+      configTokenMatches,
+      emailMatches,
+      waMapFields,
+    ] = await Promise.all([
       queryUsersByTopLevelPhone(projectId, accessToken, data.phoneNumberId),
       queryUsersByConfigPhone(projectId, accessToken, data.phoneNumberId),
       queryUsersByTopLevelAccessToken(projectId, accessToken, lookupAccessToken),
@@ -599,8 +734,14 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     // exists. If we add the caller before resolution, a new website email can
     // win the score simply because it just saved fresh credentials, hijacking
     // webhook routing away from the mobile app's original owner.
-    if (callerPhone === data.phoneNumberId || getString(callerUserFields ?? undefined, "dataOwner")) {
-      mergeCandidate(candidates, uid, { fields: callerUserFields ?? {}, fromTopLevel: callerPhone === data.phoneNumberId });
+    if (
+      callerPhone === data.phoneNumberId ||
+      getString(callerUserFields ?? undefined, "dataOwner")
+    ) {
+      mergeCandidate(candidates, uid, {
+        fields: callerUserFields ?? {},
+        fromTopLevel: callerPhone === data.phoneNumberId,
+      });
     }
 
     await enrichCandidates(projectId, accessToken, candidates);
@@ -612,7 +753,10 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
 
     if (ownerId !== uid) {
       await Promise.all([
-        patchDoc(projectId, accessToken, `users/${uid}`, { ...topPatch, dataOwner: { stringValue: ownerId } }),
+        patchDoc(projectId, accessToken, `users/${uid}`, {
+          ...topPatch,
+          dataOwner: { stringValue: ownerId },
+        }),
         patchDoc(projectId, accessToken, `users/${uid}/whatsapp_config/config`, cfgPatch),
         patchDoc(projectId, accessToken, `users/${ownerId}`, topPatch),
         patchDoc(projectId, accessToken, `users/${ownerId}/whatsapp_config/config`, cfgPatch),

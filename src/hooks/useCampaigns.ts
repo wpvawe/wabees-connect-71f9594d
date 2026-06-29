@@ -36,28 +36,30 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
     const unsub = onSnapshot(
       collection(db, `users/${uid}/campaigns`),
       (snap) => {
-        const rows: Campaign[] = snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            name: (x.name as string) ?? "Untitled",
-            description: (x.description as string) ?? "",
-            status: (x.status as string) ?? "draft",
-            messageType: (x.messageType as string) ?? "text",
-            messageBody: (x.messageBody as string) ?? "",
-            templateName: (x.templateName as string | null) ?? null,
-            totalRecipients: (x.totalRecipients as number) ?? 0,
-            audiencePhones: (x.audiencePhones as string[] | undefined) ?? [],
-            sentCount: (x.sentCount as number) ?? 0,
-            deliveredCount: (x.deliveredCount as number) ?? 0,
-            readCount: (x.readCount as number) ?? 0,
-            failedCount: (x.failedCount as number) ?? 0,
-            createdAt: toIso(x.createdAt),
-            scheduledAt: toIso(x.scheduledAt),
-            startedAt: toIso(x.startedAt),
-            completedAt: toIso(x.completedAt),
-          };
-        }).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+        const rows: Campaign[] = snap.docs
+          .map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              name: (x.name as string) ?? "Untitled",
+              description: (x.description as string) ?? "",
+              status: (x.status as string) ?? "draft",
+              messageType: (x.messageType as string) ?? "text",
+              messageBody: (x.messageBody as string) ?? "",
+              templateName: (x.templateName as string | null) ?? null,
+              totalRecipients: (x.totalRecipients as number) ?? 0,
+              audiencePhones: (x.audiencePhones as string[] | undefined) ?? [],
+              sentCount: (x.sentCount as number) ?? 0,
+              deliveredCount: (x.deliveredCount as number) ?? 0,
+              readCount: (x.readCount as number) ?? 0,
+              failedCount: (x.failedCount as number) ?? 0,
+              createdAt: toIso(x.createdAt),
+              scheduledAt: toIso(x.scheduledAt),
+              startedAt: toIso(x.startedAt),
+              completedAt: toIso(x.completedAt),
+            };
+          })
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
         setData(rows);
       },
       (err) => setError(err.message),

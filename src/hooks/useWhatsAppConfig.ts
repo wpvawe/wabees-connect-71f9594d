@@ -14,7 +14,11 @@ export type WhatsAppConfig = {
 };
 
 /** Live WhatsApp connection status, sourced from `users/{uid}`. */
-export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boolean; error: string | null } {
+export function useWhatsAppConfig(): {
+  data: WhatsAppConfig | null;
+  loading: boolean;
+  error: string | null;
+} {
   // Match Flutter whatsappConfigProvider: connection/config UI watches the
   // signed-in user's own doc. Data lists use effective UID separately.
   const uid = useFirebaseUid();
@@ -45,8 +49,7 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
         (usr.whatsappPhoneNumberId as string | undefined) ??
         null;
       const connected =
-        Boolean(phone_number_id) &&
-        (Boolean(sub.isConnected) || Boolean(usr.whatsappConnected));
+        Boolean(phone_number_id) && (Boolean(sub.isConnected) || Boolean(usr.whatsappConnected));
       if (!connected) {
         setData(null);
         return;
@@ -70,7 +73,7 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
           (usr.whatsappQualityRating as string | undefined) ??
           null,
         connected: true,
-        method: (sub.connectedVia === "embedded_signup" ? "embedded_signup" : "manual"),
+        method: sub.connectedVia === "embedded_signup" ? "embedded_signup" : "manual",
       });
     }
     const unsubUser = onSnapshot(
@@ -80,7 +83,10 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
         userDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
         merge();
       },
-      (err) => { setLoading(false); setError(err.message); },
+      (err) => {
+        setLoading(false);
+        setError(err.message);
+      },
     );
     const unsubSub = onSnapshot(
       doc(fbDb(), "users", uid, "whatsapp_config", "config"),
@@ -89,9 +95,15 @@ export function useWhatsAppConfig(): { data: WhatsAppConfig | null; loading: boo
         subDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
         merge();
       },
-      (err) => { setLoading(false); setError(err.message); },
+      (err) => {
+        setLoading(false);
+        setError(err.message);
+      },
     );
-    return () => { unsubUser(); unsubSub(); };
+    return () => {
+      unsubUser();
+      unsubSub();
+    };
   }, [uid]);
 
   return { data, loading, error };

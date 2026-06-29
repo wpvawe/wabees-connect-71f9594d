@@ -79,15 +79,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Wabees — WhatsApp Business Automation Platform" },
-      { name: "description", content: "Wabees is the all-in-one WhatsApp Business platform for teams: shared inbox, AI bots, broadcast campaigns, templates, catalog & analytics — powered by the official Meta Cloud API." },
+      {
+        name: "description",
+        content:
+          "Wabees is the all-in-one WhatsApp Business platform for teams: shared inbox, AI bots, broadcast campaigns, templates, catalog & analytics — powered by the official Meta Cloud API.",
+      },
       { name: "author", content: "Wabees" },
       { name: "theme-color", content: "#25D366" },
       { property: "og:title", content: "Wabees — WhatsApp Business Automation" },
-      { property: "og:description", content: "Shared inbox, AI bots, broadcast campaigns and analytics on the official WhatsApp Cloud API." },
+      {
+        property: "og:description",
+        content:
+          "Shared inbox, AI bots, broadcast campaigns and analytics on the official WhatsApp Cloud API.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Wabees — WhatsApp Business Automation" },
-      { name: "twitter:description", content: "Shared inbox, AI bots, broadcast campaigns and analytics on the official WhatsApp Cloud API." },
+      {
+        name: "twitter:description",
+        content:
+          "Shared inbox, AI bots, broadcast campaigns and analytics on the official WhatsApp Cloud API.",
+      },
     ],
     links: [
       {

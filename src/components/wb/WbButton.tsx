@@ -27,7 +27,17 @@ const sizeClasses: Record<Size, string> = {
 };
 
 export const WbButton = forwardRef<HTMLButtonElement, Props>(function WbButton(
-  { variant = "primary", size = "md", loading, fullWidth, className, children, disabled, style, ...rest },
+  {
+    variant = "primary",
+    size = "md",
+    loading,
+    fullWidth,
+    className,
+    children,
+    disabled,
+    style,
+    ...rest
+  },
   ref,
 ) {
   const fbStyle = variant === "facebook" ? { backgroundColor: "#1877F2", ...style } : style;

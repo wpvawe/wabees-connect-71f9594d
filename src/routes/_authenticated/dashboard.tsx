@@ -1,6 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlug, faComments, faBullhorn, faRobot, faCircleNotch, faAddressBook, faChartColumn, faUsers, faBrain, faHeadset } from "@fortawesome/free-solid-svg-icons";
+import {
+  faPlug,
+  faComments,
+  faBullhorn,
+  faRobot,
+  faCircleNotch,
+  faAddressBook,
+  faChartColumn,
+  faUsers,
+  faBrain,
+  faHeadset,
+} from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -33,14 +44,30 @@ function DashboardPage() {
             icon={faPlug}
             title="Connect WhatsApp to get started"
             description="Link your WhatsApp Business number to unlock the inbox, templates, and campaigns."
-            action={<Link to="/connect"><WbButton>Connect WhatsApp</WbButton></Link>}
+            action={
+              <Link to="/connect">
+                <WbButton>Connect WhatsApp</WbButton>
+              </Link>
+            }
           />
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <Stat icon={faComments} label="Messages" value={String(profile?.totalMessages ?? "—")} />
-              <Stat icon={faAddressBook} label="Contacts" value={String(profile?.totalContacts ?? "—")} />
-              <Stat icon={faBullhorn} label="Campaigns" value={String(profile?.totalCampaigns ?? "—")} />
+              <Stat
+                icon={faComments}
+                label="Messages"
+                value={String(profile?.totalMessages ?? "—")}
+              />
+              <Stat
+                icon={faAddressBook}
+                label="Contacts"
+                value={String(profile?.totalContacts ?? "—")}
+              />
+              <Stat
+                icon={faBullhorn}
+                label="Campaigns"
+                value={String(profile?.totalCampaigns ?? "—")}
+              />
               <Stat icon={faRobot} label="Bots" value={String(profile?.totalBots ?? "—")} />
               <Stat icon={faPlug} label="Plan" value={subscription?.planName ?? "—"} />
             </div>
@@ -59,7 +86,10 @@ function DashboardPage() {
 
 function QuickAction({ to, icon, label }: { to: string; icon: typeof faPlug; label: string }) {
   return (
-    <Link to={to} className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft transition-colors hover:bg-muted">
+    <Link
+      to={to}
+      className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft transition-colors hover:bg-muted"
+    >
       <span className="text-sm font-semibold text-foreground">{label}</span>
       <FontAwesomeIcon icon={icon} className="h-4 w-4 text-primary" />
     </Link>
@@ -79,4 +109,3 @@ function Stat({ icon, label, value }: { icon: typeof faPlug; label: string; valu
     </WbCard>
   );
 }
-

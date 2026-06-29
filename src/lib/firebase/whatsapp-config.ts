@@ -1,4 +1,15 @@
-import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  arrayUnion,
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
@@ -35,7 +46,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // not configured on the Worker, fall through to the client-side flow which
   // now works because Firestore rules allow authenticated reads of wa_map and
   // agent reads via `dataOwner`. Never block the connect flow on this.
-  const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
+  const serverIdToken = await fbAuth()
+    .currentUser?.getIdToken()
+    .catch(() => null);
   if (!serverIdToken) throw new Error("Please sign in again before connecting WhatsApp");
   try {
     const serverRepair = await repairWhatsAppOwnerServer({
@@ -51,7 +64,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       },
     }).catch((err) => {
       // Backend not configured / unreachable — log and fall back to client flow.
-      console.warn("[wa-connect] server repair unavailable, using client fallback:", err instanceof Error ? err.message : err);
+      console.warn(
+        "[wa-connect] server repair unavailable, using client fallback:",
+        err instanceof Error ? err.message : err,
+      );
       return null;
     });
     await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
@@ -96,7 +112,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     }
   } catch (error) {
     // Non-fatal: continue to client-side fallback below.
-    console.warn("[wa-connect] server repair failed, using client fallback:", error instanceof Error ? error.message : error);
+    console.warn(
+      "[wa-connect] server repair failed, using client fallback:",
+      error instanceof Error ? error.message : error,
+    );
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
@@ -104,11 +123,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // UID's `whatsappPhoneNumberId`, otherwise a brand-new email contaminates the
   // lookup and can look like the owner.
   const currentUserSnap = await getDoc(userRef).catch(() => null);
-  const currentUserData = currentUserSnap?.exists() ? (currentUserSnap.data() as Record<string, unknown>) : {};
-  const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
-    ? currentUserData.dataOwner.trim()
-    : null;
-  const existingOwnerId = existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
+  const currentUserData = currentUserSnap?.exists()
+    ? (currentUserSnap.data() as Record<string, unknown>)
+    : {};
+  const existingDataOwner =
+    typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
+      ? currentUserData.dataOwner.trim()
+      : null;
+  const existingOwnerId =
+    existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
 
@@ -124,7 +147,8 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     if (mapSnap.exists()) {
       mapExists = true;
       const m = mapSnap.data() as Record<string, unknown>;
-      const owner = typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
+      const owner =
+        typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
       if (owner && owner !== input.uid) mapOwnerOther = owner;
       if (owner === input.uid) mapOwnerSelf = true;
     }
@@ -132,9 +156,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     /* rules may block — ignore */
   }
 
-  const effectiveOwner = isAgent
-    ? existingOwnerId
-    : (mapOwnerOther ?? null);
+  const effectiveOwner = isAgent ? existingOwnerId : (mapOwnerOther ?? null);
   const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
 
   // CRITICAL: when this UID will become an agent of `effectiveOwner`, we MUST
@@ -251,7 +273,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
               ownerId: effectiveOwner,
               userId: effectiveOwner,
               users: arrayUnion({ userId: input.uid }, { userId: effectiveOwner }),
-                active: true,
+              active: true,
               updatedAt: now,
             }
           : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
@@ -281,7 +303,11 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         { merge: true },
       ).catch(() => {});
     } else {
-      await setDoc(mapRef, { users: arrayUnion({ userId: input.uid }), updatedAt: now }, { merge: true }).catch(() => {});
+      await setDoc(
+        mapRef,
+        { users: arrayUnion({ userId: input.uid }), updatedAt: now },
+        { merge: true },
+      ).catch(() => {});
     }
   }
 
@@ -300,7 +326,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // see all users/wa_map documents, unlike client rules which only expose the
   // signed-in user's own docs. This fixes reconnects where the website UID had
   // already hijacked wa_map and the mobile app kept reading the old owner tree.
-  const idToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
+  const idToken = await fbAuth()
+    .currentUser?.getIdToken()
+    .catch(() => null);
   if (idToken) {
     await repairWhatsAppOwnerServer({
       data: {
@@ -324,9 +352,9 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
   const data = snap?.exists() ? (snap.data() as Record<string, unknown>) : {};
   const phoneId =
     (data.whatsappPhoneNumberId as string | undefined) ??
-    (await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).then((s) =>
-      s.exists() ? (s.data().phoneNumberId as string | undefined) : undefined,
-    ).catch(() => undefined));
+    (await getDoc(doc(db, "users", uid, "whatsapp_config", "config"))
+      .then((s) => (s.exists() ? (s.data().phoneNumberId as string | undefined) : undefined))
+      .catch(() => undefined));
   const dataOwner = (data.dataOwner as string | undefined) ?? "";
   const isAgent = Boolean(dataOwner);
   await Promise.all([
@@ -374,7 +402,9 @@ export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: strin
   ]);
 }
 
-async function loadOwnWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
+async function loadOwnWaCredentials(
+  uid: string,
+): Promise<{ phone_number_id: string; access_token: string } | null> {
   const db = fbDb();
   const self = await getDoc(doc(db, "users", uid)).catch(() => null);
   const sub = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
@@ -393,11 +423,14 @@ async function loadOwnWaCredentials(uid: string): Promise<{ phone_number_id: str
   return null;
 }
 
-export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
+export async function loadWaCredentials(
+  uid: string,
+): Promise<{ phone_number_id: string; access_token: string } | null> {
   const db = fbDb();
   const self = await getDoc(doc(db, "users", uid)).catch(() => null);
   const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
-  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
+  const dataOwner =
+    typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
   // Match Flutter _resolveConfig: agents try the owner's config first, then
   // fall back to their own config if the owner has no credentials.
   if (dataOwner && dataOwner !== uid) {
@@ -414,7 +447,9 @@ export async function repairWhatsAppOwnership(uid: string): Promise<string | nul
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef).catch(() => null);
   const user = userSnap?.exists() ? (userSnap.data() as Record<string, unknown>) : {};
-  const cfgSnap = await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).catch(() => null);
+  const cfgSnap = await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).catch(
+    () => null,
+  );
   const cfg = cfgSnap?.exists() ? (cfgSnap.data() as Record<string, unknown>) : {};
   const phoneNumberId =
     (typeof user.whatsappPhoneNumberId === "string" && user.whatsappPhoneNumberId) ||

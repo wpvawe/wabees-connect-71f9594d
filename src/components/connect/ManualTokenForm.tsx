@@ -28,7 +28,11 @@ export function ManualTokenForm() {
   // like the mobile app's userIdProvider. Shared business data is still read
   // through dataOwner/effective UID after saveWhatsAppConfig resolves ownership.
   const uid = useFirebaseUid();
-  const { register, handleSubmit, formState: { errors } } = useForm<ManualConnectValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ManualConnectValues>({
     resolver: zodResolver(manualConnectSchema),
   });
   const m = useMutation({
@@ -40,7 +44,10 @@ export function ManualTokenForm() {
       let waba_id = v.waba_id?.trim() || undefined;
       let businessName: string | undefined;
       try {
-        const smart = await smartConnectWhatsApp({ phone_number_id: v.phone_number_id, access_token: v.access_token });
+        const smart = await smartConnectWhatsApp({
+          phone_number_id: v.phone_number_id,
+          access_token: v.access_token,
+        });
         if (smart.success && smart.data) {
           phone = smart.data.phone ?? {};
           if (!waba_id && smart.data.waba_id) waba_id = smart.data.waba_id;
@@ -49,26 +56,37 @@ export function ManualTokenForm() {
           toast.message(`Auto-detect skipped: ${smart.message}`);
         }
       } catch (e) {
-        toast.message(e instanceof Error ? `Auto-detect skipped: ${e.message}` : "Auto-detect skipped");
+        toast.message(
+          e instanceof Error ? `Auto-detect skipped: ${e.message}` : "Auto-detect skipped",
+        );
       }
 
       if (!phone.display_phone_number || !phone.verified_name || !phone.quality_rating) {
         try {
-          const verified = await verifyWhatsAppToken({ phone_number_id: v.phone_number_id, access_token: v.access_token });
+          const verified = await verifyWhatsAppToken({
+            phone_number_id: v.phone_number_id,
+            access_token: v.access_token,
+          });
           if (verified.raw.error && typeof verified.raw.error === "object") {
             const msg = (verified.raw.error as { message?: string }).message;
             if (msg) toast.message(`Phone verify skipped: ${msg}`);
           } else {
             phone = {
-              display_phone_number: (verified.raw.display_phone_number as string | undefined) ?? phone.display_phone_number,
-              verified_name: (verified.raw.verified_name as string | undefined) ?? phone.verified_name,
-              quality_rating: (verified.raw.quality_rating as string | undefined) ?? phone.quality_rating,
+              display_phone_number:
+                (verified.raw.display_phone_number as string | undefined) ??
+                phone.display_phone_number,
+              verified_name:
+                (verified.raw.verified_name as string | undefined) ?? phone.verified_name,
+              quality_rating:
+                (verified.raw.quality_rating as string | undefined) ?? phone.quality_rating,
             };
             if (!waba_id) waba_id = verified.raw.business_account_id as string | undefined;
             businessName = businessName ?? phone.verified_name;
           }
         } catch (e) {
-          toast.message(e instanceof Error ? `Phone verify skipped: ${e.message}` : "Phone verify skipped");
+          toast.message(
+            e instanceof Error ? `Phone verify skipped: ${e.message}` : "Phone verify skipped",
+          );
         }
       }
 
@@ -114,14 +132,27 @@ export function ManualTokenForm() {
         />
       </div>
       <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
-        <MiniNote icon={faPhone} title="Phone verify" text="Display phone, verified name aur quality best-effort fetch." />
-        <MiniNote icon={faSitemap} title="WABA dependent" text="Templates aur business details WABA ID ke baghair limited rahen gi." />
-        <MiniNote icon={faLock} title="App parity" text="Website ab same PHP backend use karti hai jo mobile app karta hai." />
+        <MiniNote
+          icon={faPhone}
+          title="Phone verify"
+          text="Display phone, verified name aur quality best-effort fetch."
+        />
+        <MiniNote
+          icon={faSitemap}
+          title="WABA dependent"
+          text="Templates aur business details WABA ID ke baghair limited rahen gi."
+        />
+        <MiniNote
+          icon={faLock}
+          title="App parity"
+          text="Website ab same PHP backend use karti hai jo mobile app karta hai."
+        />
       </div>
       <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <FontAwesomeIcon icon={faCircleInfo} className="mt-0.5 h-3.5 w-3.5 text-primary" />
-          Agar WABA auto-fetch na ho, connection phir bhi save ho jayega; WABA add karne par templates/insights unlock ho jayen ge.
+          Agar WABA auto-fetch na ho, connection phir bhi save ho jayega; WABA add karne par
+          templates/insights unlock ho jayen ge.
         </p>
         <WbButton type="submit" loading={m.isPending} className="shrink-0">
           Connect account

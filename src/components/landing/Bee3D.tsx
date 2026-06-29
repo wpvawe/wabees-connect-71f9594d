@@ -40,10 +40,28 @@ export function Bee3D({ className }: { className?: string }) {
     scene.add(warm);
 
     // Materials
-    const yellow = new THREE.MeshStandardMaterial({ color: 0xdaa520, emissive: 0x6b4c00, emissiveIntensity: 0.12, roughness: 0.6, metalness: 0.15 });
+    const yellow = new THREE.MeshStandardMaterial({
+      color: 0xdaa520,
+      emissive: 0x6b4c00,
+      emissiveIntensity: 0.12,
+      roughness: 0.6,
+      metalness: 0.15,
+    });
     const black = new THREE.MeshStandardMaterial({ color: 0x2c1810, roughness: 0.7 });
-    const brown = new THREE.MeshStandardMaterial({ color: 0x8b4513, emissive: 0x3d1f00, emissiveIntensity: 0.08, roughness: 0.6 });
-    const wingMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.9, opacity: 0.35, transparent: true, roughness: 0.05, thickness: 0.2 });
+    const brown = new THREE.MeshStandardMaterial({
+      color: 0x8b4513,
+      emissive: 0x3d1f00,
+      emissiveIntensity: 0.08,
+      roughness: 0.6,
+    });
+    const wingMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      transmission: 0.9,
+      opacity: 0.35,
+      transparent: true,
+      roughness: 0.05,
+      thickness: 0.2,
+    });
 
     const bee = new THREE.Group();
 

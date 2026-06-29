@@ -14,7 +14,11 @@ export type SupportMessage = {
   createdAt: string | null;
 };
 
-export function useSupportChat(): { data: SupportMessage[] | null; error: string | null; uid: string | null } {
+export function useSupportChat(): {
+  data: SupportMessage[] | null;
+  error: string | null;
+  uid: string | null;
+} {
   const uid = useFirebaseUid();
   const [data, setData] = useState<SupportMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);

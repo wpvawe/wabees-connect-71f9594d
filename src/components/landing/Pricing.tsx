@@ -15,7 +15,13 @@ const PLANS = [
     price: "$29",
     blurb: "For growing teams.",
     cta: "Choose Business",
-    features: ["Everything in Starter", "Unlimited agents", "AI bot + flow builder", "10k broadcast / month", "Catalog & analytics"],
+    features: [
+      "Everything in Starter",
+      "Unlimited agents",
+      "AI bot + flow builder",
+      "10k broadcast / month",
+      "Catalog & analytics",
+    ],
     accent: true,
   },
   {
@@ -23,7 +29,12 @@ const PLANS = [
     price: "Custom",
     blurb: "For high-volume senders.",
     cta: "Talk to sales",
-    features: ["Everything in Business", "Dedicated IP & support", "SSO & audit log", "Unlimited broadcast"],
+    features: [
+      "Everything in Business",
+      "Dedicated IP & support",
+      "SSO & audit log",
+      "Unlimited broadcast",
+    ],
     accent: false,
   },
 ];
@@ -38,8 +49,8 @@ export function Pricing() {
             Simple, predictable plans.
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Pay monthly, cancel anytime. All plans use the official Meta Cloud API — Meta&apos;s conversation
-            fees billed separately at cost.
+            Pay monthly, cancel anytime. All plans use the official Meta Cloud API — Meta&apos;s
+            conversation fees billed separately at cost.
           </p>
         </div>
         <div className="mt-12 grid gap-6 md:grid-cols-3">
@@ -62,7 +73,9 @@ export function Pricing() {
               <p className="mt-1 text-sm text-muted-foreground">{p.blurb}</p>
               <p className="mt-4 text-4xl font-semibold tracking-tight text-foreground">
                 {p.price}
-                {p.price.startsWith("$") && <span className="text-base font-normal text-muted-foreground">/mo</span>}
+                {p.price.startsWith("$") && (
+                  <span className="text-base font-normal text-muted-foreground">/mo</span>
+                )}
               </p>
               <ul className="mt-6 flex-1 space-y-2 text-sm">
                 {p.features.map((f) => (

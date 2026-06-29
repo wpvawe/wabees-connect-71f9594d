@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch, faTrash, faMagnifyingGlass, faAddressBook } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleNotch,
+  faTrash,
+  faMagnifyingGlass,
+  faAddressBook,
+} from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { deleteContact } from "@/lib/firebase/contacts";
@@ -18,7 +23,10 @@ export function ContactsTable() {
     if (!q.trim()) return data;
     const n = q.toLowerCase();
     return data.filter(
-      (c) => c.name.toLowerCase().includes(n) || c.phone.includes(n) || c.tags.some((t) => t.toLowerCase().includes(n)),
+      (c) =>
+        c.name.toLowerCase().includes(n) ||
+        c.phone.includes(n) ||
+        c.tags.some((t) => t.toLowerCase().includes(n)),
     );
   }, [data, q]);
 
@@ -37,7 +45,10 @@ export function ContactsTable() {
     <div className="rounded-2xl border border-border bg-card">
       <div className="border-b border-border p-3">
         <div className="relative">
-          <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <FontAwesomeIcon
+            icon={faMagnifyingGlass}
+            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -81,7 +92,10 @@ export function ContactsTable() {
                   <td className="px-4 py-2">
                     <div className="flex flex-wrap gap-1">
                       {c.tags.map((t) => (
-                        <span key={t} className="rounded-full bg-accent px-2 py-0.5 text-[10px] text-accent-foreground">
+                        <span
+                          key={t}
+                          className="rounded-full bg-accent px-2 py-0.5 text-[10px] text-accent-foreground"
+                        >
                           {t}
                         </span>
                       ))}

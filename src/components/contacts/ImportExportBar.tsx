@@ -33,7 +33,12 @@ export function ImportExportBar() {
               phone: String(r.phone).trim(),
               email: r.email ? String(r.email).trim() : undefined,
               company: r.company ? String(r.company).trim() : undefined,
-              tags: r.tags ? String(r.tags).split(/[,;]/).map((s) => s.trim()).filter(Boolean) : [],
+              tags: r.tags
+                ? String(r.tags)
+                    .split(/[,;]/)
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : [],
             }));
           if (contacts.length === 0) {
             toast.error("CSV needs columns: name, phone (also email, company, tags)");
@@ -83,7 +88,12 @@ export function ImportExportBar() {
         <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
         Add contact
       </WbButton>
-      <WbButton variant="secondary" size="sm" onClick={() => fileRef.current?.click()} loading={busy}>
+      <WbButton
+        variant="secondary"
+        size="sm"
+        onClick={() => fileRef.current?.click()}
+        loading={busy}
+      >
         <FontAwesomeIcon icon={faFileImport} className="h-3.5 w-3.5" />
         Import CSV
       </WbButton>
@@ -91,7 +101,13 @@ export function ImportExportBar() {
         <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5" />
         Export CSV
       </WbButton>
-      <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        onChange={onFile}
+        className="hidden"
+      />
       {showAdd && (
         <QuickAdd
           onClose={() => setShowAdd(false)}
@@ -107,7 +123,9 @@ function QuickAdd({
   onSave,
 }: {
   onClose: () => void;
-  onSave: (args: { data: { name: string; phone: string; tags: string[] } }) => Promise<{ id: string }>;
+  onSave: (args: {
+    data: { name: string; phone: string; tags: string[] };
+  }) => Promise<{ id: string }>;
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -122,7 +140,10 @@ function QuickAdd({
         data: {
           name: name.trim(),
           phone: phone.trim(),
-          tags: tags.split(/[,;]/).map((s) => s.trim()).filter(Boolean),
+          tags: tags
+            .split(/[,;]/)
+            .map((s) => s.trim())
+            .filter(Boolean),
         },
       });
       toast.success("Contact added");
@@ -135,20 +156,42 @@ function QuickAdd({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-soft" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-soft"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="text-base font-semibold text-foreground">Add contact</h3>
         <div className="mt-4 space-y-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2" />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+923001234567"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2" />
-          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tags (comma separated)"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Full name"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2"
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+923001234567"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2"
+          />
+          <input
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="Tags (comma separated)"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2"
+          />
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <WbButton variant="ghost" onClick={onClose}>Cancel</WbButton>
-          <WbButton onClick={() => void save()} loading={busy}>Save</WbButton>
+          <WbButton variant="ghost" onClick={onClose}>
+            Cancel
+          </WbButton>
+          <WbButton onClick={() => void save()} loading={busy}>
+            Save
+          </WbButton>
         </div>
       </div>
     </div>

@@ -25,14 +25,19 @@ export function HowItWorks() {
     <section id="how" className="border-y border-border bg-card/40">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
         <div className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-wider text-primary">How it works</p>
+          <p className="text-sm font-semibold uppercase tracking-wider text-primary">
+            How it works
+          </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
             From zero to live in under 2 minutes.
           </h2>
         </div>
         <ol className="mt-12 grid gap-6 md:grid-cols-3">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="relative rounded-2xl border border-border bg-background p-6 shadow-soft">
+            <li
+              key={s.title}
+              className="relative rounded-2xl border border-border bg-background p-6 shadow-soft"
+            >
               <span className="absolute -top-3 left-6 inline-flex h-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-bold text-primary-foreground">
                 Step {i + 1}
               </span>

@@ -1,4 +1,14 @@
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  serverTimestamp,
+  where,
+  writeBatch,
+} from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { fetchMetaTemplates } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
@@ -9,7 +19,12 @@ type MetaTemplate = {
   category?: string;
   language?: string;
   status?: string;
-  components?: Array<{ type?: string; text?: string; format?: string; buttons?: Array<Record<string, unknown>> }>;
+  components?: Array<{
+    type?: string;
+    text?: string;
+    format?: string;
+    buttons?: Array<Record<string, unknown>>;
+  }>;
   quality_score?: { score?: string } | string;
 };
 
@@ -38,7 +53,10 @@ function extractVariables(body: string): string[] {
   return Array.from(new Set(matches.map((m) => m.replace(/[{}\s]/g, ""))));
 }
 
-export async function syncTemplatesFromMeta(uid: string, credentialUid = uid): Promise<{ synced: number }> {
+export async function syncTemplatesFromMeta(
+  uid: string,
+  credentialUid = uid,
+): Promise<{ synced: number }> {
   const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   // Load WABA id from the same config doc the Flutter app uses. The PHP
@@ -54,7 +72,10 @@ export async function syncTemplatesFromMeta(uid: string, credentialUid = uid): P
 
   if (!waba_id) throw new Error("WABA ID missing — add it on Connect page to sync templates");
 
-  const res = await fetchMetaTemplates({ business_account_id: waba_id, access_token: creds.access_token });
+  const res = await fetchMetaTemplates({
+    business_account_id: waba_id,
+    access_token: creds.access_token,
+  });
   if (res.raw.error && typeof res.raw.error === "object") {
     const msg = (res.raw.error as { message?: string }).message;
     throw new Error(msg ?? "Could not fetch templates");
@@ -70,7 +91,8 @@ export async function syncTemplatesFromMeta(uid: string, credentialUid = uid): P
   for (const t of list) {
     if (!t.name) continue;
     const { body, header, footer, buttons } = extractParts(t.components);
-    const qualityScore = typeof t.quality_score === "string" ? t.quality_score : t.quality_score?.score;
+    const qualityScore =
+      typeof t.quality_score === "string" ? t.quality_score : t.quality_score?.score;
     const payload = {
       metaTemplateId: t.id ?? null,
       name: t.name,

@@ -40,14 +40,23 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
       repairTimer = null;
     }
     const unsub = onAuthStateChanged(fbAuth(), (u) => {
-      if (unsubProfile) { unsubProfile(); unsubProfile = null; }
-      if (unsubConfig) { unsubConfig(); unsubConfig = null; }
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+      if (unsubConfig) {
+        unsubConfig();
+        unsubConfig = null;
+      }
       clearRepairTimer();
       currentPhoneNumberId = "";
       currentDataOwner = null;
       repairInFlight = false;
       verifiedSelfPhoneNumberId = "";
-      if (!u) { setState({ status: "no_uid" }); return; }
+      if (!u) {
+        setState({ status: "no_uid" });
+        return;
+      }
       // Keep loading until the first profile snapshot arrives; otherwise
       // agent accounts briefly subscribe to their own empty subcollections
       // before `dataOwner` resolves to the owner UID.
@@ -79,7 +88,8 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
       function recomputeSession() {
         if (!profileLoaded || !configLoaded) return;
         const dataOwnerRaw = profile.dataOwner;
-        const dataOwner = typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw.trim() : null;
+        const dataOwner =
+          typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw.trim() : null;
         // Flutter reads WhatsApp credentials from users/{uid}/whatsapp_config/config.
         // Older mobile accounts may not have the top-level mirror populated, so
         // include the config doc here before deciding which owner's data tree to use.
@@ -88,12 +98,23 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         currentDataOwner = dataOwner;
         if (!repairTimer) {
           repairTimer = window.setInterval(() => {
-            if (!currentPhoneNumberId || (currentDataOwner && currentDataOwner !== user.uid) || repairInFlight) return;
+            if (
+              !currentPhoneNumberId ||
+              (currentDataOwner && currentDataOwner !== user.uid) ||
+              repairInFlight
+            )
+              return;
             void resolveOwner(currentPhoneNumberId)
               .then((ownerId) => {
                 if (ownerId && ownerId !== user.uid) {
                   currentDataOwner = ownerId;
-                  setState({ status: "ready", uid: user.uid, effectiveUid: ownerId, dataOwner: ownerId, user });
+                  setState({
+                    status: "ready",
+                    uid: user.uid,
+                    effectiveUid: ownerId,
+                    dataOwner: ownerId,
+                    user,
+                  });
                 } else if (ownerId === user.uid) {
                   verifiedSelfPhoneNumberId = currentPhoneNumberId;
                 }
@@ -101,7 +122,11 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
               .catch(() => undefined);
           }, 30_000);
         }
-        if (phoneNumberId && (!dataOwner || dataOwner === user.uid) && verifiedSelfPhoneNumberId !== phoneNumberId) {
+        if (
+          phoneNumberId &&
+          (!dataOwner || dataOwner === user.uid) &&
+          verifiedSelfPhoneNumberId !== phoneNumberId
+        ) {
           if (repairInFlight) {
             setState({ status: "loading" });
             return;
@@ -113,21 +138,45 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
           void resolveOwner(phoneNumberId)
             .then((ownerId) => {
               if (ownerId && ownerId !== user.uid) {
-                setState({ status: "ready", uid: user.uid, effectiveUid: ownerId, dataOwner: ownerId, user });
+                setState({
+                  status: "ready",
+                  uid: user.uid,
+                  effectiveUid: ownerId,
+                  dataOwner: ownerId,
+                  user,
+                });
               } else if (ownerId === user.uid) {
                 verifiedSelfPhoneNumberId = phoneNumberId;
-                setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
+                setState({
+                  status: "ready",
+                  uid: user.uid,
+                  effectiveUid: user.uid,
+                  dataOwner: null,
+                  user,
+                });
               } else {
                 // resolveOwner returned null (server unreachable / no candidate).
                 // Fall back to self so UI is not stuck on "loading" forever;
                 // the 30s interval will retry repair in the background.
-                setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
+                setState({
+                  status: "ready",
+                  uid: user.uid,
+                  effectiveUid: user.uid,
+                  dataOwner: null,
+                  user,
+                });
               }
             })
             .catch(() => {
               // On error fall back to self instead of staying stuck in loading;
               // the 30s interval will retry repair.
-              setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
+              setState({
+                status: "ready",
+                uid: user.uid,
+                effectiveUid: user.uid,
+                dataOwner: null,
+                user,
+              });
             });
           return;
         }
@@ -140,24 +189,32 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      unsubProfile = onSnapshot(doc(fbDb(), "users", user.uid), (snap) => {
-        profileLoaded = true;
-        profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-        recomputeSession();
-      }, () => {
-        profileLoaded = true;
-        profile = {};
-        recomputeSession();
-      });
-      unsubConfig = onSnapshot(doc(fbDb(), "users", user.uid, "whatsapp_config", "config"), (snap) => {
-        configLoaded = true;
-        config = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-        recomputeSession();
-      }, () => {
-        configLoaded = true;
-        config = {};
-        recomputeSession();
-      });
+      unsubProfile = onSnapshot(
+        doc(fbDb(), "users", user.uid),
+        (snap) => {
+          profileLoaded = true;
+          profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+          recomputeSession();
+        },
+        () => {
+          profileLoaded = true;
+          profile = {};
+          recomputeSession();
+        },
+      );
+      unsubConfig = onSnapshot(
+        doc(fbDb(), "users", user.uid, "whatsapp_config", "config"),
+        (snap) => {
+          configLoaded = true;
+          config = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+          recomputeSession();
+        },
+        () => {
+          configLoaded = true;
+          config = {};
+          recomputeSession();
+        },
+      );
     });
     return () => {
       unsub();

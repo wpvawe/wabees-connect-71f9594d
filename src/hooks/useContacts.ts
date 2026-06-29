@@ -31,24 +31,26 @@ export function useContacts(): { data: Contact[] | null; error: string | null } 
     const unsub = onSnapshot(
       collection(db, `users/${uid}/contacts`),
       (snap) => {
-        const rows: Contact[] = snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          const phone = str(x.phone, d.id);
-          return {
-            id: d.id,
-            phone: phone ? normalizePhone(phone) : "",
-            name: str(x.name, phone || d.id),
-            email: strOrNull(x.email),
-            company: strOrNull(x.company),
-            notes: strOrNull(x.notes),
-            tags: listOfStrings(x.tags),
-            group: strOrNull(x.group),
-            profileImageUrl: strOrNull(x.profileImageUrl),
-            totalMessages: typeof x.totalMessages === "number" ? x.totalMessages : 0,
-            lastMessageAt: toIso(x.lastMessageAt),
-            createdAt: toIso(x.createdAt),
-          };
-        }).sort((a, b) => (a.name || a.phone).localeCompare(b.name || b.phone));
+        const rows: Contact[] = snap.docs
+          .map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            const phone = str(x.phone, d.id);
+            return {
+              id: d.id,
+              phone: phone ? normalizePhone(phone) : "",
+              name: str(x.name, phone || d.id),
+              email: strOrNull(x.email),
+              company: strOrNull(x.company),
+              notes: strOrNull(x.notes),
+              tags: listOfStrings(x.tags),
+              group: strOrNull(x.group),
+              profileImageUrl: strOrNull(x.profileImageUrl),
+              totalMessages: typeof x.totalMessages === "number" ? x.totalMessages : 0,
+              lastMessageAt: toIso(x.lastMessageAt),
+              createdAt: toIso(x.createdAt),
+            };
+          })
+          .sort((a, b) => (a.name || a.phone).localeCompare(b.name || b.phone));
         setData(rows);
       },
       (err) => setError(err.message),

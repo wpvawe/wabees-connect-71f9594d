@@ -36,7 +36,11 @@ function hasString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function businessDataScore(id: string, data: Record<string, unknown> | null, selfUid?: string): number {
+function businessDataScore(
+  id: string,
+  data: Record<string, unknown> | null,
+  selfUid?: string,
+): number {
   if (!data) return id === selfUid ? -50 : 25;
   const isAgent = hasString(data.dataOwner);
   let score = 0;
@@ -69,7 +73,9 @@ async function chooseBestOwner(ids: string[], selfUid?: string): Promise<string 
   const unique = Array.from(new Set(ids.filter(Boolean)));
   if (unique.length === 0) return null;
   const rows = await Promise.all(unique.map(async (id) => ({ id, data: await fetchUserData(id) })));
-  rows.sort((a, b) => businessDataScore(b.id, b.data, selfUid) - businessDataScore(a.id, a.data, selfUid));
+  rows.sort(
+    (a, b) => businessDataScore(b.id, b.data, selfUid) - businessDataScore(a.id, a.data, selfUid),
+  );
   const best = rows[0];
   if (!best) return null;
   return best.id;
@@ -88,7 +94,10 @@ async function chooseBestOwner(ids: string[], selfUid?: string): Promise<string 
  *  3. `wa_map/{phoneNumberId}.ownerId` (may be stale).
  *  4. PHP backend `clear-cache.php` (also derives from wa_map server-side).
  */
-export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUid?: string): Promise<string | null> {
+export async function resolveExistingOwnerForPhone(
+  phoneNumberId: string,
+  selfUid?: string,
+): Promise<string | null> {
   const phone = phoneNumberId.trim();
   if (!phone) return null;
   const db = fbDb();
@@ -98,13 +107,23 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
   // itself records `whatsappPhoneNumberId` and only the real owner has
   // no `dataOwner` field.
   try {
-    const matches = await getDocs(query(collection(db, "users"), where("whatsappPhoneNumberId", "==", phone), limit(10)));
-    const candidates = matches.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
+    const matches = await getDocs(
+      query(collection(db, "users"), where("whatsappPhoneNumberId", "==", phone), limit(10)),
+    );
+    const candidates = matches.docs.map((d) => ({
+      id: d.id,
+      data: d.data() as Record<string, unknown>,
+    }));
     for (const c of candidates) candidateIds.add(c.id);
-    const historicalOwners = candidates.filter((c) => c.id !== selfUid && !hasString(c.data.dataOwner));
+    const historicalOwners = candidates.filter(
+      (c) => c.id !== selfUid && !hasString(c.data.dataOwner),
+    );
     const scored = (historicalOwners.length > 0 ? historicalOwners : candidates)
       .slice()
-      .sort((a, b) => businessDataScore(b.id, b.data, selfUid) - businessDataScore(a.id, a.data, selfUid));
+      .sort(
+        (a, b) =>
+          businessDataScore(b.id, b.data, selfUid) - businessDataScore(a.id, a.data, selfUid),
+      );
     const best = scored[0];
     if (best) return best.id;
   } catch {
@@ -132,5 +151,7 @@ export async function resolveExistingOwnerForPhone(phoneNumberId: string, selfUi
     // Non-fatal fallback below.
   }
 
-  return candidateIds.has(selfUid ?? "") ? (selfUid ?? null) : (Array.from(candidateIds)[0] ?? null);
+  return candidateIds.has(selfUid ?? "")
+    ? (selfUid ?? null)
+    : (Array.from(candidateIds)[0] ?? null);
 }
