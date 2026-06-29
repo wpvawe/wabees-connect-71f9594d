@@ -287,6 +287,23 @@ async function queryUsersByConfigPhone(projectId: string, accessToken: string, p
   });
 }
 
+async function queryUsersByEmail(projectId: string, accessToken: string, email: string | null) {
+  if (!email) return [];
+  return runQuery(projectId, accessToken, {
+    structuredQuery: {
+      from: [{ collectionId: "users" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "email" },
+          op: "EQUAL",
+          value: { stringValue: email },
+        },
+      },
+      limit: 20,
+    },
+  });
+}
+
 function uidFromUserDocName(name: string): string | null {
   return name.match(/\/users\/([^/]+)$/)?.[1] ?? null;
 }
@@ -421,9 +438,10 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     }
 
     const candidates = new Map<string, Candidate>();
-    const [topLevelMatches, configMatches, waMapFields] = await Promise.all([
+    const [topLevelMatches, configMatches, emailMatches, waMapFields] = await Promise.all([
       queryUsersByTopLevelPhone(projectId, accessToken, data.phoneNumberId),
       queryUsersByConfigPhone(projectId, accessToken, data.phoneNumberId),
+      queryUsersByEmail(projectId, accessToken, email),
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
 
@@ -434,6 +452,10 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     for (const row of configMatches) {
       const id = uidFromConfigDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fromConfig: true });
+    }
+    for (const row of emailMatches) {
+      const id = uidFromUserDocName(row.name);
+      if (id) mergeCandidate(candidates, id, { fields: row.fields });
     }
     const mapIds = mapUserIds(waMapFields);
     for (const id of mapIds.owners) mergeCandidate(candidates, id, { fromMapOwner: true });
