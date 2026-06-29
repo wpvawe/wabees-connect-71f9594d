@@ -42,6 +42,7 @@ type Candidate = {
   fromConfig?: boolean;
   fromMapOwner?: boolean;
   fromMapUsers?: boolean;
+  fromEmail?: boolean;
   samples?: Record<string, number>;
 };
 
@@ -378,7 +379,11 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
   const samples = candidate.samples ?? {};
   const dataOwner = getString(fields, "dataOwner");
   let score = 0;
+  const hasPhoneMatch = Boolean(candidate.fromTopLevel || candidate.fromConfig || candidate.fromMapOwner || candidate.fromMapUsers);
   if (candidate.id !== selfUid) score += 400;
+  // An email match only proves the same login, not ownership of this WhatsApp
+  // phone. Do not let a fresh website UID win over the historical phone owner.
+  if (candidate.fromEmail && !hasPhoneMatch) score -= 2_000;
   if (!dataOwner) score += 500;
   else score -= 300;
   if (candidate.fromMapOwner) score += 120;
@@ -409,13 +414,15 @@ function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candi
   // the old mobile-app owner still appears as a non-agent top/config match.
   // Prefer that owner over the just-connected self, then use score only to
   // break ties between multiple historical owners.
-  const historicalOwners = rows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
+  const phoneLinkedRows = rows.filter((row) => row.fromTopLevel || row.fromConfig || row.fromMapOwner || row.fromMapUsers);
+  const historicalOwners = phoneLinkedRows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
   if (historicalOwners.length > 0) {
     historicalOwners.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
     return historicalOwners[0] ?? null;
   }
-  rows.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
-  return rows[0] ?? null;
+  const ownerPool = phoneLinkedRows.length > 0 ? phoneLinkedRows : rows;
+  ownerPool.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
+  return ownerPool[0] ?? null;
 }
 
 function readCredentials(input: RepairInput, userFields: FsFields | null, cfgFields: FsFields | null): FsFields {
@@ -471,7 +478,7 @@ async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
 }
 
 export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
-  .validator(parseInput)
+  .inputValidator(parseInput)
   .handler(async ({ data }): Promise<RepairResult> => {
     "use server";
     const account = readServiceAccount();
@@ -508,7 +515,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     }
     for (const row of emailMatches) {
       const id = uidFromUserDocName(row.name);
-      if (id) mergeCandidate(candidates, id, { fields: row.fields });
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromEmail: true });
     }
     const mapIds = mapUserIds(waMapFields);
     for (const id of mapIds.owners) mergeCandidate(candidates, id, { fromMapOwner: true });
