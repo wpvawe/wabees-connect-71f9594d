@@ -1,7 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch, faHeadset, faPaperPlane } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleNotch,
+  faHeadset,
+  faPaperPlane,
+  faImage,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import {
   addDoc,
   collection,
@@ -33,6 +39,8 @@ function SupportPage() {
   const { data, error } = useSupportChat();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,7 +74,7 @@ function SupportPage() {
 
   async function send() {
     const body = text.trim();
-    if (!body || !uid) return;
+    if ((!body && !pendingImage) || !uid) return;
     setSending(true);
     try {
       await setDoc(
@@ -74,7 +82,7 @@ function SupportPage() {
         {
           userId: uid,
           userEmail: email,
-          lastMessage: body,
+          lastMessage: body || (pendingImage ? "📷 Image" : ""),
           lastMessageAt: serverTimestamp(),
           unreadByAdmin: increment(1),
           userOnline: true,
@@ -85,15 +93,35 @@ function SupportPage() {
         senderId: uid,
         senderRole: "user",
         text: body,
+        imageUrl: pendingImage,
         read: false,
         createdAt: serverTimestamp(),
       });
       setText("");
+      setPendingImage(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setSending(false);
     }
+  }
+
+  function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please pick an image");
+      return;
+    }
+    if (file.size > 800 * 1024) {
+      toast.error("Image is too large — please use under 800 KB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setPendingImage(String(reader.result));
+    reader.onerror = () => toast.error("Could not read image");
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -125,7 +153,7 @@ function SupportPage() {
                     className={cn(
                       "max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-soft",
                       mine
-                        ? "bg-primary text-primary-foreground"
+                        ? "rounded-br-md bg-gradient-to-br from-primary to-primary/85 text-primary-foreground"
                         : "bg-card text-card-foreground border border-border",
                     )}
                   >
@@ -133,6 +161,13 @@ function SupportPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
                         Support
                       </p>
+                    )}
+                    {m.imageUrl && (
+                      <img
+                        src={m.imageUrl}
+                        alt="attachment"
+                        className="mb-1 max-h-64 w-auto rounded-md"
+                      />
                     )}
                     <p className="whitespace-pre-wrap break-words">{m.text}</p>
                     <p
@@ -150,22 +185,57 @@ function SupportPage() {
           )}
           <div ref={bottomRef} />
         </div>
-        <div className="flex items-center gap-2 border-t border-border bg-card p-3">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            placeholder="Type a message…"
-            className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2"
-          />
-          <WbButton onClick={send} loading={sending} disabled={!text.trim()}>
-            <FontAwesomeIcon icon={faPaperPlane} className="h-3.5 w-3.5" /> Send
-          </WbButton>
+        <div className="border-t border-border bg-card">
+          {pendingImage && (
+            <div className="flex items-start gap-3 border-b border-border bg-muted/30 px-3 py-2">
+              <img src={pendingImage} alt="preview" className="h-16 w-16 rounded-md object-cover" />
+              <p className="flex-1 text-xs text-muted-foreground">Image ready to send</p>
+              <button
+                type="button"
+                onClick={() => setPendingImage(null)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Remove image"
+              >
+                <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2 p-3">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+              aria-label="Attach image"
+            >
+              <FontAwesomeIcon icon={faImage} className="h-4 w-4" />
+            </button>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder="Type a message…"
+              className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus-visible:ring-2"
+            />
+            <WbButton
+              onClick={send}
+              loading={sending}
+              disabled={!text.trim() && !pendingImage}
+            >
+              <FontAwesomeIcon icon={faPaperPlane} className="h-3.5 w-3.5" /> Send
+            </WbButton>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPickImage}
+            />
+          </div>
         </div>
       </section>
     </>
