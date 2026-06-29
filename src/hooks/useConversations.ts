@@ -60,8 +60,12 @@ export function useConversations(): { data: Conversation[] | null; error: string
             grouped.set(phone, {
               ...existing,
               ...row,
-              unreadCount: existing.unreadCount + row.unreadCount,
+              contactName: existing.contactName.length >= row.contactName.length ? existing.contactName : row.contactName,
+              unreadCount: Math.max(existing.unreadCount, row.unreadCount),
               tags: Array.from(new Set([...(existing.tags ?? []), ...(row.tags ?? [])])),
+              profileImageUrl: existing.profileImageUrl ?? row.profileImageUrl,
+              isPinned: existing.isPinned || row.isPinned,
+              isBlocked: existing.isBlocked || row.isBlocked,
               lastMessageAt: row.lastMessageAt && (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
                 ? row.lastMessageAt
                 : existing.lastMessageAt,

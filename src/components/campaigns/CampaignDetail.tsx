@@ -9,13 +9,14 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useCampaign } from "@/hooks/useCampaigns";
 import { useCampaignLogs } from "@/hooks/useCampaignLogs";
 import { runCampaign, deleteCampaign } from "@/lib/firebase/campaigns";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignDetail({ id }: { id: string }) {
   const { data, error } = useCampaign(id);
   const { data: logs } = useCampaignLogs(id);
   const navigate = useNavigate();
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const [running, setRunning] = useState(false);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
@@ -29,11 +30,11 @@ export function CampaignDetail({ id }: { id: string }) {
   }
 
   async function run() {
-    if (!uid || !data) return;
+    if (!uid || !selfUid || !data) return;
     if (!confirm(`Start sending to ${data.totalRecipients} recipients?`)) return;
     setRunning(true);
     try {
-      const r = await runCampaign(uid, id, data.audiencePhones ?? [], data.messageBody);
+      const r = await runCampaign(uid, selfUid, id, data.audiencePhones ?? [], data.messageBody);
       toast.success(`Sent ${r.sent}, failed ${r.failed}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Run failed");

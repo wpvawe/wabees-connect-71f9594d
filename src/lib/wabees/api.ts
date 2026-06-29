@@ -53,6 +53,29 @@ export function smartConnectWhatsApp(args: { phone_number_id: string; access_tok
   }>("whatsapp-smart-connect.php", args);
 }
 
+export async function subscribeWhatsAppWebhook(args: { phone_number_id: string; access_token: string }) {
+  return postJson("subscribe-webhook.php", args);
+}
+
+/**
+ * Clears the PHP webhook owner's 24h cache after connect/reconnect. The PHP
+ * backend already exposes this operational endpoint and reports the current
+ * `wa_map/{phone_number_id}` owner, so we use it as a best-effort server-side
+ * owner resolver when Firestore rules block direct client reads of another
+ * owner's mapping.
+ */
+export async function clearWebhookOwnerCache(phoneNumberId: string): Promise<{ ownerId: string | null }> {
+  const url = new URL(`${WABEES_API_BASE}/clear-cache.php`);
+  url.searchParams.set("phone_number_id", phoneNumberId);
+  url.searchParams.set("secret", "wabees_cache_clear_2024");
+  const res = await fetch(url.toString());
+  const raw = (await res.json().catch(() => ({}))) as { cleared?: unknown };
+  const lines = Array.isArray(raw.cleared) ? raw.cleared.map(String) : [];
+  const ownerLine = lines.find((line) => line.includes("ownerId="));
+  const ownerId = ownerLine?.match(/ownerId=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+  return { ownerId };
+}
+
 /**
  * Server-side exchange of a Meta Embedded Signup short-lived `code` for a
  * long-lived business access token + auto-discovered WABA / phone metadata.

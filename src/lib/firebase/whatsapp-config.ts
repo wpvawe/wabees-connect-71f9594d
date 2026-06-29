@@ -1,5 +1,6 @@
 import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
+import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
 
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
@@ -28,20 +29,34 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
+  await subscribeWhatsAppWebhook({
+    phone_number_id: input.phone_number_id,
+    access_token: input.access_token,
+  }).catch(() => null);
+
   // --- dataOwner detection (mirrors the Flutter app) ---------------------
-  // If `wa_map/{phoneNumberId}` already names a different ownerId, the
-  // current user is an AGENT — set `users/{uid}.dataOwner = existingOwner`
-  // and register under the owner. Do NOT overwrite the existing owner,
-  // otherwise the webhook will route incoming messages to the wrong UID
-  // and the website + mobile app will see split conversations.
+  // Direct client reads of `wa_map/{phoneNumberId}` are intentionally allowed
+  // only to the owner by Firestore rules. If this website user reconnects a
+  // number that already belongs to a different owner, that direct read fails.
+  // Therefore resolve the owner through the PHP backend cache-clear endpoint
+  // first; it reads `wa_map` server-side and returns the real ownerId. This is
+  // the critical fix that prevents website reconnects from creating a separate
+  // owner/data island while the mobile app continues reading the old owner.
   let existingOwnerId: string | null = null;
   try {
-    const existing = await getDoc(mapRef);
-    if (existing.exists()) {
-      const d = existing.data() as Record<string, unknown>;
-      existingOwnerId = (d.ownerId as string | undefined)
-        ?? (d.userId as string | undefined)
-        ?? null;
+    existingOwnerId = (await clearWebhookOwnerCache(input.phone_number_id)).ownerId;
+  } catch {
+    // Fallback below covers own mappings or first-time connects.
+  }
+  try {
+    if (!existingOwnerId) {
+      const existing = await getDoc(mapRef);
+      if (existing.exists()) {
+        const d = existing.data() as Record<string, unknown>;
+        existingOwnerId = (d.ownerId as string | undefined)
+          ?? (d.userId as string | undefined)
+          ?? null;
+      }
     }
   } catch {
     // Non-fatal — treat as no existing owner.
@@ -110,11 +125,14 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       {
         userId: input.uid,
         ownerId: input.uid,
+        accessTokenUpdatedAt: now,
         updatedAt: now,
       },
       { merge: true },
     ).catch(() => {});
   }
+
+  await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
@@ -176,6 +194,13 @@ export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: strin
 
 export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
   const db = fbDb();
+  const self = await getDoc(doc(db, "users", uid)).catch(() => null);
+  const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
+  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
+  if (dataOwner && dataOwner !== uid) {
+    const ownerCreds = await loadWaCredentials(dataOwner);
+    if (ownerCreds) return ownerCreds;
+  }
   // Prefer the subcollection doc the Flutter app writes
   // (`users/{uid}/whatsapp_config/config`). Fall back to the top-level
   // mirrored fields the website used before, for older website-only setups.
@@ -186,9 +211,8 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
     const access_token = (d.accessToken as string | undefined) ?? undefined;
     if (phone_number_id && access_token) return { phone_number_id, access_token };
   }
-  const snap = await getDoc(doc(db, "users", uid));
-  if (snap.exists()) {
-    const d = snap.data();
+  if (self?.exists()) {
+    const d = self.data();
     const phone_number_id = d.whatsappPhoneNumberId as string | undefined;
     const access_token = d.whatsappAccessToken as string | undefined;
     if (phone_number_id && access_token) return { phone_number_id, access_token };
