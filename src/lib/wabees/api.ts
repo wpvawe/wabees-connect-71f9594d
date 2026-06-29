@@ -20,10 +20,11 @@ async function postJson<T = unknown>(path: string, body: Record<string, unknown>
     body: JSON.stringify(body),
   });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const explicitSuccess = typeof raw.success === "boolean" ? raw.success : undefined;
   return {
-    success: Boolean(raw.success),
+    success: explicitSuccess ?? (res.ok && !raw.error),
     message: (raw.message as string | undefined) ?? (raw.error as string | undefined),
-    data: raw.data as T | undefined,
+    data: (raw.data ?? raw) as T | undefined,
     raw,
   };
 }
