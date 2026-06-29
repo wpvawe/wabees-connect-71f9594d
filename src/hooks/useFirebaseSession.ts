@@ -13,9 +13,9 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
+import { repairWhatsAppOwnership } from "@/lib/firebase/whatsapp-config";
 
 type State =
   | { status: "loading" }
@@ -28,9 +28,18 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
-    const repairedPhones = new Set<string>();
+    let repairTimer: number | null = null;
+    let currentPhoneNumberId = "";
+    let currentDataOwner: string | null = null;
+    function clearRepairTimer() {
+      if (repairTimer) window.clearInterval(repairTimer);
+      repairTimer = null;
+    }
     const unsub = onAuthStateChanged(fbAuth(), (u) => {
       if (unsubProfile) { unsubProfile(); unsubProfile = null; }
+      clearRepairTimer();
+      currentPhoneNumberId = "";
+      currentDataOwner = null;
       if (!u) { setState({ status: "no_uid" }); return; }
       // Keep loading until the first profile snapshot arrives; otherwise
       // agent accounts briefly subscribe to their own empty subcollections
@@ -41,16 +50,29 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         const dataOwnerRaw = profile.dataOwner;
         const dataOwner = typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw : null;
         const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
-        if (phoneNumberId && !dataOwner && !repairedPhones.has(phoneNumberId)) {
-          repairedPhones.add(phoneNumberId);
-          void resolveExistingOwnerForPhone(phoneNumberId, u.uid)
+        currentPhoneNumberId = phoneNumberId;
+        currentDataOwner = dataOwner;
+        if (phoneNumberId && !dataOwner) {
+          void repairWhatsAppOwnership(u.uid)
             .then((ownerId) => {
               if (ownerId && ownerId !== u.uid) {
-                return setDoc(doc(fbDb(), "users", u.uid), { dataOwner: ownerId }, { merge: true });
+                setState({ status: "ready", uid: u.uid, effectiveUid: ownerId, dataOwner: ownerId, user: u });
               }
-              return undefined;
             })
             .catch(() => undefined);
+        }
+        if (!repairTimer) {
+          repairTimer = window.setInterval(() => {
+            if (!currentPhoneNumberId || currentDataOwner) return;
+            void repairWhatsAppOwnership(u.uid)
+              .then((ownerId) => {
+                if (ownerId && ownerId !== u.uid) {
+                  currentDataOwner = ownerId;
+                  setState({ status: "ready", uid: u.uid, effectiveUid: ownerId, dataOwner: ownerId, user: u });
+                }
+              })
+              .catch(() => undefined);
+          }, 30_000);
         }
         setState({
           status: "ready",
@@ -63,6 +85,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       unsub();
+      clearRepairTimer();
       if (unsubProfile) unsubProfile();
     };
   }, []);

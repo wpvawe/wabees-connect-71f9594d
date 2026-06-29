@@ -82,8 +82,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
           }
         }
         // Best-effort dedupe: when two doc IDs map to the same phone, keep the
-        // canonical (digits-only) ID and delete the stray "+..." copy after
-        // merging its fields. Idempotent and safe to re-run.
+        // canonical Flutter/PHP `+E.164` ID and delete older stray copies after
+        // merging their fields. Idempotent and safe to re-run.
         for (const [phone, ids] of idsByPhone) {
           if (ids.length < 2) continue;
           const canonical = phoneDocId(phone);

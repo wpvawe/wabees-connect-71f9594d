@@ -67,16 +67,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     : (mapOwnerOther ?? null);
   const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
 
-  // Only subscribe the webhook once we know who the real owner is. When this
-  // UID is actually an agent under another owner, skip subscribe entirely so
-  // the backend's owner cache is never reseeded with the wrong UID.
-  if (!treatAsAgent) {
-    await subscribeWhatsAppWebhook({
-      phone_number_id: input.phone_number_id,
-      access_token: input.access_token,
-    }).catch(() => null);
-  }
-
   await Promise.all([
     setDoc(
       userRef,
@@ -114,6 +104,45 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     ),
   ]);
 
+  // If this website account is being linked to the mobile app's existing data
+  // owner, mirror the fresh credentials onto the owner too. The Flutter app's
+  // send flow resolves the owner's config first; without this, app may keep
+  // reading old/revoked credentials while the website uses the new token.
+  if (treatAsAgent && effectiveOwner) {
+    await Promise.all([
+      setDoc(
+        doc(db, "users", effectiveOwner),
+        {
+          whatsappPhoneNumberId: input.phone_number_id,
+          whatsappAccessToken: input.access_token,
+          whatsappBusinessAccountId: input.waba_id ?? null,
+          whatsappDisplayPhone: input.display_phone ?? null,
+          whatsappQualityRating: input.quality_rating ?? null,
+          whatsappConnected: true,
+          updatedAt: now,
+        },
+        { merge: true },
+      ).catch(() => undefined),
+      setDoc(
+        doc(db, "users", effectiveOwner, "whatsapp_config", "config"),
+        {
+          phoneNumberId: input.phone_number_id,
+          accessToken: input.access_token,
+          businessAccountId: input.waba_id ?? "",
+          webhookVerifyToken: "",
+          displayPhoneNumber: input.display_phone ?? null,
+          businessName: input.business_name ?? null,
+          qualityRating: input.quality_rating ?? null,
+          isConnected: true,
+          connectedVia: input.connected_via ?? "manual",
+          connectedAt: now,
+          lastVerifiedAt: now,
+        },
+        { merge: true },
+      ).catch(() => undefined),
+    ]);
+  }
+
   // Webhook routing map used by the PHP backend.
   if (treatAsAgent && effectiveOwner) {
     // Register this UID as an agent under the existing owner. Do NOT
@@ -130,10 +159,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
           ? {
               ownerId: effectiveOwner,
               userId: effectiveOwner,
-              users: arrayUnion(input.uid, effectiveOwner),
+              users: arrayUnion(input.uid, effectiveOwner, { userId: input.uid }, { userId: effectiveOwner }),
               updatedAt: now,
             }
-          : { users: arrayUnion(input.uid), updatedAt: now },
+          : { users: arrayUnion(input.uid, { userId: input.uid }), updatedAt: now },
         { merge: true },
       ).catch(() => {});
       await setDoc(
@@ -154,12 +183,21 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       {
         userId: input.uid,
         ownerId: input.uid,
-        users: arrayUnion(input.uid),
+        users: arrayUnion(input.uid, { userId: input.uid }),
         accessTokenUpdatedAt: now,
         updatedAt: now,
       },
       { merge: true },
     ).catch(() => {});
+  }
+
+  // Subscribe only AFTER wa_map has the final owner. Otherwise the PHP backend
+  // can re-cache the wrong owner while handling subscribe-webhook.php.
+  if (!treatAsAgent) {
+    await subscribeWhatsAppWebhook({
+      phone_number_id: input.phone_number_id,
+      access_token: input.access_token,
+    }).catch(() => null);
   }
 
   await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
@@ -245,4 +283,72 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
   const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
   if (dataOwner && dataOwner !== uid) return loadWaCredentials(dataOwner);
   return null;
+}
+
+export async function repairWhatsAppOwnership(uid: string): Promise<string | null> {
+  const db = fbDb();
+  const userRef = doc(db, "users", uid);
+  const userSnap = await getDoc(userRef).catch(() => null);
+  const user = userSnap?.exists() ? (userSnap.data() as Record<string, unknown>) : {};
+  const cfgSnap = await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).catch(() => null);
+  const cfg = cfgSnap?.exists() ? (cfgSnap.data() as Record<string, unknown>) : {};
+  const phoneNumberId =
+    (typeof user.whatsappPhoneNumberId === "string" && user.whatsappPhoneNumberId) ||
+    (typeof cfg.phoneNumberId === "string" && cfg.phoneNumberId) ||
+    "";
+  if (!phoneNumberId) return null;
+
+  const ownerId = await resolveExistingOwnerForPhone(phoneNumberId, uid);
+  if (!ownerId || ownerId === uid) return uid;
+
+  const accessToken =
+    (typeof user.whatsappAccessToken === "string" && user.whatsappAccessToken) ||
+    (typeof cfg.accessToken === "string" && cfg.accessToken) ||
+    "";
+  const wabaId =
+    (typeof user.whatsappBusinessAccountId === "string" && user.whatsappBusinessAccountId) ||
+    (typeof cfg.businessAccountId === "string" && cfg.businessAccountId) ||
+    "";
+
+  await setDoc(userRef, { dataOwner: ownerId, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(
+    doc(db, "wa_map", phoneNumberId),
+    {
+      ownerId,
+      userId: ownerId,
+      users: arrayUnion(uid, ownerId, { userId: uid }, { userId: ownerId }),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  ).catch(() => undefined);
+
+  if (accessToken) {
+    await Promise.all([
+      setDoc(
+        doc(db, "users", ownerId),
+        {
+          whatsappPhoneNumberId: phoneNumberId,
+          whatsappAccessToken: accessToken,
+          whatsappBusinessAccountId: wabaId || null,
+          whatsappConnected: true,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => undefined),
+      setDoc(
+        doc(db, "users", ownerId, "whatsapp_config", "config"),
+        {
+          phoneNumberId,
+          accessToken,
+          businessAccountId: wabaId,
+          isConnected: true,
+          lastVerifiedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => undefined),
+    ]);
+  }
+
+  await clearWebhookOwnerCache(phoneNumberId).catch(() => null);
+  return ownerId;
 }
