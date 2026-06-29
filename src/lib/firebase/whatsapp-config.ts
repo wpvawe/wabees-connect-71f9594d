@@ -111,12 +111,16 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // came back as self. That's the bug that turned the website into a separate
   // data island after a reconnect.
   let mapOwnerOther: string | null = null;
+  let mapOwnerSelf = false;
+  let mapExists = false;
   try {
     const mapSnap = await getDoc(mapRef);
     if (mapSnap.exists()) {
+      mapExists = true;
       const m = mapSnap.data() as Record<string, unknown>;
       const owner = typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
       if (owner && owner !== input.uid) mapOwnerOther = owner;
+      if (owner === input.uid) mapOwnerSelf = true;
     }
   } catch {
     /* rules may block — ignore */
@@ -239,18 +243,25 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     }
   } else {
     // Current user is the owner (first connect or legitimate reconnect).
-    await setDoc(
-      mapRef,
-      {
-        userId: input.uid,
-        ownerId: input.uid,
-        users: arrayUnion({ userId: input.uid }),
-        active: true,
-        accessTokenUpdatedAt: now,
-        updatedAt: now,
-      },
-      { merge: true },
-    ).catch(() => {});
+    // Never replace an existing foreign owner from the client fallback. If the
+    // server repair could not run and rules did not expose the real owner, this
+    // guard prevents a new website email from hijacking webhook routing.
+    if (!mapExists || mapOwnerSelf) {
+      await setDoc(
+        mapRef,
+        {
+          userId: input.uid,
+          ownerId: input.uid,
+          users: arrayUnion({ userId: input.uid }),
+          active: true,
+          accessTokenUpdatedAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      ).catch(() => {});
+    } else {
+      await setDoc(mapRef, { users: arrayUnion({ userId: input.uid }), updatedAt: now }, { merge: true }).catch(() => {});
+    }
   }
 
   // Subscribe only AFTER wa_map has the final owner. Otherwise the PHP backend
