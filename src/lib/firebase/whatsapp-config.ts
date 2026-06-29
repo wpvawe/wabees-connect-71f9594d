@@ -48,7 +48,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
     ? currentUserData.dataOwner.trim()
     : null;
-  const existingOwnerId = existingDataOwner ?? await resolveExistingOwnerForPhone(input.phone_number_id, input.uid);
+  const existingOwnerId = existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
 

@@ -55,8 +55,12 @@ function PlansPage() {
             {plans.map((plan) => (
               <PlanCard key={plan.id} plan={plan} active={sub?.planId === plan.id} onRequest={async () => {
                 if (!uid) return;
-                await requestSubscription(uid, plan);
-                toast.success("Subscription request sent");
+                try {
+                  await requestSubscription(uid, plan);
+                  toast.success("Subscription request sent");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Request failed");
+                }
               }} />
             ))}
           </div>
