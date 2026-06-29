@@ -29,6 +29,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
+    let unsubConfig: (() => void) | null = null;
     let repairTimer: number | null = null;
     let currentPhoneNumberId = "";
     let currentDataOwner: string | null = null;
@@ -40,6 +41,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
     }
     const unsub = onAuthStateChanged(fbAuth(), (u) => {
       if (unsubProfile) { unsubProfile(); unsubProfile = null; }
+      if (unsubConfig) { unsubConfig(); unsubConfig = null; }
       clearRepairTimer();
       currentPhoneNumberId = "";
       currentDataOwner = null;
@@ -51,6 +53,15 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
       // before `dataOwner` resolves to the owner UID.
       setState({ status: "loading" });
       const user = u;
+      let profileLoaded = false;
+      let configLoaded = false;
+      let profile: Record<string, unknown> = {};
+      let config: Record<string, unknown> = {};
+
+      function text(value: unknown): string {
+        return typeof value === "string" && value.trim() ? value.trim() : "";
+      }
+
       async function resolveOwner(phoneNumberId: string): Promise<string | null> {
         if (repairInFlight) return null;
         repairInFlight = true;
@@ -65,11 +76,14 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      unsubProfile = onSnapshot(doc(fbDb(), "users", user.uid), (snap) => {
-        const profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+      function recomputeSession() {
+        if (!profileLoaded || !configLoaded) return;
         const dataOwnerRaw = profile.dataOwner;
-        const dataOwner = typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw : null;
-        const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
+        const dataOwner = typeof dataOwnerRaw === "string" && dataOwnerRaw.trim() ? dataOwnerRaw.trim() : null;
+        // Flutter reads WhatsApp credentials from users/{uid}/whatsapp_config/config.
+        // Older mobile accounts may not have the top-level mirror populated, so
+        // include the config doc here before deciding which owner's data tree to use.
+        const phoneNumberId = text(profile.whatsappPhoneNumberId) || text(config.phoneNumberId);
         currentPhoneNumberId = phoneNumberId;
         currentDataOwner = dataOwner;
         if (!repairTimer) {
@@ -88,6 +102,10 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
           }, 30_000);
         }
         if (phoneNumberId && (!dataOwner || dataOwner === user.uid) && verifiedSelfPhoneNumberId !== phoneNumberId) {
+          if (repairInFlight) {
+            setState({ status: "loading" });
+            return;
+          }
           // Do not briefly expose `effectiveUid = self` for a connected account
           // until ownership is checked. That short wrong-state was enough for
           // inbox hooks to subscribe to the website-only data island.
@@ -120,12 +138,32 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
           dataOwner,
           user,
         });
-      }, () => setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user }));
+      }
+
+      unsubProfile = onSnapshot(doc(fbDb(), "users", user.uid), (snap) => {
+        profileLoaded = true;
+        profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+        recomputeSession();
+      }, () => {
+        profileLoaded = true;
+        profile = {};
+        recomputeSession();
+      });
+      unsubConfig = onSnapshot(doc(fbDb(), "users", user.uid, "whatsapp_config", "config"), (snap) => {
+        configLoaded = true;
+        config = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+        recomputeSession();
+      }, () => {
+        configLoaded = true;
+        config = {};
+        recomputeSession();
+      });
     });
     return () => {
       unsub();
       clearRepairTimer();
       if (unsubProfile) unsubProfile();
+      if (unsubConfig) unsubConfig();
     };
   }, []);
   return createElement(Ctx.Provider, { value: state }, children);
