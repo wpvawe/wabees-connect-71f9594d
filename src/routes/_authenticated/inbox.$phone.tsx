@@ -10,7 +10,7 @@ import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { phoneDocId, phoneQueryCandidates } from "@/lib/firebase/normalizers";
+import { phoneQueryCandidates } from "@/lib/firebase/normalizers";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   head: ({ params }) => ({ meta: [{ title: `Chat ${params.phone} — Wabees` }] }),
