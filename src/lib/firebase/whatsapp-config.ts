@@ -24,6 +24,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const db = fbDb();
   const userRef = doc(db, "users", input.uid);
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
+  const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
   await Promise.all([
     setDoc(
@@ -52,6 +53,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         isConnected: true,
         connectedAt: now,
         lastVerifiedAt: now,
+      },
+      { merge: true },
+    ),
+    setDoc(
+      mapRef,
+      {
+        userId: input.uid,
+        ownerId: input.uid,
+        updatedAt: now,
       },
       { merge: true },
     ),
