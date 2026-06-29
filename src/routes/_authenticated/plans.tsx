@@ -106,7 +106,7 @@ function PlanCard({ plan, active, onRequest }: { plan: Plan; active: boolean; on
           Welcome plan
         </p>
       )}
-      <WbButton className="mt-4 w-full" variant={active ? "secondary" : "default"} disabled={active} onClick={() => void onRequest()}>
+      <WbButton className="mt-4 w-full" variant={active ? "secondary" : "primary"} disabled={active} onClick={() => void onRequest()}>
         {active ? "Current plan" : "Request subscription"}
       </WbButton>
     </article>
