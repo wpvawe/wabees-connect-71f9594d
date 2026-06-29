@@ -204,10 +204,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
           ? {
               ownerId: effectiveOwner,
               userId: effectiveOwner,
-              users: arrayUnion(input.uid, effectiveOwner, { userId: input.uid }, { userId: effectiveOwner }),
+              users: arrayUnion({ userId: input.uid }, { userId: effectiveOwner }),
               updatedAt: now,
             }
-          : { users: arrayUnion(input.uid, { userId: input.uid }), updatedAt: now },
+          : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
         { merge: true },
       ).catch(() => {});
       await setDoc(
@@ -228,7 +228,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       {
         userId: input.uid,
         ownerId: input.uid,
-        users: arrayUnion(input.uid, { userId: input.uid }),
+        users: arrayUnion({ userId: input.uid }),
         accessTokenUpdatedAt: now,
         updatedAt: now,
       },
@@ -314,13 +314,9 @@ export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: strin
   ]);
 }
 
-export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
+async function loadOwnWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
   const db = fbDb();
   const self = await getDoc(doc(db, "users", uid)).catch(() => null);
-  const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
-  // Match Flutter: WhatsApp credentials/config are scoped to the signed-in
-  // user (`userIdProvider`), while business data uses dataOwner/effective UID.
-  // Only fall back to owner credentials if this account has no own config.
   const sub = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
   if (sub.exists()) {
     const d = sub.data();
@@ -334,8 +330,23 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
     const access_token = d.whatsappAccessToken as string | undefined;
     if (phone_number_id && access_token) return { phone_number_id, access_token };
   }
+  return null;
+}
+
+export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
+  const db = fbDb();
+  const self = await getDoc(doc(db, "users", uid)).catch(() => null);
+  const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
   const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
-  if (dataOwner && dataOwner !== uid) return loadWaCredentials(dataOwner);
+  // Match Flutter _resolveConfig: agents try the owner's config first, then
+  // fall back to their own config if the owner has no credentials.
+  if (dataOwner && dataOwner !== uid) {
+    const ownerCreds = await loadOwnWaCredentials(dataOwner).catch(() => null);
+    if (ownerCreds) return ownerCreds;
+  }
+  const ownCreds = await loadOwnWaCredentials(uid).catch(() => null);
+  if (ownCreds) return ownCreds;
+  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
   return null;
 }
 
@@ -370,7 +381,7 @@ export async function repairWhatsAppOwnership(uid: string): Promise<string | nul
     {
       ownerId,
       userId: ownerId,
-      users: arrayUnion(uid, ownerId, { userId: uid }, { userId: ownerId }),
+      users: arrayUnion({ userId: uid }, { userId: ownerId }),
       updatedAt: serverTimestamp(),
     },
     { merge: true },
