@@ -37,10 +37,18 @@ function Thread({ phone }: { phone: string }) {
     if (!uid || !phone) return;
     void (async () => {
       try {
-        await setDoc(
-          doc(fbDb(), `users/${uid}/conversations/${phoneDocId(phone)}`),
-          { unreadCount: 0 },
-          { merge: true },
+        // Conversation doc ID can be either raw or normalized depending on
+        // which client created it; try all candidates so the mobile app
+        // sees unread reset to 0.
+        const candidates = phoneQueryCandidates(phone);
+        await Promise.all(
+          candidates.map((c) =>
+            setDoc(
+              doc(fbDb(), `users/${uid}/conversations/${c}`),
+              { unreadCount: 0 },
+              { merge: true },
+            ).catch(() => {}),
+          ),
         );
       } catch {
         /* permissions/race — ignore */
