@@ -10,6 +10,7 @@ import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
+import { BusinessProfileSection } from "@/components/settings/BusinessProfileSection";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Settings — Wabees" }] }),
@@ -67,6 +68,7 @@ function SettingsPage() {
             </div>
           </WbCardBody>
         </WbCard>
+        <BusinessProfileSection />
         <WbCard>
           <WbCardHeader title="Session" />
           <WbCardBody>
