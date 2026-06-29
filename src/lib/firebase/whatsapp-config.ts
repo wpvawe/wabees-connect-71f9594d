@@ -137,6 +137,27 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     : (mapOwnerOther ?? null);
   const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
 
+  // CRITICAL: when this UID will become an agent of `effectiveOwner`, we MUST
+  // create the `users/{effectiveOwner}/agents/{thisUid}` doc BEFORE writing
+  // `dataOwner` onto our own user doc. Otherwise the active onSnapshot picks
+  // up the dataOwner change instantly, switches to the owner's subcollections,
+  // and fails with "Missing or insufficient permissions" because Firestore
+  // rules check `isAgentOf(owner) = exists(users/{owner}/agents/{thisUid})`.
+  if (treatAsAgent && effectiveOwner) {
+    await setDoc(
+      doc(db, "users", effectiveOwner, "agents", input.uid),
+      {
+        email: fbAuth().currentUser?.email ?? null,
+        joinedAt: now,
+      },
+      { merge: true },
+    ).catch(() => {
+      // Non-fatal — rules allow `request.auth.uid == agentId` writes, so this
+      // should succeed. If it doesn't, downstream reads will still surface a
+      // permission error which is the correct signal.
+    });
+  }
+
   await Promise.all([
     setDoc(
       userRef,
@@ -236,14 +257,8 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
           : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
         { merge: true },
       ).catch(() => {});
-      await setDoc(
-        doc(db, "users", effectiveOwner, "agents", input.uid),
-        {
-          email: fbAuth().currentUser?.email ?? null,
-          joinedAt: now,
-        },
-        { merge: true },
-      );
+      // Agent doc was already written above (before dataOwner) to avoid the
+      // race with onSnapshot. Nothing more to do here.
     } catch {
       // Non-fatal — owner's rules may not allow agent writes from this UID.
     }
