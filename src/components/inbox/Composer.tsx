@@ -47,7 +47,7 @@ export function Composer({ phone }: { phone: string }) {
         createdAt: serverTimestamp(),
       });
       await setDoc(
-        doc(db, "users", uid, "conversations", to),
+        doc(db, "users", uid, "conversations", normalizedPhone),
         {
           contactPhone: normalizedPhone,
           contactName: normalizedPhone,
