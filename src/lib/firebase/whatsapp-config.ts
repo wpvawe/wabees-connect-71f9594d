@@ -31,6 +31,50 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
+  // First persist the signed-in user's fresh credentials, then let the
+  // authoritative repair function decide owner/dataOwner/wa_map before any
+  // client fallback can accidentally hijack routing to this website UID.
+  await Promise.all([
+    setDoc(
+      userRef,
+      {
+        whatsappPhoneNumberId: input.phone_number_id,
+        whatsappAccessToken: input.access_token,
+        whatsappBusinessAccountId: input.waba_id ?? null,
+        whatsappDisplayPhone: input.display_phone ?? null,
+        whatsappQualityRating: input.quality_rating ?? null,
+        whatsappConnected: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    ),
+    setDoc(
+      subRef,
+      {
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        webhookVerifyToken: "",
+        displayPhoneNumber: input.display_phone ?? null,
+        businessName: input.business_name ?? null,
+        qualityRating: input.quality_rating ?? null,
+        isConnected: true,
+        connectedVia: input.connected_via ?? "manual",
+        connectedAt: now,
+        lastVerifiedAt: now,
+      },
+      { merge: true },
+    ),
+  ]);
+
+  const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
+  if (serverIdToken) {
+    const serverRepair = await repairWhatsAppOwnerServer({
+      data: { idToken: serverIdToken, phoneNumberId: input.phone_number_id },
+    }).catch(() => null);
+    if (serverRepair?.ownerId) return;
+  }
+
   // --- dataOwner detection (mirrors the Flutter app) ---------------------
   // CRITICAL: resolve the real owner BEFORE calling subscribe-webhook so the
   // PHP backend never caches the website UID as the owner for a phone that
