@@ -4,11 +4,6 @@ import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/a
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
-function isFirebaseBackendCredentialError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /Firebase backend credentials are not configured|Firebase web API key is not configured/i.test(message);
-}
-
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
  *  - `users/{uid}` top-level fields (whatsappPhoneNumberId, whatsappAccessToken,
@@ -54,18 +49,48 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         connectedVia: input.connected_via ?? "manual",
       },
     });
+    await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
     if (serverRepair?.ownerId) {
-      // Server repair handled wa_map + config writes already. Still clear the
-      // PHP webhook cache from the client too — server-side clearRemoteCache
-      // depends on env vars and we want a second chance to invalidate stale
-      // owner routing.
-      await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
+      // Server repair handled wa_map + owner writes. Mirror the caller's own
+      // docs client-side as well so the active onSnapshot immediately switches
+      // to users/{ownerId} through dataOwner, matching Flutter's dataOwner flow.
+      await Promise.all([
+        setDoc(
+          userRef,
+          {
+            whatsappPhoneNumberId: input.phone_number_id,
+            whatsappAccessToken: input.access_token,
+            whatsappBusinessAccountId: input.waba_id ?? null,
+            whatsappDisplayPhone: input.display_phone ?? null,
+            whatsappQualityRating: input.quality_rating ?? null,
+            whatsappConnected: true,
+            dataOwner: serverRepair.ownerId !== input.uid ? serverRepair.ownerId : deleteField(),
+            updatedAt: now,
+          },
+          { merge: true },
+        ),
+        setDoc(
+          subRef,
+          {
+            phoneNumberId: input.phone_number_id,
+            accessToken: input.access_token,
+            businessAccountId: input.waba_id ?? "",
+            webhookVerifyToken: "",
+            displayPhoneNumber: input.display_phone ?? null,
+            businessName: input.business_name ?? null,
+            qualityRating: input.quality_rating ?? null,
+            isConnected: true,
+            connectedVia: input.connected_via ?? "manual",
+            connectedAt: now,
+            lastVerifiedAt: now,
+          },
+          { merge: true },
+        ),
+      ]);
       return;
     }
   } catch (error) {
-    if (!isFirebaseBackendCredentialError(error)) {
-      throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
-    }
+    throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
@@ -86,12 +111,16 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // came back as self. That's the bug that turned the website into a separate
   // data island after a reconnect.
   let mapOwnerOther: string | null = null;
+  let mapOwnerSelf = false;
+  let mapExists = false;
   try {
     const mapSnap = await getDoc(mapRef);
     if (mapSnap.exists()) {
+      mapExists = true;
       const m = mapSnap.data() as Record<string, unknown>;
       const owner = typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
       if (owner && owner !== input.uid) mapOwnerOther = owner;
+      if (owner === input.uid) mapOwnerSelf = true;
     }
   } catch {
     /* rules may block — ignore */
@@ -214,18 +243,25 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     }
   } else {
     // Current user is the owner (first connect or legitimate reconnect).
-    await setDoc(
-      mapRef,
-      {
-        userId: input.uid,
-        ownerId: input.uid,
-        users: arrayUnion({ userId: input.uid }),
-        active: true,
-        accessTokenUpdatedAt: now,
-        updatedAt: now,
-      },
-      { merge: true },
-    ).catch(() => {});
+    // Never replace an existing foreign owner from the client fallback. If the
+    // server repair could not run and rules did not expose the real owner, this
+    // guard prevents a new website email from hijacking webhook routing.
+    if (!mapExists || mapOwnerSelf) {
+      await setDoc(
+        mapRef,
+        {
+          userId: input.uid,
+          ownerId: input.uid,
+          users: arrayUnion({ userId: input.uid }),
+          active: true,
+          accessTokenUpdatedAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      ).catch(() => {});
+    } else {
+      await setDoc(mapRef, { users: arrayUnion({ userId: input.uid }), updatedAt: now }, { merge: true }).catch(() => {});
+    }
   }
 
   // Subscribe only AFTER wa_map has the final owner. Otherwise the PHP backend

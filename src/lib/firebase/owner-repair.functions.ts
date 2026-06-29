@@ -478,7 +478,6 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
     whatsappDisplayPhone: cfgPatch.displayPhoneNumber,
     whatsappQualityRating: cfgPatch.qualityRating,
     whatsappConnected: boolValue(Boolean(cfgPatch.accessToken.stringValue)),
-    dataOwner: { nullValue: null },
     updatedAt: timestampValue(),
   };
 }
@@ -504,7 +503,6 @@ async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
 export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
   .inputValidator(parseInput)
   .handler(async ({ data }): Promise<RepairResult> => {
-    "use server";
     const account = readServiceAccount();
     const projectId = account.project_id!;
     const [{ uid, email }, accessToken] = await Promise.all([
@@ -517,7 +515,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `users/${uid}/whatsapp_config/config`),
     ]);
     const callerPhone = getString(callerUserFields ?? undefined, "whatsappPhoneNumberId") || getString(callerCfgFields ?? undefined, "phoneNumberId");
-    if (!data.accessToken && callerPhone !== data.phoneNumberId) {
+    if (!data.accessToken && callerPhone && callerPhone !== data.phoneNumberId) {
       throw new Error("This WhatsApp number is not connected on the signed-in account");
     }
 

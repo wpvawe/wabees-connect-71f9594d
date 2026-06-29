@@ -181,7 +181,7 @@ if (empty($accessToken) || empty($phoneNumberId)) {
 }
 
 // ============ 3b. SUBSCRIPTION CHECK — enforce plan limits ============
-$subResp = firestore_get("users/$userId/subscription/current");
+$subResp = firestore_get("users/$storageUserId/subscription/current");
 $subCode = $subResp['code'] ?? 404;
 if ($subCode === 200) {
     $subFields = $subResp['data']['fields'] ?? [];
