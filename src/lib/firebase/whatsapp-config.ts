@@ -18,6 +18,7 @@ export type SaveWaConfigInput = {
   display_phone?: string;
   business_name?: string;
   quality_rating?: string;
+  connected_via?: "embedded_signup" | "manual";
 };
 
 export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void> {
@@ -51,6 +52,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         businessName: input.business_name ?? null,
         qualityRating: input.quality_rating ?? null,
         isConnected: true,
+        connectedVia: input.connected_via ?? "manual",
         connectedAt: now,
         lastVerifiedAt: now,
       },
