@@ -6,6 +6,7 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { usePlans, type Plan } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useProfile } from "@/hooks/useProfile";
 import { requestSubscription } from "@/lib/firebase/subscriptions";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
@@ -18,7 +19,15 @@ export const Route = createFileRoute("/_authenticated/plans")({
 function PlansPage() {
   const { data: plans, error } = usePlans();
   const { data: sub, loading } = useSubscription();
+  const { data: profile } = useProfile("effective");
   const uid = useFirebaseUid();
+  // Subscription counters can lag behind profile totals (PHP webhook updates
+  // both, but websites may render before sub doc is touched). Fall back to
+  // profile counters when subscription shows 0 so users see real usage.
+  const usage = {
+    messages: sub?.messagesUsed || profile?.totalMessages || 0,
+    contacts: sub?.contactsUsed || profile?.totalContacts || 0,
+  };
   return (
     <>
       <TopBar title="Plans" subtitle="Your current plan and active packages" />
@@ -36,11 +45,11 @@ function PlansPage() {
                 <PlanStat label="Status" value={sub.status} />
                 <PlanStat
                   label="Messages"
-                  value={`${sub.messagesUsed}/${limitLabel(sub.maxMessages)}`}
+                  value={`${usage.messages}/${limitLabel(sub.maxMessages)}`}
                 />
                 <PlanStat
                   label="Contacts"
-                  value={`${sub.contactsUsed}/${limitLabel(sub.maxContacts)}`}
+                  value={`${usage.contacts}/${limitLabel(sub.maxContacts)}`}
                 />
               </div>
             ) : (

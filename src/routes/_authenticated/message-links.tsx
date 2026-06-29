@@ -16,7 +16,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { fbDb } from "@/integrations/firebase/client";
 import { toIso, str } from "@/lib/firebase/normalizers";
@@ -31,7 +31,10 @@ export const Route = createFileRoute("/_authenticated/message-links")({
 });
 
 function MessageLinksPage() {
-  const uid = useEffectiveUid();
+  // Message links are personal share links — always write under the signed-in
+  // user's own UID so Firestore rules (`auth.uid == userId`) allow create.
+  // Agents on a shared owner account still get their own private link list.
+  const uid = useFirebaseUid();
   const { data: wa } = useWhatsAppConfig();
   const [links, setLinks] = useState<Link[] | null>(null);
   const [message, setMessage] = useState("");
