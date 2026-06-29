@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faBolt, faCircleNotch, faRobot, faToggleOn } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -66,7 +67,7 @@ function BotCard({ bot }: { bot: Bot }) {
   );
 }
 
-function Metric({ icon, label, value }: { icon: typeof faBolt; label: string; value: string }) {
+function Metric({ icon, label, value }: { icon: IconDefinition; label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-background px-3 py-2">
       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
