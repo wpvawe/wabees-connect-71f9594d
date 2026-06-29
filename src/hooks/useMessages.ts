@@ -25,6 +25,14 @@ export type Message = {
   whatsappMessageId?: string | null;
   errorReason?: string | null;
   createdAt: string | null;
+  // Mirrors Flutter MessageModel — needed for reactions, bot attribution,
+  // delivery/read timestamps, and file size display.
+  reactionEmoji?: string | null;
+  reactionMsgId?: string | null;
+  botName?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  fileSize?: number | null;
 };
 
 export function useMessages(phone: string | undefined): { data: Message[] | null; error: string | null } {
@@ -71,6 +79,12 @@ export function useMessages(phone: string | undefined): { data: Message[] | null
             whatsappMessageId: strOrNull(x.whatsappMessageId),
             errorReason: strOrNull(x.errorReason),
             createdAt: toIso(x.createdAt),
+            reactionEmoji: strOrNull(x.reactionEmoji),
+            reactionMsgId: strOrNull(x.reactionMsgId),
+            botName: strOrNull(x.botName),
+            deliveredAt: toIso(x.deliveredAt),
+            readAt: toIso(x.readAt),
+            fileSize: typeof x.fileSize === "number" ? x.fileSize : null,
           };
         }).sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
         setData(rows);
