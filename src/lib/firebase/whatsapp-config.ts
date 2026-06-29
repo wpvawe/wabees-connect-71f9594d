@@ -51,50 +51,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     if (serverRepair?.ownerId) return;
   }
 
-  // Only if the authoritative server-side repair is unavailable do we persist
-  // locally and use the older client-side fallback. This fallback cannot see
-  // every user because Firestore rules are per-user, so it is intentionally
-  // second choice.
-  await Promise.all([
-    setDoc(
-      userRef,
-      {
-        whatsappPhoneNumberId: input.phone_number_id,
-        whatsappAccessToken: input.access_token,
-        whatsappBusinessAccountId: input.waba_id ?? null,
-        whatsappDisplayPhone: input.display_phone ?? null,
-        whatsappQualityRating: input.quality_rating ?? null,
-        whatsappConnected: true,
-        updatedAt: now,
-      },
-      { merge: true },
-    ),
-    setDoc(
-      subRef,
-      {
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        webhookVerifyToken: "",
-        displayPhoneNumber: input.display_phone ?? null,
-        businessName: input.business_name ?? null,
-        qualityRating: input.quality_rating ?? null,
-        isConnected: true,
-        connectedVia: input.connected_via ?? "manual",
-        connectedAt: now,
-        lastVerifiedAt: now,
-      },
-      { merge: true },
-    ),
-  ]);
-
-  // --- dataOwner detection (mirrors the Flutter app) ---------------------
-  // CRITICAL: resolve the real owner BEFORE calling subscribe-webhook so the
-  // PHP backend never caches the website UID as the owner for a phone that
-  // already belongs to a mobile-app user. `resolveExistingOwnerForPhone` now
-  // queries the `users` collection first (authoritative) and only falls back
-  // to `wa_map` / backend cache (which may be stale from a previous bad
-  // reconnect).
+  // Only if the authoritative server-side repair is unavailable do we use the
+  // older client-side fallback. Even here, resolve owner BEFORE writing this
+  // UID's `whatsappPhoneNumberId`, otherwise a brand-new email contaminates the
+  // lookup and can look like the owner.
   const currentUserSnap = await getDoc(userRef).catch(() => null);
   const currentUserData = currentUserSnap?.exists() ? (currentUserSnap.data() as Record<string, unknown>) : {};
   const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
