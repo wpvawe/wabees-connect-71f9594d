@@ -2,6 +2,7 @@ import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, s
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
+import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
@@ -201,6 +202,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   }
 
   await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
+
+  // Final authoritative repair runs through the backend credentials so it can
+  // see all users/wa_map documents, unlike client rules which only expose the
+  // signed-in user's own docs. This fixes reconnects where the website UID had
+  // already hijacked wa_map and the mobile app kept reading the old owner tree.
+  const idToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
+  if (idToken) {
+    await repairWhatsAppOwnerServer({ data: { idToken, phoneNumberId: input.phone_number_id } }).catch(() => null);
+  }
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
