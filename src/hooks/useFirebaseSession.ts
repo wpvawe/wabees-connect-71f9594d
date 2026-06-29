@@ -64,10 +64,11 @@ export function useFirebaseUid(): string | null {
 }
 
 /**
- * Returns the UID whose subcollections this user should READ/WRITE — i.e.
+ * Returns the UID whose shared business subcollections should be used — i.e.
  * `users/{uid}.dataOwner ?? uid`. When the signed-in user is an agent under
  * another account, this points at the owner's UID. Mirrors the Flutter app's
  * `dataOwnerIdProvider` so messages/contacts/templates/campaigns stay shared.
+ * Account connection/config actions still use the signed-in user's own UID.
  */
 export function useEffectiveUid(): string | null {
   const s = useFirebaseSession();

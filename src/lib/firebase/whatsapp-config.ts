@@ -1,4 +1,4 @@
-import { deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 
 /**
@@ -119,14 +119,25 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
   const db = fbDb();
+  const userRef = doc(db, "users", uid);
+  const snap = await getDoc(userRef).catch(() => null);
+  const data = snap?.exists() ? (snap.data() as Record<string, unknown>) : {};
+  const phoneId =
+    (data.whatsappPhoneNumberId as string | undefined) ??
+    (await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).then((s) =>
+      s.exists() ? (s.data().phoneNumberId as string | undefined) : undefined,
+    ).catch(() => undefined));
+  const dataOwner = (data.dataOwner as string | undefined) ?? "";
+  const isAgent = Boolean(dataOwner);
   await Promise.all([
-    updateDoc(doc(db, "users", uid), {
+    updateDoc(userRef, {
       whatsappPhoneNumberId: null,
       whatsappAccessToken: null,
       whatsappBusinessAccountId: null,
       whatsappDisplayPhone: null,
       whatsappQualityRating: null,
       whatsappConnected: false,
+      dataOwner: deleteField(),
       updatedAt: serverTimestamp(),
     }),
     setDoc(
@@ -135,6 +146,14 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
       { merge: true },
     ),
   ]);
+  if (isAgent) {
+    await deleteDoc(doc(db, "users", dataOwner, "agents", uid)).catch(() => {});
+  } else if (phoneId) {
+    const agents = await getDocs(collection(db, "users", uid, "agents")).catch(() => null);
+    if (!agents || agents.empty) {
+      await deleteDoc(doc(db, "wa_map", phoneId)).catch(() => {});
+    }
+  }
 }
 
 export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: string): Promise<void> {

@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { fetchMetaTemplates } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
@@ -9,19 +9,27 @@ type MetaTemplate = {
   category?: string;
   language?: string;
   status?: string;
-  components?: Array<{ type?: string; text?: string; format?: string }>;
+  components?: Array<{ type?: string; text?: string; format?: string; buttons?: Array<Record<string, unknown>> }>;
+  quality_score?: { score?: string } | string;
 };
 
-function extractBody(components: MetaTemplate["components"]): { body: string; header: string | null; footer: string | null } {
+function extractParts(components: MetaTemplate["components"]): {
+  body: string;
+  header: string | null;
+  footer: string | null;
+  buttons: Array<Record<string, unknown>>;
+} {
   let body = "";
   let header: string | null = null;
   let footer: string | null = null;
+  let buttons: Array<Record<string, unknown>> = [];
   for (const c of components ?? []) {
     if (c.type === "BODY" && c.text) body = c.text;
-    else if (c.type === "HEADER" && c.text) header = c.text;
+    else if (c.type === "HEADER" && c.format === "TEXT" && c.text) header = c.text;
     else if (c.type === "FOOTER" && c.text) footer = c.text;
+    else if (c.type === "BUTTONS" && Array.isArray(c.buttons)) buttons = c.buttons;
   }
-  return { body, header, footer };
+  return { body, header, footer, buttons };
 }
 
 function extractVariables(body: string): string[] {
@@ -61,25 +69,31 @@ export async function syncTemplatesFromMeta(uid: string): Promise<{ synced: numb
   const batch = writeBatch(db);
   for (const t of list) {
     if (!t.name) continue;
-    const ref = doc(col, t.name);
-    const { body, header, footer } = extractBody(t.components);
-    batch.set(
-      ref,
-      {
-        metaTemplateId: t.id ?? null,
-        name: t.name,
-        category: (t.category ?? "UTILITY").toUpperCase(),
-        languageCode: t.language ?? "en_US",
-        body,
-        header,
-        footer,
-        variables: extractVariables(body),
-        status: (t.status ?? "PENDING").toUpperCase(),
-        isSynced: true,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    const { body, header, footer, buttons } = extractParts(t.components);
+    const qualityScore = typeof t.quality_score === "string" ? t.quality_score : t.quality_score?.score;
+    const payload = {
+      metaTemplateId: t.id ?? null,
+      name: t.name,
+      category: (t.category ?? "UTILITY").toUpperCase(),
+      languageCode: t.language ?? "en_US",
+      body,
+      header,
+      footer,
+      buttons,
+      variables: extractVariables(body),
+      variableSamples: {},
+      variableTypes: {},
+      status: (t.status ?? "PENDING").toUpperCase(),
+      isSynced: true,
+      qualityScore: qualityScore ?? null,
+      updatedAt: serverTimestamp(),
+    };
+    const existing = await getDocs(query(col, where("name", "==", t.name), limit(1)));
+    if (existing.empty) {
+      batch.set(doc(col), { ...payload, createdAt: serverTimestamp() });
+    } else {
+      batch.update(existing.docs[0].ref, payload);
+    }
   }
   await batch.commit();
   return { synced: list.length };

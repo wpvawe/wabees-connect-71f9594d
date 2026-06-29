@@ -7,6 +7,7 @@ import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Wabees" }] }),
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const { data: wa, loading } = useWhatsAppConfig();
   const { data: profile } = useProfile("effective");
+  const { data: subscription } = useSubscription();
 
   return (
     <>
@@ -34,10 +36,11 @@ function DashboardPage() {
             action={<Link to="/connect"><WbButton>Connect WhatsApp</WbButton></Link>}
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Stat icon={faComments} label="Messages" value={String(profile?.totalMessages ?? "—")} />
             <Stat icon={faBullhorn} label="Campaigns" value={String(profile?.totalCampaigns ?? "—")} />
             <Stat icon={faRobot} label="Bots" value={String(profile?.totalBots ?? "—")} />
+            <Stat icon={faPlug} label="Plan" value={subscription?.planName ?? "—"} />
             <Stat icon={faPlug} label="Number" value={wa.display_phone ?? wa.phone_number_id ?? "—"} />
           </div>
         )}
