@@ -15,7 +15,7 @@ import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
-import { normalizePhone } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 
 export function Composer({ phone }: { phone: string }) {
   const [text, setText] = useState("");
@@ -28,7 +28,8 @@ export function Composer({ phone }: { phone: string }) {
     if (!body || sending || !uid || !selfUid) return;
     setSending(true);
     const normalizedPhone = normalizePhone(phone);
-    const to = normalizedPhone.replace(/[^0-9]/g, "");
+    const to = phoneDocId(phone);
+    const convId = to;
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
@@ -48,7 +49,7 @@ export function Composer({ phone }: { phone: string }) {
         createdAt: serverTimestamp(),
       });
       await setDoc(
-        doc(db, "users", uid, "conversations", normalizedPhone),
+        doc(db, "users", uid, "conversations", convId),
         {
           contactPhone: normalizedPhone,
           contactName: normalizedPhone,
