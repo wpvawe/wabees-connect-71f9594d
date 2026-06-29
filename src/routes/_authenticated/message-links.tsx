@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleNotch, faCopy, faLink, faPlug, faTrash } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -12,7 +12,6 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-import { useEffect } from "react";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";

@@ -9,7 +9,6 @@ import {
   increment,
   serverTimestamp,
   setDoc,
-  updateDoc,
   getDocs,
   query,
   where,
@@ -48,7 +47,6 @@ function SupportPage() {
     if (!uid) return;
     (async () => {
       try {
-        await setDoc(doc(fbDb(), "support_chats", uid), { unreadByUser: 0 }, { merge: true });
         const snap = await getDocs(
           query(
             collection(fbDb(), `support_chats/${uid}/messages`),
@@ -56,11 +54,15 @@ function SupportPage() {
             where("read", "==", false),
           ),
         );
-        if (!snap.empty) {
-          const batch = writeBatch(fbDb());
-          snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
-          await batch.commit();
-        }
+        if (snap.empty) return;
+        const batch = writeBatch(fbDb());
+        snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+        batch.set(
+          doc(fbDb(), "support_chats", uid),
+          { unreadByUser: 0 },
+          { merge: true },
+        );
+        await batch.commit();
       } catch {
         /* ignore */
       }
