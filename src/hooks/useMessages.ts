@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneQueryCandidates, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -40,7 +40,6 @@ export function useMessages(phone: string | undefined): { data: Message[] | null
     const q = query(
       collection(db, `users/${uid}/messages`),
       candidates.length === 1 ? where("contactPhone", "==", candidates[0]) : where("contactPhone", "in", candidates),
-      limit(500),
     );
     const unsub = onSnapshot(
       q,

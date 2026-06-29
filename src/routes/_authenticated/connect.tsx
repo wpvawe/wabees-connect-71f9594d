@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faCircleNotch, faCloudArrowDown, faFileLines, faKey, faPlugCircleBolt, faRoute } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
@@ -89,7 +90,7 @@ function ConnectPage() {
   );
 }
 
-function FlowItem({ icon, title, text }: { icon: typeof faKey; title: string; text: string }) {
+function FlowItem({ icon, title, text }: { icon: IconDefinition; title: string; text: string }) {
   return (
     <div className="rounded-lg border border-border bg-background p-3">
       <FontAwesomeIcon icon={icon} className="h-4 w-4 text-primary" />
