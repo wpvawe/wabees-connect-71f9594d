@@ -31,57 +31,30 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  // First persist the signed-in user's fresh credentials, then let the
-  // authoritative repair function decide owner/dataOwner/wa_map before any
-  // client fallback can accidentally hijack routing to this website UID.
-  await Promise.all([
-    setDoc(
-      userRef,
-      {
-        whatsappPhoneNumberId: input.phone_number_id,
-        whatsappAccessToken: input.access_token,
-        whatsappBusinessAccountId: input.waba_id ?? null,
-        whatsappDisplayPhone: input.display_phone ?? null,
-        whatsappQualityRating: input.quality_rating ?? null,
-        whatsappConnected: true,
-        updatedAt: now,
-      },
-      { merge: true },
-    ),
-    setDoc(
-      subRef,
-      {
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        webhookVerifyToken: "",
-        displayPhoneNumber: input.display_phone ?? null,
-        businessName: input.business_name ?? null,
-        qualityRating: input.quality_rating ?? null,
-        isConnected: true,
-        connectedVia: input.connected_via ?? "manual",
-        connectedAt: now,
-        lastVerifiedAt: now,
-      },
-      { merge: true },
-    ),
-  ]);
-
+  // Server repair must run BEFORE this new website UID writes
+  // `whatsappPhoneNumberId`; otherwise a brand-new email becomes a candidate
+  // and can hijack an already-connected phone from the mobile app owner.
   const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
   if (serverIdToken) {
     const serverRepair = await repairWhatsAppOwnerServer({
-      data: { idToken: serverIdToken, phoneNumberId: input.phone_number_id },
+      data: {
+        idToken: serverIdToken,
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        displayPhone: input.display_phone ?? "",
+        businessName: input.business_name ?? "",
+        qualityRating: input.quality_rating ?? "",
+        connectedVia: input.connected_via ?? "manual",
+      },
     }).catch(() => null);
     if (serverRepair?.ownerId) return;
   }
 
-  // --- dataOwner detection (mirrors the Flutter app) ---------------------
-  // CRITICAL: resolve the real owner BEFORE calling subscribe-webhook so the
-  // PHP backend never caches the website UID as the owner for a phone that
-  // already belongs to a mobile-app user. `resolveExistingOwnerForPhone` now
-  // queries the `users` collection first (authoritative) and only falls back
-  // to `wa_map` / backend cache (which may be stale from a previous bad
-  // reconnect).
+  // Only if the authoritative server-side repair is unavailable do we use the
+  // older client-side fallback. Even here, resolve owner BEFORE writing this
+  // UID's `whatsappPhoneNumberId`, otherwise a brand-new email contaminates the
+  // lookup and can look like the owner.
   const currentUserSnap = await getDoc(userRef).catch(() => null);
   const currentUserData = currentUserSnap?.exists() ? (currentUserSnap.data() as Record<string, unknown>) : {};
   const existingDataOwner = typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
@@ -205,6 +178,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
               ownerId: effectiveOwner,
               userId: effectiveOwner,
               users: arrayUnion({ userId: input.uid }, { userId: effectiveOwner }),
+                active: true,
               updatedAt: now,
             }
           : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
@@ -229,6 +203,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         userId: input.uid,
         ownerId: input.uid,
         users: arrayUnion({ userId: input.uid }),
+        active: true,
         accessTokenUpdatedAt: now,
         updatedAt: now,
       },
@@ -253,7 +228,18 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // already hijacked wa_map and the mobile app kept reading the old owner tree.
   const idToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
   if (idToken) {
-    await repairWhatsAppOwnerServer({ data: { idToken, phoneNumberId: input.phone_number_id } }).catch(() => null);
+    await repairWhatsAppOwnerServer({
+      data: {
+        idToken,
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        displayPhone: input.display_phone ?? "",
+        businessName: input.business_name ?? "",
+        qualityRating: input.quality_rating ?? "",
+        connectedVia: input.connected_via ?? "manual",
+      },
+    }).catch(() => null);
   }
 }
 

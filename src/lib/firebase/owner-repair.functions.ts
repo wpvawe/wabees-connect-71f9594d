@@ -3,6 +3,12 @@ import { createServerFn } from "@tanstack/react-start";
 type RepairInput = {
   idToken: string;
   phoneNumberId: string;
+  accessToken?: string;
+  businessAccountId?: string;
+  displayPhone?: string;
+  businessName?: string;
+  qualityRating?: string;
+  connectedVia?: "embedded_signup" | "manual";
 };
 
 type RepairResult = {
@@ -44,7 +50,16 @@ function parseInput(raw: unknown): RepairInput {
   const idToken = typeof data?.idToken === "string" ? data.idToken.trim() : "";
   const phoneNumberId = typeof data?.phoneNumberId === "string" ? data.phoneNumberId.trim() : "";
   if (!idToken || !phoneNumberId) throw new Error("Missing Firebase session or phone number id");
-  return { idToken, phoneNumberId };
+  return {
+    idToken,
+    phoneNumberId,
+    accessToken: typeof data?.accessToken === "string" ? data.accessToken.trim() : undefined,
+    businessAccountId: typeof data?.businessAccountId === "string" ? data.businessAccountId.trim() : undefined,
+    displayPhone: typeof data?.displayPhone === "string" ? data.displayPhone.trim() : undefined,
+    businessName: typeof data?.businessName === "string" ? data.businessName.trim() : undefined,
+    qualityRating: typeof data?.qualityRating === "string" ? data.qualityRating.trim() : undefined,
+    connectedVia: data?.connectedVia === "embedded_signup" ? "embedded_signup" : "manual",
+  };
 }
 
 function getString(fields: FsFields | undefined, key: string): string {
@@ -388,25 +403,52 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
 function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candidate | null {
   const rows = Array.from(candidates.values());
   if (rows.length === 0) return null;
+  // Flutter's connect flow treats an existing wa_map/top-level phone owner as
+  // authoritative: a second email that connects the same phone becomes an
+  // agent. If a previous bad web reconnect already hijacked wa_map to self,
+  // the old mobile-app owner still appears as a non-agent top/config match.
+  // Prefer that owner over the just-connected self, then use score only to
+  // break ties between multiple historical owners.
+  const historicalOwners = rows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
+  if (historicalOwners.length > 0) {
+    historicalOwners.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
+    return historicalOwners[0] ?? null;
+  }
   rows.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
   return rows[0] ?? null;
 }
 
-function readCredentials(userFields: FsFields | null, cfgFields: FsFields | null, phoneNumberId: string): FsFields {
-  const accessToken = getString(cfgFields ?? undefined, "accessToken") || getString(userFields ?? undefined, "whatsappAccessToken");
-  const businessAccountId = getString(cfgFields ?? undefined, "businessAccountId") || getString(userFields ?? undefined, "whatsappBusinessAccountId");
-  const displayPhone = getString(cfgFields ?? undefined, "displayPhoneNumber") || getString(userFields ?? undefined, "whatsappDisplayPhone");
-  const businessName = getString(cfgFields ?? undefined, "businessName") || getString(userFields ?? undefined, "businessName");
-  const qualityRating = getString(cfgFields ?? undefined, "qualityRating") || getString(userFields ?? undefined, "whatsappQualityRating");
+function readCredentials(input: RepairInput, userFields: FsFields | null, cfgFields: FsFields | null): FsFields {
+  const accessToken = input.accessToken || getString(cfgFields ?? undefined, "accessToken") || getString(userFields ?? undefined, "whatsappAccessToken");
+  const businessAccountId = input.businessAccountId || getString(cfgFields ?? undefined, "businessAccountId") || getString(userFields ?? undefined, "whatsappBusinessAccountId");
+  const displayPhone = input.displayPhone || getString(cfgFields ?? undefined, "displayPhoneNumber") || getString(userFields ?? undefined, "whatsappDisplayPhone");
+  const businessName = input.businessName || getString(cfgFields ?? undefined, "businessName") || getString(userFields ?? undefined, "businessName");
+  const qualityRating = input.qualityRating || getString(cfgFields ?? undefined, "qualityRating") || getString(userFields ?? undefined, "whatsappQualityRating");
   return {
-    phoneNumberId: { stringValue: phoneNumberId },
+    phoneNumberId: { stringValue: input.phoneNumberId },
     accessToken: { stringValue: accessToken },
     businessAccountId: { stringValue: businessAccountId },
+    webhookVerifyToken: { stringValue: "" },
     displayPhoneNumber: stringValue(displayPhone),
     businessName: stringValue(businessName),
     qualityRating: stringValue(qualityRating),
     isConnected: boolValue(Boolean(accessToken)),
+    connectedVia: { stringValue: input.connectedVia ?? "manual" },
+    connectedAt: timestampValue(),
     lastVerifiedAt: timestampValue(),
+  };
+}
+
+function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields {
+  return {
+    whatsappPhoneNumberId: { stringValue: input.phoneNumberId },
+    whatsappAccessToken: cfgPatch.accessToken,
+    whatsappBusinessAccountId: cfgPatch.businessAccountId,
+    whatsappDisplayPhone: cfgPatch.displayPhoneNumber,
+    whatsappQualityRating: cfgPatch.qualityRating,
+    whatsappConnected: boolValue(Boolean(cfgPatch.accessToken.stringValue)),
+    dataOwner: { nullValue: null },
+    updatedAt: timestampValue(),
   };
 }
 
@@ -444,7 +486,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `users/${uid}/whatsapp_config/config`),
     ]);
     const callerPhone = getString(callerUserFields ?? undefined, "whatsappPhoneNumberId") || getString(callerCfgFields ?? undefined, "phoneNumberId");
-    if (callerPhone !== data.phoneNumberId) {
+    if (!data.accessToken && callerPhone !== data.phoneNumberId) {
       throw new Error("This WhatsApp number is not connected on the signed-in account");
     }
 
@@ -471,26 +513,25 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     const mapIds = mapUserIds(waMapFields);
     for (const id of mapIds.owners) mergeCandidate(candidates, id, { fromMapOwner: true });
     for (const id of mapIds.users) mergeCandidate(candidates, id, { fromMapUsers: true });
-    mergeCandidate(candidates, uid, { fields: callerUserFields ?? {}, fromTopLevel: callerPhone === data.phoneNumberId });
+    // Only let a brand-new caller become a candidate when no historical owner
+    // exists. If we add the caller before resolution, a new website email can
+    // win the score simply because it just saved fresh credentials, hijacking
+    // webhook routing away from the mobile app's original owner.
+    if (callerPhone === data.phoneNumberId || getString(callerUserFields ?? undefined, "dataOwner")) {
+      mergeCandidate(candidates, uid, { fields: callerUserFields ?? {}, fromTopLevel: callerPhone === data.phoneNumberId });
+    }
 
     await enrichCandidates(projectId, accessToken, candidates);
     const owner = chooseOwner(candidates, uid);
     const ownerId = owner?.id ?? uid;
     const allIds = Array.from(new Set([ownerId, uid, ...Array.from(candidates.keys())]));
+    const cfgPatch = readCredentials(data, callerUserFields, callerCfgFields);
+    const topPatch = topLevelWhatsAppPatch(data, cfgPatch);
 
     if (ownerId !== uid) {
-      const cfgPatch = readCredentials(callerUserFields, callerCfgFields, data.phoneNumberId);
-      const topPatch: FsFields = {
-        whatsappPhoneNumberId: { stringValue: data.phoneNumberId },
-        whatsappAccessToken: cfgPatch.accessToken,
-        whatsappBusinessAccountId: cfgPatch.businessAccountId,
-        whatsappDisplayPhone: cfgPatch.displayPhoneNumber,
-        whatsappQualityRating: cfgPatch.qualityRating,
-        whatsappConnected: boolValue(Boolean(cfgPatch.accessToken.stringValue)),
-        updatedAt: timestampValue(),
-      };
       await Promise.all([
-        patchDoc(projectId, accessToken, `users/${uid}`, { dataOwner: { stringValue: ownerId }, updatedAt: timestampValue() }),
+        patchDoc(projectId, accessToken, `users/${uid}`, { ...topPatch, dataOwner: { stringValue: ownerId } }),
+        patchDoc(projectId, accessToken, `users/${uid}/whatsapp_config/config`, cfgPatch),
         patchDoc(projectId, accessToken, `users/${ownerId}`, topPatch),
         patchDoc(projectId, accessToken, `users/${ownerId}/whatsapp_config/config`, cfgPatch),
         patchDoc(projectId, accessToken, `users/${ownerId}/agents/${uid}`, {
@@ -502,6 +543,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
           ownerId: { stringValue: ownerId },
           userId: { stringValue: ownerId },
           users: userArrayValue(allIds),
+          active: boolValue(true),
           updatedAt: timestampValue(),
         }),
       ]);
@@ -511,13 +553,18 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       return { ownerId, repaired: true, candidates: allIds };
     }
 
+    await Promise.all([
+      patchDoc(projectId, accessToken, `users/${uid}`, topPatch),
+      patchDoc(projectId, accessToken, `users/${uid}/whatsapp_config/config`, cfgPatch),
+    ]);
     await patchDoc(projectId, accessToken, `wa_map/${data.phoneNumberId}`, {
       ownerId: { stringValue: uid },
       userId: { stringValue: uid },
       users: userArrayValue(allIds),
+      active: boolValue(true),
       updatedAt: timestampValue(),
     });
-    const ownAccessToken = getString(callerCfgFields ?? undefined, "accessToken") || getString(callerUserFields ?? undefined, "whatsappAccessToken");
+    const ownAccessToken = getString(cfgPatch, "accessToken");
     await subscribeWebhook(data.phoneNumberId, ownAccessToken);
     await clearRemoteCache(data.phoneNumberId);
     return { ownerId: uid, repaired: false, candidates: allIds };
