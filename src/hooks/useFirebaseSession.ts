@@ -74,7 +74,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         currentDataOwner = dataOwner;
         if (!repairTimer) {
           repairTimer = window.setInterval(() => {
-            if (!currentPhoneNumberId || currentDataOwner || repairInFlight) return;
+            if (!currentPhoneNumberId || (currentDataOwner && currentDataOwner !== user.uid) || repairInFlight) return;
             void resolveOwner(currentPhoneNumberId)
               .then((ownerId) => {
                 if (ownerId && ownerId !== user.uid) {
@@ -87,7 +87,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
               .catch(() => undefined);
           }, 30_000);
         }
-        if (phoneNumberId && !dataOwner && verifiedSelfPhoneNumberId !== phoneNumberId) {
+        if (phoneNumberId && (!dataOwner || dataOwner === user.uid) && verifiedSelfPhoneNumberId !== phoneNumberId) {
           // Do not briefly expose `effectiveUid = self` for a connected account
           // until ownership is checked. That short wrong-state was enough for
           // inbox hooks to subscribe to the website-only data island.
