@@ -9,15 +9,27 @@ type ServerEntry = {
 
 const RUNTIME_ENV_KEYS = [
   "FIREBASE_SERVICE_ACCOUNT_JSON",
+  "FIREBASE_SERVICE_ACCOUNT",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_APPLICATION_CREDENTIALS_JSON",
   "FIREBASE_WEB_API_KEY",
   "WABEES_API_BASE",
   "VITE_FIREBASE_API_KEY",
   "VITE_WABEES_API_BASE",
 ];
 
+declare global {
+  // Runtime bindings are attached here so server functions can read them even
+  // when the worker runtime does not automatically mirror bindings into
+  // process.env.
+  // eslint-disable-next-line no-var
+  var __WABEES_RUNTIME_ENV__: Record<string, unknown> | undefined;
+}
+
 function hydrateRuntimeEnv(env: unknown) {
   if (!env || typeof env !== "object") return;
   const bindings = env as Record<string, unknown>;
+  globalThis.__WABEES_RUNTIME_ENV__ = bindings;
   for (const key of RUNTIME_ENV_KEYS) {
     const value = bindings[key];
     if (typeof value === "string" && value.trim() && !process.env[key]) {

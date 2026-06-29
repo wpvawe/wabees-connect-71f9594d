@@ -46,6 +46,19 @@ type Candidate = {
   samples?: Record<string, number>;
 };
 
+function readRuntimeEnv(...keys: string[]): string {
+  const runtimeBindings = (globalThis as typeof globalThis & {
+    __WABEES_RUNTIME_ENV__?: Record<string, unknown>;
+  }).__WABEES_RUNTIME_ENV__;
+  const processEnv = typeof process !== "undefined" ? process.env : undefined;
+  const viteEnv = import.meta.env as Record<string, unknown>;
+  for (const key of keys) {
+    const value = runtimeBindings?.[key] ?? processEnv?.[key] ?? viteEnv[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 function parseInput(raw: unknown): RepairInput {
   const data = raw as Partial<RepairInput> | null;
   const idToken = typeof data?.idToken === "string" ? data.idToken.trim() : "";
@@ -132,12 +145,23 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
 }
 
 function readServiceAccount(): ServiceAccount {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const raw = readRuntimeEnv(
+    "FIREBASE_SERVICE_ACCOUNT_JSON",
+    "FIREBASE_SERVICE_ACCOUNT",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+  );
   if (!raw) throw new Error("Firebase backend credentials are not configured");
-  const account = JSON.parse(raw) as ServiceAccount;
+  const normalized = raw.startsWith("{")
+    ? raw
+    : raw.startsWith("'") && raw.endsWith("'")
+      ? raw.slice(1, -1)
+      : raw;
+  const account = JSON.parse(normalized) as ServiceAccount;
   if (!account.client_email || !account.private_key || !account.project_id) {
     throw new Error("Firebase backend credentials are incomplete");
   }
+  account.private_key = account.private_key.replace(/\\n/g, "\n");
   return account;
 }
 
@@ -179,7 +203,7 @@ async function getAccessToken(account: ServiceAccount): Promise<string> {
 }
 
 async function verifyFirebaseUser(idToken: string): Promise<{ uid: string; email: string | null }> {
-  const apiKey = process.env.FIREBASE_WEB_API_KEY ?? process.env.VITE_FIREBASE_API_KEY ?? "";
+  const apiKey = readRuntimeEnv("FIREBASE_WEB_API_KEY", "VITE_FIREBASE_API_KEY");
   if (!apiKey) throw new Error("Firebase web API key is not configured");
   const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
@@ -460,7 +484,7 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
 }
 
 async function clearRemoteCache(phoneNumberId: string) {
-  const base = process.env.WABEES_API_BASE ?? process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
+  const base = readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
   const url = new URL(`${base.replace(/\/$/, "")}/clear-cache.php`);
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
@@ -469,7 +493,7 @@ async function clearRemoteCache(phoneNumberId: string) {
 
 async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
   if (!accessToken) return;
-  const base = process.env.WABEES_API_BASE ?? process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
+  const base = readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
   await fetch(`${base.replace(/\/$/, "")}/subscribe-webhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
