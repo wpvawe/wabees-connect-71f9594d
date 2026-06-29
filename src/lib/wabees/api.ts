@@ -83,7 +83,7 @@ export function sendTemplateMessage(args: {
   return postJson("send-message.php", { ...args, type: "template" });
 }
 
-export function fetchMetaTemplates(args: { phone_number_id: string; access_token: string }) {
+export function fetchMetaTemplates(args: { business_account_id: string; access_token: string }) {
   return postJson("get-templates.php", args);
 }
 
