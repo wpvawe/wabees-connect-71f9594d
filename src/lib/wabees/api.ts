@@ -141,6 +141,31 @@ export function sendTemplateMessage(args: {
   return postJson("send-message.php", { ...args, type: "template" });
 }
 
+/** Send a media message (image / video / document / audio) via PHP. */
+export function sendMediaMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  type: "image" | "video" | "document" | "audio";
+  media_url?: string;
+  media_id?: string;
+  caption?: string;
+  filename?: string;
+}) {
+  return postJson("send-message.php", args);
+}
+
+/** Send an emoji reaction to a specific WhatsApp message. Empty emoji removes. */
+export function sendReactionMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  message_id: string;
+  emoji: string;
+}) {
+  return postJson("send-message.php", { ...args, type: "reaction" });
+}
+
 export function fetchMetaTemplates(args: { business_account_id: string; access_token: string }) {
   return postJson("get-templates.php", args);
 }
