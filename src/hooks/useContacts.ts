@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { listOfStrings, normalizePhone, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 
 export type Contact = {
   id: string;
@@ -15,15 +16,6 @@ export type Contact = {
   totalMessages: number;
   createdAt: string | null;
 };
-
-function toIso(v: unknown): string | null {
-  if (!v) return null;
-  if (typeof v === "string") return v;
-  if (typeof v === "object" && v && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
-    return (v as { toDate: () => Date }).toDate().toISOString();
-  }
-  return null;
-}
 
 export function useContacts(): { data: Contact[] | null; error: string | null } {
   const uid = useEffectiveUid();
@@ -40,16 +32,17 @@ export function useContacts(): { data: Contact[] | null; error: string | null } 
       (snap) => {
         const rows: Contact[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
+          const phone = str(x.phone, d.id);
           return {
             id: d.id,
-            phone: (x.phone as string) ?? "",
-            name: (x.name as string) ?? "",
-            email: (x.email as string | null) ?? null,
-            company: (x.company as string | null) ?? null,
-            notes: (x.notes as string | null) ?? null,
-            tags: (x.tags as string[]) ?? [],
-            group: (x.group as string | null) ?? null,
-            totalMessages: (x.totalMessages as number) ?? 0,
+            phone: phone ? normalizePhone(phone) : "",
+            name: str(x.name, phone || d.id),
+            email: strOrNull(x.email),
+            company: strOrNull(x.company),
+            notes: strOrNull(x.notes),
+            tags: listOfStrings(x.tags),
+            group: strOrNull(x.group),
+            totalMessages: typeof x.totalMessages === "number" ? x.totalMessages : 0,
             createdAt: toIso(x.createdAt),
           };
         });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { listOfStrings, normalizePhone, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 
 export type Conversation = {
   contactPhone: string;
@@ -11,7 +12,11 @@ export type Conversation = {
   lastMessageAt: string | null;
   unreadCount: number;
   profileImageUrl?: string | null;
+  lastIncomingMessageAt?: string | null;
   isPinned?: boolean;
+  pinOrder?: number;
+  activeChatterId?: string | null;
+  activeChatterEmail?: string | null;
   isBlocked?: boolean;
   tags?: string[];
 };
@@ -29,24 +34,48 @@ export function useConversations(): { data: Conversation[] | null; error: string
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows: Conversation[] = snap.docs.map((d) => {
+        const grouped = new Map<string, Conversation>();
+        for (const d of snap.docs) {
           const x = d.data() as Record<string, unknown>;
-          const ts = x.lastMessageAt as { toDate?: () => Date } | string | undefined;
-          let when: string | null = null;
-          if (ts && typeof ts === "object" && typeof ts.toDate === "function") when = ts.toDate().toISOString();
-          else if (typeof ts === "string") when = ts;
-          return {
-            contactPhone: d.id,
-            contactName: (x.contactName as string) ?? d.id,
-            lastMessage: (x.lastMessage as string) ?? "",
-            lastMessageType: (x.lastMessageType as string) ?? "text",
-            lastMessageAt: when,
-            unreadCount: (x.unreadCount as number) ?? 0,
-            profileImageUrl: (x.profileImageUrl as string | null) ?? null,
-            isPinned: (x.isPinned as boolean) ?? false,
-            isBlocked: (x.isBlocked as boolean) ?? false,
-            tags: (x.tags as string[]) ?? [],
+          const phone = normalizePhone(d.id || str(x.contactPhone));
+          if (!phone) continue;
+          const row: Conversation = {
+            contactPhone: phone,
+            contactName: str(x.contactName, phone),
+            lastMessage: str(x.lastMessage),
+            lastMessageType: str(x.lastMessageType, "text"),
+            lastMessageAt: toIso(x.lastMessageAt),
+            unreadCount: typeof x.unreadCount === "number" ? x.unreadCount : 0,
+            profileImageUrl: strOrNull(x.profileImageUrl),
+            lastIncomingMessageAt: toIso(x.lastIncomingMessageAt),
+            isPinned: Boolean(x.isPinned),
+            pinOrder: typeof x.pinOrder === "number" ? x.pinOrder : 0,
+            activeChatterId: strOrNull(x.activeChatterId),
+            activeChatterEmail: strOrNull(x.activeChatterEmail),
+            isBlocked: Boolean(x.isBlocked),
+            tags: listOfStrings(x.tags),
           };
+          const existing = grouped.get(phone);
+          if (!existing) grouped.set(phone, row);
+          else {
+            grouped.set(phone, {
+              ...existing,
+              ...row,
+              unreadCount: existing.unreadCount + row.unreadCount,
+              tags: Array.from(new Set([...(existing.tags ?? []), ...(row.tags ?? [])])),
+              lastMessageAt: row.lastMessageAt && (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
+                ? row.lastMessageAt
+                : existing.lastMessageAt,
+              lastMessage: row.lastMessageAt && (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
+                ? row.lastMessage
+                : existing.lastMessage,
+            });
+          }
+        }
+        const rows = Array.from(grouped.values()).sort((a, b) => {
+          if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+          if ((a.pinOrder ?? 0) !== (b.pinOrder ?? 0)) return (b.pinOrder ?? 0) - (a.pinOrder ?? 0);
+          return (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
         });
         setData(rows);
       },
