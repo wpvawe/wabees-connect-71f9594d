@@ -40,6 +40,7 @@ type Candidate = {
   fields: FsFields;
   fromTopLevel?: boolean;
   fromConfig?: boolean;
+  fromToken?: boolean;
   fromMapOwner?: boolean;
   fromMapUsers?: boolean;
   fromEmail?: boolean;
@@ -327,6 +328,40 @@ async function queryUsersByConfigPhone(projectId: string, accessToken: string, p
   });
 }
 
+async function queryUsersByTopLevelAccessToken(projectId: string, accessToken: string, whatsappAccessToken: string) {
+  if (!whatsappAccessToken) return [];
+  return runQuery(projectId, accessToken, {
+    structuredQuery: {
+      from: [{ collectionId: "users" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "whatsappAccessToken" },
+          op: "EQUAL",
+          value: { stringValue: whatsappAccessToken },
+        },
+      },
+      limit: 20,
+    },
+  });
+}
+
+async function queryUsersByConfigAccessToken(projectId: string, accessToken: string, whatsappAccessToken: string) {
+  if (!whatsappAccessToken) return [];
+  return runQuery(projectId, accessToken, {
+    structuredQuery: {
+      from: [{ collectionId: "whatsapp_config", allDescendants: true }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "accessToken" },
+          op: "EQUAL",
+          value: { stringValue: whatsappAccessToken },
+        },
+      },
+      limit: 20,
+    },
+  });
+}
+
 async function queryUsersByEmail(projectId: string, accessToken: string, email: string | null) {
   if (!email) return [];
   return runQuery(projectId, accessToken, {
@@ -404,16 +439,21 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
   const dataOwner = getString(fields, "dataOwner");
   let score = 0;
   const hasPhoneMatch = Boolean(candidate.fromTopLevel || candidate.fromConfig || candidate.fromMapOwner || candidate.fromMapUsers);
+  const hasOwnershipSignal = Boolean(hasPhoneMatch || candidate.fromToken);
   if (candidate.id !== selfUid) score += 400;
   // An email match only proves the same login, not ownership of this WhatsApp
   // phone. Do not let a fresh website UID win over the historical phone owner.
-  if (candidate.fromEmail && !hasPhoneMatch) score -= 2_000;
+  if (candidate.fromEmail && !hasOwnershipSignal) score -= 2_000;
   if (!dataOwner) score += 500;
   else score -= 300;
   if (candidate.fromMapOwner) score += 120;
   if (candidate.fromMapUsers) score += 180;
   if (candidate.fromTopLevel) score += 150;
   if (candidate.fromConfig) score += 150;
+  // Same permanent token is a strong fallback when older mobile-app docs did
+  // not persist whatsappPhoneNumberId, or wa_map was already hijacked by a
+  // website reconnect. Prefer the older data-rich UID over the fresh caller.
+  if (candidate.fromToken) score += 140;
   if (getBool(fields, "whatsappConnected")) score += 120;
   if (hasString(fields, "whatsappAccessToken")) score += 80;
   score += getNumber(fields, "totalMessages") * 8;
@@ -438,7 +478,7 @@ function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candi
   // the old mobile-app owner still appears as a non-agent top/config match.
   // Prefer that owner over the just-connected self, then use score only to
   // break ties between multiple historical owners.
-  const phoneLinkedRows = rows.filter((row) => row.fromTopLevel || row.fromConfig || row.fromMapOwner || row.fromMapUsers);
+  const phoneLinkedRows = rows.filter((row) => row.fromTopLevel || row.fromConfig || row.fromMapOwner || row.fromMapUsers || row.fromToken);
   const historicalOwners = phoneLinkedRows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
   if (historicalOwners.length > 0) {
     historicalOwners.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
@@ -520,9 +560,13 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     }
 
     const candidates = new Map<string, Candidate>();
-    const [topLevelMatches, configMatches, emailMatches, waMapFields] = await Promise.all([
+    const callerAccessToken = getString(callerCfgFields ?? undefined, "accessToken") || getString(callerUserFields ?? undefined, "whatsappAccessToken");
+
+    const [topLevelMatches, configMatches, topLevelTokenMatches, configTokenMatches, emailMatches, waMapFields] = await Promise.all([
       queryUsersByTopLevelPhone(projectId, accessToken, data.phoneNumberId),
       queryUsersByConfigPhone(projectId, accessToken, data.phoneNumberId),
+      queryUsersByTopLevelAccessToken(projectId, accessToken, callerAccessToken || data.accessToken || ""),
+      queryUsersByConfigAccessToken(projectId, accessToken, callerAccessToken || data.accessToken || ""),
       queryUsersByEmail(projectId, accessToken, email),
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
@@ -534,6 +578,14 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     for (const row of configMatches) {
       const id = uidFromConfigDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fromConfig: true });
+    }
+    for (const row of topLevelTokenMatches) {
+      const id = uidFromUserDocName(row.name);
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromToken: true });
+    }
+    for (const row of configTokenMatches) {
+      const id = uidFromConfigDocName(row.name);
+      if (id) mergeCandidate(candidates, id, { fromToken: true });
     }
     for (const row of emailMatches) {
       const id = uidFromUserDocName(row.name);
