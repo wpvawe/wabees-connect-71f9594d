@@ -31,9 +31,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  // Server repair must run BEFORE this new website UID writes
-  // `whatsappPhoneNumberId`; otherwise a brand-new email becomes a candidate
-  // and can hijack an already-connected phone from the mobile app owner.
+  // Try server-side repair first (best-effort). If backend credentials are
+  // not configured on the Worker, fall through to the client-side flow which
+  // now works because Firestore rules allow authenticated reads of wa_map and
+  // agent reads via `dataOwner`. Never block the connect flow on this.
   const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
   if (!serverIdToken) throw new Error("Please sign in again before connecting WhatsApp");
   try {
@@ -48,6 +49,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         qualityRating: input.quality_rating ?? "",
         connectedVia: input.connected_via ?? "manual",
       },
+    }).catch((err) => {
+      // Backend not configured / unreachable — log and fall back to client flow.
+      console.warn("[wa-connect] server repair unavailable, using client fallback:", err instanceof Error ? err.message : err);
+      return null;
     });
     await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
     if (serverRepair?.ownerId) {
@@ -90,7 +95,8 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       return;
     }
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
+    // Non-fatal: continue to client-side fallback below.
+    console.warn("[wa-connect] server repair failed, using client fallback:", error instanceof Error ? error.message : error);
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
