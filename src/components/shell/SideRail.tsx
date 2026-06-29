@@ -4,6 +4,7 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
   faChartLine, faComments, faAddressBook, faBullhorn, faRobot, faFileLines,
   faPlug, faGear, faRightFromBracket, faCrown,
+  faChartColumn, faBrain, faUsers, faHeadset, faLink, faBell,
 } from "@fortawesome/free-solid-svg-icons";
 import { signOut as fbSignOut } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
@@ -12,13 +13,19 @@ import wbIcon from "@/assets/wabees-icon.png";
 
 const NAV: { to: string; label: string; icon: IconDefinition }[] = [
   { to: "/dashboard", label: "Dashboard", icon: faChartLine },
+  { to: "/analytics", label: "Analytics", icon: faChartColumn },
   { to: "/inbox", label: "Inbox", icon: faComments },
   { to: "/contacts", label: "Contacts", icon: faAddressBook },
   { to: "/campaigns", label: "Campaigns", icon: faBullhorn },
   { to: "/bots", label: "Bots", icon: faRobot },
+  { to: "/ai-bot", label: "AI Bot", icon: faBrain },
   { to: "/templates", label: "Templates", icon: faFileLines },
   { to: "/plans", label: "Plans", icon: faCrown },
   { to: "/connect", label: "Connect", icon: faPlug },
+  { to: "/message-links", label: "Links", icon: faLink },
+  { to: "/agents", label: "Agents", icon: faUsers },
+  { to: "/notifications", label: "Alerts", icon: faBell },
+  { to: "/support", label: "Support", icon: faHeadset },
 ];
 
 export function SideRail() {

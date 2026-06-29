@@ -7,6 +7,10 @@ import { MessageBubble } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
+import { doc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { fbDb } from "@/integrations/firebase/client";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { phoneDocId, phoneQueryCandidates } from "@/lib/firebase/normalizers";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   head: ({ params }) => ({ meta: [{ title: `Chat ${params.phone} — Wabees` }] }),
@@ -20,10 +24,57 @@ function InboxThread() {
 
 function Thread({ phone }: { phone: string }) {
   const { data, error } = useMessages(phone);
+  const uid = useEffectiveUid();
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [data?.length]);
+
+  // Mark conversation read when user opens the chat on the website.
+  // Mirrors Flutter: reset conversation.unreadCount and stamp readAt on
+  // unread incoming messages so app & website stay in sync.
+  useEffect(() => {
+    if (!uid || !phone) return;
+    void (async () => {
+      try {
+        await setDoc(
+          doc(fbDb(), `users/${uid}/conversations/${phoneDocId(phone)}`),
+          { unreadCount: 0 },
+          { merge: true },
+        );
+      } catch { /* permissions/race — ignore */ }
+    })();
+  }, [uid, phone]);
+
+  // When new incoming messages arrive while this thread is open, mark them as read.
+  useEffect(() => {
+    if (!uid || !data) return;
+    const unread = data.filter((m) => m.direction === "incoming" && m.status !== "read" && !m.readAt);
+    if (unread.length === 0) return;
+    void (async () => {
+      try {
+        const candidates = phoneQueryCandidates(phone);
+        const batch = writeBatch(fbDb());
+        for (const m of unread) {
+          batch.set(
+            doc(fbDb(), `users/${uid}/messages/${m.id}`),
+            { status: "read", readAt: serverTimestamp() },
+            { merge: true },
+          );
+        }
+        await batch.commit();
+        // Also keep conversation counter at 0.
+        for (const candidate of candidates) {
+          await setDoc(
+            doc(fbDb(), `users/${uid}/conversations/${candidate}`),
+            { unreadCount: 0 },
+            { merge: true },
+          ).catch(() => {});
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [uid, phone, data]);
+
   const name =
     data && data.length > 0 && data[0].contactName && data[0].contactName !== phone
       ? data[0].contactName

@@ -15,13 +15,16 @@ export function MessageBubble({ m }: { m: Message }) {
   const mine = m.direction === "outgoing";
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   return (
-    <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full flex-col", mine ? "items-end" : "items-start")}>
       <div
         className={cn(
           "max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-soft",
           mine ? "bg-primary text-primary-foreground" : "bg-card text-card-foreground border border-border",
         )}
       >
+        {mine && m.botName && (
+          <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
+        )}
         {m.mediaUrl && (
           <div className="mb-1 overflow-hidden rounded-md">
             {m.mimeType?.startsWith("image/") ? (
@@ -30,6 +33,9 @@ export function MessageBubble({ m }: { m: Message }) {
             ) : (
               <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="underline">
                 {m.fileName ?? "Attachment"}
+                {typeof m.fileSize === "number" && m.fileSize > 0 && (
+                  <span className="ml-1 opacity-70">({formatBytes(m.fileSize)})</span>
+                )}
               </a>
             )}
           </div>
@@ -47,8 +53,17 @@ export function MessageBubble({ m }: { m: Message }) {
           {mine && <StatusIcon status={m.status} />}
         </div>
       </div>
+      {m.reactionEmoji && (
+        <span className="-mt-1 rounded-full border border-border bg-card px-1.5 py-0.5 text-xs shadow-soft">{m.reactionEmoji}</span>
+      )}
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function StatusIcon({ status }: { status: string }) {
