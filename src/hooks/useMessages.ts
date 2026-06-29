@@ -36,6 +36,7 @@ export function useMessages(phone: string | undefined): { data: Message[] | null
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
+    setData(null);
     const candidates = phoneQueryCandidates(phone);
     const q = query(
       collection(db, `users/${uid}/messages`),
