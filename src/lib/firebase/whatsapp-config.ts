@@ -178,6 +178,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
               ownerId: effectiveOwner,
               userId: effectiveOwner,
               users: arrayUnion({ userId: input.uid }, { userId: effectiveOwner }),
+                active: true,
               updatedAt: now,
             }
           : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
@@ -202,6 +203,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         userId: input.uid,
         ownerId: input.uid,
         users: arrayUnion({ userId: input.uid }),
+        active: true,
         accessTokenUpdatedAt: now,
         updatedAt: now,
       },
