@@ -210,6 +210,38 @@ async function patchDoc(projectId: string, accessToken: string, path: string, fi
   }
 }
 
+async function listDocs(projectId: string, accessToken: string, path: string, pageSize = 100): Promise<Array<{ id: string; fields: FsFields }>> {
+  const rows: Array<{ id: string; fields: FsFields }> = [];
+  let pageToken = "";
+  for (let page = 0; page < 5; page += 1) {
+    const qs = new URLSearchParams({ pageSize: String(pageSize) });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${qs.toString()}`);
+    if (!res.ok) return rows;
+    const json = await res.json().catch(() => ({})) as { documents?: Array<{ name?: string; fields?: FsFields }>; nextPageToken?: string };
+    for (const doc of json.documents ?? []) {
+      const id = doc.name?.split("/").pop();
+      if (id) rows.push({ id, fields: doc.fields ?? {} });
+    }
+    pageToken = json.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return rows;
+}
+
+async function mergeDataIsland(projectId: string, accessToken: string, sourceUid: string, ownerUid: string): Promise<void> {
+  const collections = ["conversations", "messages", "contacts", "templates", "bots", "campaigns"];
+  for (const collectionId of collections) {
+    const docs = await listDocs(projectId, accessToken, `users/${sourceUid}/${collectionId}`, 100);
+    await Promise.all(docs.map((row) => patchDoc(
+      projectId,
+      accessToken,
+      `users/${ownerUid}/${collectionId}/${row.id}`,
+      { ...row.fields, migratedFromUid: { stringValue: sourceUid }, migratedAt: timestampValue() },
+    ).catch(() => undefined)));
+  }
+}
+
 async function runQuery(projectId: string, accessToken: string, body: Record<string, unknown>): Promise<Array<{ name: string; fields: FsFields }>> {
   const res = await firestoreFetch(projectId, accessToken, ":runQuery", {
     method: "POST",
@@ -440,6 +472,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
           updatedAt: timestampValue(),
         }),
       ]);
+      await mergeDataIsland(projectId, accessToken, uid, ownerId);
       await subscribeWebhook(data.phoneNumberId, getString(cfgPatch, "accessToken"));
       await clearRemoteCache(data.phoneNumberId);
       return { ownerId, repaired: true, candidates: allIds };
