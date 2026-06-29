@@ -346,7 +346,6 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
   }
   const ownCreds = await loadOwnWaCredentials(uid).catch(() => null);
   if (ownCreds) return ownCreds;
-  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
   return null;
 }
 
