@@ -1,5 +1,5 @@
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { fbDb } from "@/integrations/firebase/client";
+import { deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { fbAuth, fbDb } from "@/integrations/firebase/client";
 
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
@@ -27,6 +27,28 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
+
+  // --- dataOwner detection (mirrors the Flutter app) ---------------------
+  // If `wa_map/{phoneNumberId}` already names a different ownerId, the
+  // current user is an AGENT — set `users/{uid}.dataOwner = existingOwner`
+  // and register under the owner. Do NOT overwrite the existing owner,
+  // otherwise the webhook will route incoming messages to the wrong UID
+  // and the website + mobile app will see split conversations.
+  let existingOwnerId: string | null = null;
+  try {
+    const existing = await getDoc(mapRef);
+    if (existing.exists()) {
+      const d = existing.data() as Record<string, unknown>;
+      existingOwnerId = (d.ownerId as string | undefined)
+        ?? (d.userId as string | undefined)
+        ?? null;
+    }
+  } catch {
+    // Non-fatal — treat as no existing owner.
+  }
+
+  const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
+
   await Promise.all([
     setDoc(
       userRef,
@@ -37,6 +59,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         whatsappDisplayPhone: input.display_phone ?? null,
         whatsappQualityRating: input.quality_rating ?? null,
         whatsappConnected: true,
+        // Critical: link this UID to the owner whose Firestore subcollections
+        // hold the real data. `useEffectiveUid()` reads this. When user is
+        // the owner themselves, clear any stale dataOwner.
+        dataOwner: isAgent ? existingOwnerId : deleteField(),
         updatedAt: now,
       },
       { merge: true },
@@ -60,18 +86,35 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     ),
   ]);
 
-  // Webhook routing map used by the PHP backend. Rules allow owners to write
-  // their own map; if an agent reconnects an owner's number, do not fail the
-  // whole connection because owner subcollections are still readable/writable.
-  await setDoc(
-    mapRef,
-    {
-      userId: input.uid,
-      ownerId: input.uid,
-      updatedAt: now,
-    },
-    { merge: true },
-  ).catch(() => {});
+  // Webhook routing map used by the PHP backend.
+  if (isAgent && existingOwnerId) {
+    // Register this UID as an agent under the existing owner. Do NOT
+    // overwrite `wa_map.ownerId` — webhook keeps routing to the original
+    // owner's subcollections, which both clients read via dataOwner.
+    try {
+      await setDoc(
+        doc(db, "users", existingOwnerId, "agents", input.uid),
+        {
+          email: fbAuth().currentUser?.email ?? null,
+          joinedAt: now,
+        },
+        { merge: true },
+      );
+    } catch {
+      // Non-fatal — owner's rules may not allow agent writes from this UID.
+    }
+  } else {
+    // Current user is the owner (first connect or reconnect).
+    await setDoc(
+      mapRef,
+      {
+        userId: input.uid,
+        ownerId: input.uid,
+        updatedAt: now,
+      },
+      { merge: true },
+    ).catch(() => {});
+  }
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
