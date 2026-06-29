@@ -31,9 +31,30 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  // First persist the signed-in user's fresh credentials, then let the
-  // authoritative repair function decide owner/dataOwner/wa_map before any
-  // client fallback can accidentally hijack routing to this website UID.
+  // Server repair must run BEFORE this new website UID writes
+  // `whatsappPhoneNumberId`; otherwise a brand-new email becomes a candidate
+  // and can hijack an already-connected phone from the mobile app owner.
+  const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
+  if (serverIdToken) {
+    const serverRepair = await repairWhatsAppOwnerServer({
+      data: {
+        idToken: serverIdToken,
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        displayPhone: input.display_phone ?? "",
+        businessName: input.business_name ?? "",
+        qualityRating: input.quality_rating ?? "",
+        connectedVia: input.connected_via ?? "manual",
+      },
+    }).catch(() => null);
+    if (serverRepair?.ownerId) return;
+  }
+
+  // Only if the authoritative server-side repair is unavailable do we persist
+  // locally and use the older client-side fallback. This fallback cannot see
+  // every user because Firestore rules are per-user, so it is intentionally
+  // second choice.
   await Promise.all([
     setDoc(
       userRef,
@@ -66,23 +87,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       { merge: true },
     ),
   ]);
-
-  const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
-  if (serverIdToken) {
-    const serverRepair = await repairWhatsAppOwnerServer({
-      data: {
-        idToken: serverIdToken,
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        displayPhone: input.display_phone ?? "",
-        businessName: input.business_name ?? "",
-        qualityRating: input.quality_rating ?? "",
-        connectedVia: input.connected_via ?? "manual",
-      },
-    }).catch(() => null);
-    if (serverRepair?.ownerId) return;
-  }
 
   // --- dataOwner detection (mirrors the Flutter app) ---------------------
   // CRITICAL: resolve the real owner BEFORE calling subscribe-webhook so the
