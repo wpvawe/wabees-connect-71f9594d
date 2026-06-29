@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { listOfStrings, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -28,9 +28,8 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, `users/${uid}/bots`), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
-      q,
+      collection(db, `users/${uid}/bots`),
       (snap) => {
         setData(snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
@@ -48,7 +47,7 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
             createdAt: toIso(x.createdAt),
             updatedAt: toIso(x.updatedAt),
           };
-        }));
+        }).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")));
       },
       (err) => setError(err.message),
     );

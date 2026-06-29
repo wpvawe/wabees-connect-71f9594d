@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { listOfStrings, normalizePhone, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -30,9 +30,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, `users/${uid}/conversations`), orderBy("lastMessageAt", "desc"));
     const unsub = onSnapshot(
-      q,
+      collection(db, `users/${uid}/conversations`),
       (snap) => {
         const grouped = new Map<string, Conversation>();
         for (const d of snap.docs) {
