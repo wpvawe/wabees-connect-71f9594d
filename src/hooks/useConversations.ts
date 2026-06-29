@@ -81,13 +81,13 @@ export function useConversations(): { data: Conversation[] | null; error: string
             });
           }
         }
-        // Best-effort dedupe: when two doc IDs map to the same phone, keep the
-        // canonical Flutter/PHP `+E.164` ID and delete older stray copies after
-        // merging their fields. Idempotent and safe to re-run.
+        // Best-effort canonicalization: keep/create the Flutter/PHP `+E.164`
+        // doc ID and delete older stray copies after merging their fields.
+        // Idempotent and safe to re-run.
         for (const [phone, ids] of idsByPhone) {
-          if (ids.length < 2) continue;
           const canonical = phoneDocId(phone);
-          if (!ids.includes(canonical)) continue;
+          const hasStray = ids.some((id) => id !== canonical);
+          if (!hasStray) continue;
           const merged = grouped.get(phone);
           if (!merged) continue;
           void (async () => {
@@ -99,7 +99,16 @@ export function useConversations(): { data: Conversation[] | null; error: string
                   contactName: merged.contactName,
                   lastMessage: merged.lastMessage,
                   lastMessageType: merged.lastMessageType,
+                  lastMessageAt: merged.lastMessageAt,
                   unreadCount: merged.unreadCount,
+                  profileImageUrl: merged.profileImageUrl ?? null,
+                  lastIncomingMessageAt: merged.lastIncomingMessageAt ?? null,
+                  isPinned: merged.isPinned ?? false,
+                  pinOrder: merged.pinOrder ?? 0,
+                  activeChatterId: merged.activeChatterId ?? null,
+                  activeChatterEmail: merged.activeChatterEmail ?? null,
+                  isBlocked: merged.isBlocked ?? false,
+                  tags: merged.tags ?? [],
                 },
                 { merge: true },
               );

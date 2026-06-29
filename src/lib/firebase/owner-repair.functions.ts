@@ -326,11 +326,20 @@ function mapUserIds(fields: FsFields | null): { owners: string[]; users: string[
   return { owners, users };
 }
 
-async function sampleCollection(projectId: string, accessToken: string, path: string): Promise<number> {
-  const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?pageSize=3`);
-  if (!res.ok) return 0;
-  const json = await res.json().catch(() => ({})) as { documents?: unknown[] };
-  return Array.isArray(json.documents) ? json.documents.length : 0;
+async function countCollection(projectId: string, accessToken: string, path: string, max = 500): Promise<number> {
+  let count = 0;
+  let pageToken = "";
+  for (let page = 0; page < 5 && count < max; page += 1) {
+    const qs = new URLSearchParams({ pageSize: String(Math.min(100, max - count)) });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${qs.toString()}`);
+    if (!res.ok) return count;
+    const json = await res.json().catch(() => ({})) as { documents?: unknown[]; nextPageToken?: string };
+    count += Array.isArray(json.documents) ? json.documents.length : 0;
+    pageToken = json.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return count;
 }
 
 async function enrichCandidates(projectId: string, accessToken: string, candidates: Map<string, Candidate>) {
@@ -338,12 +347,12 @@ async function enrichCandidates(projectId: string, accessToken: string, candidat
     const fields = await getDocFields(projectId, accessToken, `users/${candidate.id}`);
     if (fields) candidate.fields = { ...candidate.fields, ...fields };
     const [conversations, messages, contacts, bots, campaigns, templates] = await Promise.all([
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/conversations`),
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/messages`),
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/contacts`),
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/bots`),
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/campaigns`),
-      sampleCollection(projectId, accessToken, `users/${candidate.id}/templates`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/conversations`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/messages`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/contacts`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/bots`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/campaigns`),
+      countCollection(projectId, accessToken, `users/${candidate.id}/templates`),
     ]);
     candidate.samples = { conversations, messages, contacts, bots, campaigns, templates };
   }));
@@ -354,10 +363,11 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
   const samples = candidate.samples ?? {};
   const dataOwner = getString(fields, "dataOwner");
   let score = 0;
-  if (candidate.id !== selfUid) score += 250;
+  if (candidate.id !== selfUid) score += 400;
   if (!dataOwner) score += 500;
   else score -= 300;
-  if (candidate.fromMapOwner) score += 300;
+  if (candidate.fromMapOwner) score += 120;
+  if (candidate.fromMapUsers) score += 180;
   if (candidate.fromTopLevel) score += 150;
   if (candidate.fromConfig) score += 150;
   if (getBool(fields, "whatsappConnected")) score += 120;
@@ -421,6 +431,7 @@ async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
 export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
   .validator(parseInput)
   .handler(async ({ data }): Promise<RepairResult> => {
+    "use server";
     const account = readServiceAccount();
     const projectId = account.project_id!;
     const [{ uid, email }, accessToken] = await Promise.all([

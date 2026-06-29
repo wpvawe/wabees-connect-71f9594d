@@ -72,6 +72,21 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         const phoneNumberId = typeof profile.whatsappPhoneNumberId === "string" ? profile.whatsappPhoneNumberId : "";
         currentPhoneNumberId = phoneNumberId;
         currentDataOwner = dataOwner;
+        if (!repairTimer) {
+          repairTimer = window.setInterval(() => {
+            if (!currentPhoneNumberId || currentDataOwner || repairInFlight) return;
+            void resolveOwner(currentPhoneNumberId)
+              .then((ownerId) => {
+                if (ownerId && ownerId !== user.uid) {
+                  currentDataOwner = ownerId;
+                  setState({ status: "ready", uid: user.uid, effectiveUid: ownerId, dataOwner: ownerId, user });
+                } else if (ownerId === user.uid) {
+                  verifiedSelfPhoneNumberId = currentPhoneNumberId;
+                }
+              })
+              .catch(() => undefined);
+          }, 30_000);
+        }
         if (phoneNumberId && !dataOwner && verifiedSelfPhoneNumberId !== phoneNumberId) {
           // Do not briefly expose `effectiveUid = self` for a connected account
           // until ownership is checked. That short wrong-state was enough for
@@ -87,25 +102,11 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
               }
             })
             .catch(() => {
-              verifiedSelfPhoneNumberId = phoneNumberId;
+              // Keep retrying through the interval instead of permanently
+              // treating this account as owner after a transient repair error.
               setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
             });
           return;
-        }
-        if (!repairTimer) {
-          repairTimer = window.setInterval(() => {
-            if (!currentPhoneNumberId || currentDataOwner || repairInFlight) return;
-            void resolveOwner(currentPhoneNumberId)
-              .then((ownerId) => {
-                if (ownerId && ownerId !== user.uid) {
-                  currentDataOwner = ownerId;
-                  setState({ status: "ready", uid: user.uid, effectiveUid: ownerId, dataOwner: ownerId, user });
-                } else if (ownerId === user.uid) {
-                  verifiedSelfPhoneNumberId = currentPhoneNumberId;
-                }
-              })
-              .catch(() => undefined);
-          }, 30_000);
         }
         setState({
           status: "ready",
