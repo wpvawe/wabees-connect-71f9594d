@@ -150,8 +150,28 @@ if (!$userId) {
     exit;
 }
 
+// Agents / secondary website emails must store outbound rows in the original
+// owner's Firestore tree, otherwise the mobile app reads a separate island.
+$storageUserId = $userId;
+$resolvedUserResp = firestore_get("users/$userId");
+if (($resolvedUserResp['code'] ?? 404) === 200) {
+    $resolvedFields = $resolvedUserResp['data']['fields'] ?? [];
+    $dataOwner = trim($resolvedFields['dataOwner']['stringValue'] ?? '');
+    if ($dataOwner !== '' && $dataOwner !== $userId) {
+        $storageUserId = $dataOwner;
+        $ownerResp = firestore_get("users/$storageUserId");
+        if (($ownerResp['code'] ?? 404) === 200) {
+            $ownerFields = $ownerResp['data']['fields'] ?? [];
+            $ownerPhoneNumberId = $ownerFields['whatsappPhoneNumberId']['stringValue'] ?? '';
+            if ($ownerPhoneNumberId !== '') {
+                $phoneNumberId = $ownerPhoneNumberId;
+            }
+        }
+    }
+}
+
 // Get access token using robust helper (checks user doc + whatsapp_config subcollection)
-$tokens = get_user_access_token($userId);
+$tokens = get_user_access_token($storageUserId);
 $accessToken = $tokens['accessToken'] ?? '';
 
 if (empty($accessToken) || empty($phoneNumberId)) {
@@ -225,7 +245,7 @@ if ($httpCode >= 200 && $httpCode < 300) {
     $docId = 'msg_api_' . time() . '_' . rand(1000, 9999);
     $nowIso = gmdate('Y-m-d\TH:i:s\Z');
 
-    firestore_set("users/$userId/messages/$docId", [
+    firestore_set("users/$storageUserId/messages/$docId", [
         'contactPhone' => $phone,
         'contactName' => $phone,
         'type' => 'text',
@@ -237,7 +257,7 @@ if ($httpCode >= 200 && $httpCode < 300) {
     ]);
 
     // Update conversation
-    firestore_set("users/$userId/conversations/$phone", [
+    firestore_set("users/$storageUserId/conversations/$phone", [
         'contactPhone' => $phone,
         'contactName' => $phone,
         'lastMessage' => mb_substr($message, 0, 100),
@@ -246,7 +266,7 @@ if ($httpCode >= 200 && $httpCode < 300) {
     ], true);
 
     // Increment messagesUsed counter on subscription doc (non-fatal if it fails)
-    firestore_increment("users/$userId/subscription/current", 'messagesUsed', 1);
+    firestore_increment("users/$storageUserId/subscription/current", 'messagesUsed', 1);
 
     echo json_encode([
         'success' => true,
