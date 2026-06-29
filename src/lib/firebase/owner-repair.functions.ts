@@ -403,6 +403,17 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
 function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candidate | null {
   const rows = Array.from(candidates.values());
   if (rows.length === 0) return null;
+  // Flutter's connect flow treats an existing wa_map/top-level phone owner as
+  // authoritative: a second email that connects the same phone becomes an
+  // agent. If a previous bad web reconnect already hijacked wa_map to self,
+  // the old mobile-app owner still appears as a non-agent top/config match.
+  // Prefer that owner over the just-connected self, then use score only to
+  // break ties between multiple historical owners.
+  const historicalOwners = rows.filter((row) => row.id !== selfUid && !getString(row.fields, "dataOwner"));
+  if (historicalOwners.length > 0) {
+    historicalOwners.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
+    return historicalOwners[0] ?? null;
+  }
   rows.sort((a, b) => scoreCandidate(b, selfUid) - scoreCandidate(a, selfUid));
   return rows[0] ?? null;
 }
