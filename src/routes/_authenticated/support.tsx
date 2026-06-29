@@ -9,9 +9,6 @@ import {
   increment,
   serverTimestamp,
   setDoc,
-  getDocs,
-  query,
-  where,
   writeBatch,
 } from "firebase/firestore";
 import { format } from "date-fns";
@@ -42,21 +39,19 @@ function SupportPage() {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [data?.length]);
 
-  // Mark messages read when chat opens.
+  // Mark admin messages read when chat opens / new admin replies arrive.
+  // Uses the already-streamed messages to avoid a composite (senderRole+read)
+  // index requirement on `support_chats/{uid}/messages`.
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !data) return;
+    const unread = data.filter((m) => m.senderRole === "admin" && !m.read);
+    if (unread.length === 0) return;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(
-            collection(fbDb(), `support_chats/${uid}/messages`),
-            where("senderRole", "==", "admin"),
-            where("read", "==", false),
-          ),
-        );
-        if (snap.empty) return;
         const batch = writeBatch(fbDb());
-        snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+        for (const m of unread) {
+          batch.update(doc(fbDb(), "support_chats", uid, "messages", m.id), { read: true });
+        }
         batch.set(
           doc(fbDb(), "support_chats", uid),
           { unreadByUser: 0 },
@@ -67,7 +62,7 @@ function SupportPage() {
         /* ignore */
       }
     })();
-  }, [uid, data?.length]);
+  }, [uid, data]);
 
   async function send() {
     const body = text.trim();
