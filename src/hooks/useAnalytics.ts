@@ -28,10 +28,10 @@ export function useAnalytics(range: "7d" | "30d" | "month" | "lastMonth"): {
   const [nonce, setNonce] = useState(0);
 
   const hasConfig = Boolean(wa?.phone_number_id);
+  const phoneNumberId = wa?.phone_number_id ?? null;
 
   useEffect(() => {
-    if (!hasConfig) return;
-    const phoneNumberId = wa!.phone_number_id!;
+    if (!phoneNumberId) return;
     const { start, end } = computeRange(range);
     let cancelled = false;
     setLoading(true);
@@ -65,7 +65,7 @@ export function useAnalytics(range: "7d" | "30d" | "month" | "lastMonth"): {
     return () => {
       cancelled = true;
     };
-  }, [hasConfig, wa, range, nonce]);
+  }, [phoneNumberId, range, nonce]);
 
   return { data, loading, error, reload: () => setNonce((n) => n + 1), hasConfig };
 }

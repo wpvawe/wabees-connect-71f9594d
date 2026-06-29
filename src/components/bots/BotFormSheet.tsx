@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbDb } from "@/integrations/firebase/client";
 import type { Bot } from "@/hooks/useBots";
 import { toast } from "sonner";
@@ -53,6 +54,8 @@ export function BotFormSheet({
   editing?: Bot | null;
 }) {
   const uid = useEffectiveUid();
+  const session = useFirebaseSession();
+  const isOwner = session.status === "ready" && !session.dataOwner;
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
 
@@ -80,6 +83,10 @@ export function BotFormSheet({
   }
 
   async function save() {
+    if (!isOwner) {
+      toast.error("Only the owner can edit bots");
+      return;
+    }
     if (!uid || !form.name.trim() || !form.responseText.trim()) {
       toast.error("Name and reply text required");
       return;
@@ -100,8 +107,6 @@ export function BotFormSheet({
         headerText: form.headerText || null,
         footerText: form.footerText || null,
         delaySeconds: Number(form.delaySeconds) || 0,
-        quickReplies: [],
-        ctaButton: null,
         updatedAt: serverTimestamp(),
       };
       if (editing) {
@@ -110,6 +115,8 @@ export function BotFormSheet({
       } else {
         await addDoc(collection(fbDb(), "users", uid, "bots"), {
           ...payload,
+          quickReplies: [],
+          ctaButton: null,
           totalTriggered: 0,
           createdAt: serverTimestamp(),
         });
@@ -195,7 +202,7 @@ export function BotFormSheet({
             <WbButton variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </WbButton>
-            <WbButton onClick={save} loading={saving}>
+            <WbButton onClick={save} loading={saving} disabled={!isOwner}>
               {editing ? "Update" : "Create"}
             </WbButton>
           </div>
