@@ -4,6 +4,11 @@ import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/a
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
+function isFirebaseBackendCredentialError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /Firebase backend credentials are not configured|Firebase web API key is not configured/i.test(message);
+}
+
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
  *  - `users/{uid}` top-level fields (whatsappPhoneNumberId, whatsappAccessToken,
@@ -58,7 +63,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       return;
     }
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
+    if (!isFirebaseBackendCredentialError(error)) {
+      throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
+    }
   }
 
   // Only if the authoritative server-side repair is unavailable do we use the
