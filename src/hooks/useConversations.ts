@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { listOfStrings, normalizePhone, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
+import { listOfStrings, normalizePhone, phoneDocId, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 
 export type Conversation = {
   contactPhone: string;
@@ -34,10 +34,16 @@ export function useConversations(): { data: Conversation[] | null; error: string
       collection(db, `users/${uid}/conversations`),
       (snap) => {
         const grouped = new Map<string, Conversation>();
+        // Track which raw doc IDs belong to each canonical phone, so we can
+        // self-heal "+92..." vs "92..." duplicates created by older clients.
+        const idsByPhone = new Map<string, string[]>();
         for (const d of snap.docs) {
           const x = d.data() as Record<string, unknown>;
           const phone = normalizePhone(d.id || str(x.contactPhone));
           if (!phone) continue;
+          const list = idsByPhone.get(phone) ?? [];
+          list.push(d.id);
+          idsByPhone.set(phone, list);
           const row: Conversation = {
             contactPhone: phone,
             contactName: str(x.contactName, phone),
@@ -74,6 +80,38 @@ export function useConversations(): { data: Conversation[] | null; error: string
                 : existing.lastMessage,
             });
           }
+        }
+        // Best-effort dedupe: when two doc IDs map to the same phone, keep the
+        // canonical (digits-only) ID and delete the stray "+..." copy after
+        // merging its fields. Idempotent and safe to re-run.
+        for (const [phone, ids] of idsByPhone) {
+          if (ids.length < 2) continue;
+          const canonical = phoneDocId(phone);
+          if (!ids.includes(canonical)) continue;
+          const merged = grouped.get(phone);
+          if (!merged) continue;
+          void (async () => {
+            try {
+              await setDoc(
+                doc(db, `users/${uid}/conversations/${canonical}`),
+                {
+                  contactPhone: merged.contactPhone,
+                  contactName: merged.contactName,
+                  lastMessage: merged.lastMessage,
+                  lastMessageType: merged.lastMessageType,
+                  unreadCount: merged.unreadCount,
+                },
+                { merge: true },
+              );
+              for (const id of ids) {
+                if (id !== canonical) {
+                  await deleteDoc(doc(db, `users/${uid}/conversations/${id}`)).catch(() => {});
+                }
+              }
+            } catch {
+              /* permissions or race — ignore, UI already deduped */
+            }
+          })();
         }
         const rows = Array.from(grouped.values()).sort((a, b) => {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
