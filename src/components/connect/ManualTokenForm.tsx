@@ -8,7 +8,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useMutation } from "@tanstack/react-query";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { smartConnectWhatsApp, verifyWhatsAppToken } from "@/lib/wabees/api";
 import { toast } from "sonner";
 
@@ -24,7 +24,7 @@ type PhoneInfo = {
  * display phone, and quality rating, mirroring the mobile app.
  */
 export function ManualTokenForm() {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const { register, handleSubmit, formState: { errors } } = useForm<ManualConnectValues>({
     resolver: zodResolver(manualConnectSchema),
   });

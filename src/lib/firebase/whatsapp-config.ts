@@ -78,6 +78,24 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
   ]);
 }
 
+export async function updateWhatsAppBusinessAccountId(uid: string, wabaId: string): Promise<void> {
+  const db = fbDb();
+  const clean = wabaId.trim();
+  if (!clean) throw new Error("WABA ID is required");
+  await Promise.all([
+    setDoc(
+      doc(db, "users", uid),
+      { whatsappBusinessAccountId: clean, updatedAt: serverTimestamp() },
+      { merge: true },
+    ),
+    setDoc(
+      doc(db, "users", uid, "whatsapp_config", "config"),
+      { businessAccountId: clean, updatedAt: serverTimestamp() },
+      { merge: true },
+    ),
+  ]);
+}
+
 export async function loadWaCredentials(uid: string): Promise<{ phone_number_id: string; access_token: string } | null> {
   const db = fbDb();
   // Prefer the subcollection doc the Flutter app writes
