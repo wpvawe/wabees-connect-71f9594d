@@ -436,6 +436,7 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
     whatsappDisplayPhone: cfgPatch.displayPhoneNumber,
     whatsappQualityRating: cfgPatch.qualityRating,
     whatsappConnected: boolValue(Boolean(cfgPatch.accessToken.stringValue)),
+    dataOwner: { nullValue: null },
     updatedAt: timestampValue(),
   };
 }
@@ -531,6 +532,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
           ownerId: { stringValue: ownerId },
           userId: { stringValue: ownerId },
           users: userArrayValue(allIds),
+          active: boolValue(true),
           updatedAt: timestampValue(),
         }),
       ]);
