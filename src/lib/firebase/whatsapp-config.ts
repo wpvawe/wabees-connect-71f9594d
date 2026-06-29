@@ -49,7 +49,14 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         connectedVia: input.connected_via ?? "manual",
       },
     });
-    if (serverRepair?.ownerId) return;
+    if (serverRepair?.ownerId) {
+      // Server repair handled wa_map + config writes already. Still clear the
+      // PHP webhook cache from the client too — server-side clearRemoteCache
+      // depends on env vars and we want a second chance to invalidate stale
+      // owner routing.
+      await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
+      return;
+    }
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : "Could not verify existing WhatsApp owner");
   }

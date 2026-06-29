@@ -460,7 +460,7 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
 }
 
 async function clearRemoteCache(phoneNumberId: string) {
-  const base = process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
+  const base = process.env.WABEES_API_BASE ?? process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
   const url = new URL(`${base.replace(/\/$/, "")}/clear-cache.php`);
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
@@ -469,7 +469,7 @@ async function clearRemoteCache(phoneNumberId: string) {
 
 async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
   if (!accessToken) return;
-  const base = process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
+  const base = process.env.WABEES_API_BASE ?? process.env.VITE_WABEES_API_BASE ?? "https://api.wabees.live/api";
   await fetch(`${base.replace(/\/$/, "")}/subscribe-webhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

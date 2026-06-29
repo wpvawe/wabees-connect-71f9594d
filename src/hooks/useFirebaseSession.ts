@@ -99,12 +99,17 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
               } else if (ownerId === user.uid) {
                 verifiedSelfPhoneNumberId = phoneNumberId;
                 setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
+              } else {
+                // resolveOwner returned null (server unreachable / no candidate).
+                // Fall back to self so UI is not stuck on "loading" forever;
+                // the 30s interval will retry repair in the background.
+                setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
               }
             })
             .catch(() => {
-              // Keep retrying through the interval instead of permanently
-              // treating this account as owner after a transient repair error.
-              setState({ status: "loading" });
+              // On error fall back to self instead of staying stuck in loading;
+              // the 30s interval will retry repair.
+              setState({ status: "ready", uid: user.uid, effectiveUid: user.uid, dataOwner: null, user });
             });
           return;
         }
