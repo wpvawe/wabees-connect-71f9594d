@@ -70,7 +70,16 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const serverIdToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
   if (serverIdToken) {
     const serverRepair = await repairWhatsAppOwnerServer({
-      data: { idToken: serverIdToken, phoneNumberId: input.phone_number_id },
+      data: {
+        idToken: serverIdToken,
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        displayPhone: input.display_phone ?? "",
+        businessName: input.business_name ?? "",
+        qualityRating: input.quality_rating ?? "",
+        connectedVia: input.connected_via ?? "manual",
+      },
     }).catch(() => null);
     if (serverRepair?.ownerId) return;
   }
@@ -253,7 +262,18 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   // already hijacked wa_map and the mobile app kept reading the old owner tree.
   const idToken = await fbAuth().currentUser?.getIdToken().catch(() => null);
   if (idToken) {
-    await repairWhatsAppOwnerServer({ data: { idToken, phoneNumberId: input.phone_number_id } }).catch(() => null);
+    await repairWhatsAppOwnerServer({
+      data: {
+        idToken,
+        phoneNumberId: input.phone_number_id,
+        accessToken: input.access_token,
+        businessAccountId: input.waba_id ?? "",
+        displayPhone: input.display_phone ?? "",
+        businessName: input.business_name ?? "",
+        qualityRating: input.quality_rating ?? "",
+        connectedVia: input.connected_via ?? "manual",
+      },
+    }).catch(() => null);
   }
 }
 
