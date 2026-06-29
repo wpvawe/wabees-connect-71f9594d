@@ -6,21 +6,22 @@ import {
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
 
   async function onSync() {
-    if (!uid) return;
+    if (!uid || !selfUid) return;
     setSyncing(true);
     try {
-      const r = await syncTemplatesFromMeta(uid);
+      const r = await syncTemplatesFromMeta(uid, selfUid);
       toast.success(`Synced ${r.synced} templates`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");

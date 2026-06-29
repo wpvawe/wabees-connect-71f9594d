@@ -186,14 +186,9 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
   const db = fbDb();
   const self = await getDoc(doc(db, "users", uid)).catch(() => null);
   const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
-  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
-  if (dataOwner && dataOwner !== uid) {
-    const ownerCreds = await loadWaCredentials(dataOwner);
-    if (ownerCreds) return ownerCreds;
-  }
-  // Prefer the subcollection doc the Flutter app writes
-  // (`users/{uid}/whatsapp_config/config`). Fall back to the top-level
-  // mirrored fields the website used before, for older website-only setups.
+  // Match Flutter: WhatsApp credentials/config are scoped to the signed-in
+  // user (`userIdProvider`), while business data uses dataOwner/effective UID.
+  // Only fall back to owner credentials if this account has no own config.
   const sub = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
   if (sub.exists()) {
     const d = sub.data();
@@ -207,5 +202,7 @@ export async function loadWaCredentials(uid: string): Promise<{ phone_number_id:
     const access_token = d.whatsappAccessToken as string | undefined;
     if (phone_number_id && access_token) return { phone_number_id, access_token };
   }
+  const dataOwner = typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
+  if (dataOwner && dataOwner !== uid) return loadWaCredentials(dataOwner);
   return null;
 }

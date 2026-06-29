@@ -45,8 +45,8 @@ export async function syncTemplatesFromMeta(uid: string, credentialUid = uid): P
   // backend expects `business_account_id`; direct browser → Meta calls are
   // intentionally avoided so website behavior matches the app.
   const db = fbDb();
-  const cfg = await getDoc(doc(db, "users", uid, "whatsapp_config", "config"));
-  const userDoc = await getDoc(doc(db, "users", uid));
+  const cfg = await getDoc(doc(db, "users", credentialUid, "whatsapp_config", "config"));
+  const userDoc = await getDoc(doc(db, "users", credentialUid));
   const waba_id =
     (cfg.data()?.businessAccountId as string | undefined) ||
     (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
