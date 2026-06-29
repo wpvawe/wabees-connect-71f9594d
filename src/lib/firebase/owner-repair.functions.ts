@@ -431,6 +431,7 @@ async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
 export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
   .validator(parseInput)
   .handler(async ({ data }): Promise<RepairResult> => {
+    "use server";
     const account = readServiceAccount();
     const projectId = account.project_id!;
     const [{ uid, email }, accessToken] = await Promise.all([
