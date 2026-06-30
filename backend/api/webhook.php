@@ -1401,7 +1401,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             ];
         }
         if ($mediaId) {
-            $proxyUrl = 'https://api.wabees.live/api/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
+            $proxyUrl = 'https://api.wabees.live/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
             $contactWrites[] = [
                 'update' => [
                     'name' => "projects/" . FIREBASE_PROJECT_ID . "/databases/(default)/documents/" . $path,
@@ -1416,7 +1416,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     }
 
     if ($mediaId && ($contactHttpCode < 200 || $contactHttpCode >= 400)) {
-        $proxyUrl = 'https://api.wabees.live/api/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
+        $proxyUrl = 'https://api.wabees.live/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
         firestore_update($path, ['mediaUrl' => $proxyUrl], ['mediaUrl']);
     }
 }
