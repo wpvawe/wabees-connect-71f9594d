@@ -11,7 +11,7 @@ import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/fi
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
-import { sendReactionMessage, markMessageRead } from "@/lib/wabees/api";
+import { sendReactionMessage, markMessageRead, deleteWhatsAppMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { toast } from "sonner";
 
@@ -171,13 +171,39 @@ function Thread({ phone }: { phone: string }) {
   const onDelete = useCallback(
     async (m: Message) => {
       if (!uid) return;
-      if (
-        !confirm(
-          "Delete this message?\n\nIt will be hidden on your website and app only. WhatsApp Business API does not support revoking messages from the recipient's phone.",
-        )
-      )
-        return;
+      // Outgoing + has wamid + within ~48h → can revoke for everyone via Meta.
+      const canRevoke =
+        m.direction === "outgoing" &&
+        !!m.whatsappMessageId &&
+        (() => {
+          if (!m.createdAt) return false;
+          const ageHours = (Date.now() - new Date(m.createdAt).getTime()) / 36e5;
+          return ageHours < 48;
+        })();
+      const prompt = canRevoke
+        ? "Delete this message for everyone?\n\nIt will be removed from the recipient's WhatsApp and from your inbox."
+        : m.direction === "outgoing"
+          ? "Delete from your inbox?\n\nThis message is older than 48h or has no WhatsApp ID, so it can only be hidden on your side — the recipient's copy will remain."
+          : "Hide this incoming message?\n\nIt will be removed from your inbox only. WhatsApp does not let businesses delete messages from a customer's phone.";
+      if (!confirm(prompt)) return;
       try {
+        if (canRevoke && selfUid && m.whatsappMessageId) {
+          try {
+            const creds = await loadWaCredentials(selfUid);
+            if (creds) {
+              const res = await deleteWhatsAppMessage({
+                phone_number_id: creds.phone_number_id,
+                access_token: creds.access_token,
+                message_id: m.whatsappMessageId,
+              });
+              if (!res.success) {
+                toast.error(res.message ?? "Couldn't revoke on WhatsApp");
+              }
+            }
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Couldn't revoke on WhatsApp");
+          }
+        }
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           status: "deleted",
           body: "",
@@ -189,7 +215,7 @@ function Thread({ phone }: { phone: string }) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
       }
     },
-    [uid],
+    [uid, selfUid],
   );
 
   const actions: MessageActions = {
