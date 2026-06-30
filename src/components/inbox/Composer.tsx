@@ -524,6 +524,27 @@ function whatsappContextMessageId(message?: Message | null): string | null {
   return raw?.replace(/^msg_/, "") ?? null;
 }
 
+// Build a non-empty reply preview so replying to a photo / voice / document
+// still shows context above the bubble (previously empty body → no quote).
+function replyPreview(m: Message): string {
+  const text = (m.body || m.caption || "").trim();
+  if (text) return text;
+  const tagMap: Record<string, string> = {
+    image: "📷 Photo",
+    sticker: "💟 Sticker",
+    video: "🎥 Video",
+    audio: "🎤 Voice message",
+    document: m.fileName ? `📄 ${m.fileName}` : "📄 Document",
+    location: "📍 Location",
+    contacts: "👤 Contact",
+    template: "📋 Template",
+    interactive: "🔘 Interactive",
+    button: "🔘 Button",
+    order: "🛒 Order",
+  };
+  return tagMap[(m.type || "").toLowerCase()] ?? `[${m.type || "message"}]`;
+}
+
 function AttachMenu({
   disabled,
   onPickImage,
