@@ -57,7 +57,6 @@
     "date-fns": "^4.4.0",
     "embla-carousel-react": "^8.6.0",
     "firebase": "^12.15.0",
-    "firebase-admin": "^14.1.0",
     "input-otp": "^1.4.2",
     "linkify-react": "^4.3.3",
     "linkifyjs": "^4.3.3",
