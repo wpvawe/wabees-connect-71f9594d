@@ -169,7 +169,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" /> Copy
             </button>
           )}
-          {mine && actions?.onDelete && (
+          {actions?.onDelete && (
             <button
               type="button"
               onClick={() => {
