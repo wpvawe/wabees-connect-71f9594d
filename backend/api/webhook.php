@@ -262,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $phoneNumberId = $value['metadata']['phone_number_id'] ?? '';
 
                 // Resolve the OWNER of this phone number (dataOwner model)
-                $ownerResult = resolve_owner_by_phone_map($phoneNumberId);
+                $ownerResult = resolve_all_users_by_phone_map($phoneNumberId);
                 // Handle both single owner (old format) and array of owners (new format)
                 $owners = [];
                 if (!empty($ownerResult)) {
@@ -324,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // FIX: resolve_owner_by_phone_map can return array of owners or single owner object
                 // Must unwrap the same way the 'messages' handler does
-                $ownerResult = resolve_owner_by_phone_map($phoneNumberId);
+                $ownerResult = resolve_all_users_by_phone_map($phoneNumberId);
                 $callOwners = [];
                 if (!empty($ownerResult)) {
                     if (isset($ownerResult[0]['id'])) {
@@ -509,6 +509,14 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         $raw = @file_get_contents($cacheFile);
         $map = @json_decode($raw, true) ?: [];
         $cacheLoaded = !empty($map);
+        if (isset($map[$phoneNumberId]['ownerId']) && empty($map[$phoneNumberId]['users'])) {
+            $map[$phoneNumberId]['users'] = [['userId' => $map[$phoneNumberId]['ownerId']]];
+            if (!empty($map[$phoneNumberId]['accessToken']))
+                $map[$phoneNumberId]['users'][0]['accessToken'] = $map[$phoneNumberId]['accessToken'];
+            if (!empty($map[$phoneNumberId]['fcmToken']))
+                $map[$phoneNumberId]['users'][0]['fcmToken'] = $map[$phoneNumberId]['fcmToken'];
+        }
+
         if (isset($map[$phoneNumberId]) && !empty($map[$phoneNumberId]['users'])) {
             $ts = $map[$phoneNumberId]['ts'] ?? 0;
             if (time() - $ts < 86400) {
@@ -624,6 +632,7 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         webhook_log("RESOLVE[3-users-query]: FOUND " . count($foundUsers) . " users");
         // Self-heal: rebuild wa_map with all found users
         $cacheUsers = [];
+        $resolvedUsers = [];
         foreach ($foundUsers as $fu) {
             $tokens = get_user_access_token($fu['id']);
             $accessToken = $tokens['accessToken'] ?? null;
@@ -638,10 +647,11 @@ function resolve_all_users_by_phone_map($phoneNumberId)
             if ($fcmToken)
                 $ce['fcmToken'] = $fcmToken;
             $cacheUsers[] = $ce;
+            $resolvedUsers[] = $fu;
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
-        return $foundUsers;
+        return $resolvedUsers;
     }
     webhook_log("RESOLVE[3-users-query]: No user with whatsappPhoneNumberId=$phoneNumberId");
 
@@ -709,10 +719,14 @@ function _prewarm_wa_map_cache($cacheFile)
                     $docUsers[] = $uid;
             }
         }
-        // ALSO check old userId field (may coexist with users array during migration)
+        // ALSO check old userId/ownerId fields (may coexist with users array during migration)
         $oldUid = $fields['userId']['stringValue'] ?? null;
         if ($oldUid && !in_array($oldUid, $docUsers)) {
             $docUsers[] = $oldUid;
+        }
+        $ownerUid = $fields['ownerId']['stringValue'] ?? null;
+        if ($ownerUid && !in_array($ownerUid, $docUsers)) {
+            $docUsers[] = $ownerUid;
         }
         if (empty($docUsers))
             continue;
