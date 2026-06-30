@@ -421,7 +421,35 @@ export function Composer({
           />
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              // Best-effort outbound typing indicator. Requires a known
+              // inbound wamid (Meta scopes typing to a read receipt). Debounce
+              // so we only send once when the user actively types, and
+              // throttle to one call per 20s per wamid (Meta drops the
+              // indicator after ~25s).
+              if (!lastInboundWamid || !selfUid) return;
+              if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+              typingTimerRef.current = setTimeout(() => {
+                const now = Date.now();
+                const last = typingSentRef.current;
+                if (last && last.wamid === lastInboundWamid && now - last.ts < 20000) return;
+                typingSentRef.current = { wamid: lastInboundWamid, ts: now };
+                void (async () => {
+                  try {
+                    const creds = await loadWaCredentials(selfUid);
+                    if (!creds) return;
+                    await sendTypingIndicator({
+                      phone_number_id: creds.phone_number_id,
+                      access_token: creds.access_token,
+                      message_id: lastInboundWamid,
+                    });
+                  } catch {
+                    /* best-effort */
+                  }
+                })();
+              }, 350);
+            }}
             onKeyDown={onKey}
             placeholder="Type a message"
             rows={1}
