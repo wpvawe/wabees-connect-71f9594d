@@ -5,6 +5,7 @@
  * realtime hooks pick them up automatically.
  */
 import { WABEES_API_BASE } from "@/integrations/firebase/client";
+import { fbAuth } from "@/integrations/firebase/client";
 
 export type WabeesApiResult<T = unknown> = {
   success: boolean;
@@ -108,10 +109,18 @@ export async function subscribeWhatsAppWebhook(args: {
 export async function clearWebhookOwnerCache(
   phoneNumberId: string,
 ): Promise<{ ownerId: string | null }> {
-  const url = new URL(`${WABEES_API_BASE}/clear-cache.php`);
-  url.searchParams.set("phone_number_id", phoneNumberId);
-  url.searchParams.set("secret", "wabees_cache_clear_2024");
-  const res = await fetch(url.toString());
+  // C-3 fix: authenticate with a Firebase ID token instead of shipping
+  // the static secret in the client bundle. PHP verifies the token via
+  // verify_firebase_id_token() in clear-cache.php.
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
+  const res = await fetch(`${WABEES_API_BASE}/clear-cache.php`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    },
+    body: JSON.stringify({ phone_number_id: phoneNumberId, id_token: idToken }),
+  });
   const raw = (await res.json().catch(() => ({}))) as {
     cleared?: unknown;
     ownerId?: unknown;
