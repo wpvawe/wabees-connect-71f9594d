@@ -1,6 +1,13 @@
 export function toIso(v: unknown): string | null {
   if (!v) return null;
   if (typeof v === "string") return v;
+  // L-2 fix: handle bare numeric timestamps (older PHP webhook variants
+  // stored Unix seconds/millis). Without this they returned null and the
+  // affected messages sorted to the top because "" compares before any ISO.
+  if (typeof v === "number" && isFinite(v)) {
+    const ms = v > 1e12 ? v : v * 1000;
+    return new Date(ms).toISOString();
+  }
   if (
     typeof v === "object" &&
     v &&
