@@ -15,6 +15,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   increment,
   serverTimestamp,
   setDoc,
@@ -77,10 +78,24 @@ export function Composer({
         toast.error("Connect WhatsApp first");
         return;
       }
+      // H-1 fix: preserve the known contact name on optimistic writes so the
+      // thread header / conversation list don't briefly flash back to the
+      // raw phone number. Read from the conversation doc that already
+      // tracks contactName (best-effort, cached by Firestore SDK).
+      let knownName = normalizedPhone;
+      try {
+        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
+        const existing = snap.data()?.contactName;
+        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
+          knownName = existing;
+        }
+      } catch {
+        /* fall back to phone */
+      }
       // Optimistic write — message doc + conversation summary (Flutter pattern).
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
-        contactName: normalizedPhone,
+        contactName: knownName,
         type: "text",
         direction: "outgoing",
         status: "pending",
@@ -99,7 +114,7 @@ export function Composer({
         doc(db, "users", uid, "conversations", convId),
         {
           contactPhone: normalizedPhone,
-          contactName: normalizedPhone,
+          contactName: knownName,
           lastMessage: body,
           lastMessageType: "text",
           lastMessageAt: serverTimestamp(),
@@ -268,6 +283,10 @@ export function Composer({
       recTimerRef.current = null;
     }
     if (!send) {
+      // M-6 fix: clear any chunks already pushed before we detach handlers,
+      // otherwise a queued `dataavailable` racing with `stop()` can leave
+      // stale audio in recChunksRef for the NEXT recording session.
+      recChunksRef.current = [];
       recRef.current.ondataavailable = null;
       recRef.current.onstop = () => {
         recRef.current?.stream.getTracks().forEach((t) => t.stop());

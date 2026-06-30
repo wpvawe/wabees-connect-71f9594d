@@ -12,6 +12,7 @@ import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { playNotificationChime } from "@/lib/notification-sound";
 import { toast } from "sonner";
 import { useRouterState } from "@tanstack/react-router";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 
 /**
  * Global subscriber: any new incoming WhatsApp message (across all chats)
@@ -29,6 +30,9 @@ export function useIncomingMessageAlerts() {
     if (!db) return;
     const seen = new Set<string>();
     let first = true;
+    // M-7 fix: capture subscription start so re-seeds after reconnect only
+    // suppress messages older than this listener, not arbitrary recent ones.
+    const subscribedAt = Date.now();
     const q = query(
       collection(db, `users/${uid}/messages`),
       where("direction", "==", "incoming"),
@@ -54,8 +58,17 @@ export function useIncomingMessageAlerts() {
           const type = String(x.type ?? "text");
           // Skip silent system docs.
           if (type === "reaction" && !x.mediaUrl) continue;
-          // Skip if user is already inside that thread.
-          if (pathRef.current.includes(`/inbox/${phone}`)) continue;
+          // M-7 fix: don't chime for messages that pre-date this listener.
+          const created = (x.createdAt as { toDate?: () => Date } | undefined)?.toDate?.();
+          if (created && created.getTime() < subscribedAt - 5000) continue;
+          // H-2 fix: route uses normalized +E.164 but stored contactPhone
+          // can be bare digits. Compare normalized forms on both sides.
+          const normPhone = normalizePhone(phone);
+          const path = pathRef.current;
+          const pathPhone = path.startsWith("/inbox/")
+            ? decodeURIComponent(path.slice("/inbox/".length).split(/[/?#]/)[0])
+            : "";
+          if (pathPhone && normalizePhone(pathPhone) === normPhone) continue;
           playNotificationChime();
           toast(name || "New message", {
             description: body || `[${type}]`,

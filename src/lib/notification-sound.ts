@@ -77,4 +77,17 @@ export function installAutoplayUnlocker() {
   };
   window.addEventListener("pointerdown", handler, { once: true, passive: true });
   window.addEventListener("keydown", handler, { once: true });
+  // L-3 fix: close the AudioContext on page unload so its audio graph is
+  // not kept alive beyond the tab. Idempotent — safe if no ctx exists yet.
+  window.addEventListener(
+    "beforeunload",
+    () => {
+      try {
+        void ctx?.close();
+      } catch {
+        /* ignore */
+      }
+    },
+    { once: true },
+  );
 }

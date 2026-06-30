@@ -71,15 +71,20 @@ function Thread({ phone }: { phone: string }) {
     void (async () => {
       try {
         const candidates = phoneQueryCandidates(phone);
-        const batch = writeBatch(fbDb());
-        for (const m of unread) {
-          batch.set(
-            doc(fbDb(), `users/${uid}/messages/${m.id}`),
-            { status: "read", readAt: serverTimestamp() },
-            { merge: true },
-          );
+        // C-4 fix: Firestore batches cap at 500 ops. Chunk so large unread
+        // backlogs don't silently throw and leave messages forever-unread.
+        const CHUNK = 450;
+        for (let i = 0; i < unread.length; i += CHUNK) {
+          const batch = writeBatch(fbDb());
+          for (const m of unread.slice(i, i + CHUNK)) {
+            batch.set(
+              doc(fbDb(), `users/${uid}/messages/${m.id}`),
+              { status: "read", readAt: serverTimestamp() },
+              { merge: true },
+            );
+          }
+          await batch.commit();
         }
-        await batch.commit();
         // Also keep conversation counter at 0.
         for (const candidate of candidates) {
           await setDoc(
@@ -172,10 +177,18 @@ function Thread({ phone }: { phone: string }) {
     onDelete,
   };
 
-  const name =
-    data && data.length > 0 && data[0].contactName && data[0].contactName !== phone
-      ? data[0].contactName
-      : phone;
+  // H-4 fix: walk newest→oldest and pick the freshest real (non-phone) name.
+  // `data` is sorted ascending by createdAt, so the contact-name on data[0]
+  // is the OLDEST and may still be the raw phone even after the webhook
+  // attached a profile name to later messages.
+  const name = (() => {
+    if (!data || data.length === 0) return phone;
+    for (let i = data.length - 1; i >= 0; i--) {
+      const n = data[i].contactName;
+      if (n && n !== phone && n !== data[i].contactPhone) return n;
+    }
+    return phone;
+  })();
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-background">

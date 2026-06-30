@@ -57,11 +57,20 @@ self.addEventListener("message", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const phone = event.notification.data && event.notification.data.contactPhone;
-  const targetUrl = phone ? `/?contact=${encodeURIComponent(phone)}` : "/";
+  // C-1 fix: route to the actual inbox thread (the React app has no `/?contact=` handler).
+  const targetUrl = phone ? `/inbox/${encodeURIComponent(phone)}` : "/inbox";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      // H-6 fix: focus an existing tab AND navigate it to the thread,
+      // otherwise click would just bring the home page forward.
       for (const c of list) {
-        if ("focus" in c) return c.focus();
+        if ("navigate" in c && "focus" in c) {
+          return c.navigate(targetUrl).then(() => c.focus()).catch(() => c.focus());
+        }
+        if ("focus" in c) {
+          try { c.postMessage({ type: "NAVIGATE", url: targetUrl }); } catch (_) {}
+          return c.focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(targetUrl);
     }),
