@@ -49,7 +49,7 @@ export function fbAuthOrNull(): Auth | null {
 }
 
 export const WABEES_API_BASE =
-  (import.meta.env.VITE_WABEES_API_BASE as string | undefined) ?? "https://api.wabees.live/api";
+  (import.meta.env.VITE_WABEES_API_BASE as string | undefined) ?? "https://api.wabees.live";
 
 /** Browser-only: returns the Firestore instance, or null in SSR. */
 export function fbDbOrNull(): Firestore | null {
