@@ -242,9 +242,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw = file_get_contents('php://input');
     $input = json_decode($raw, true);
 
-    // Fast acknowledge to Meta (only for valid looking requests)
+    // Validate Meta payload first. Do NOT fast-ack on Hostinger/LiteSpeed by
+    // default: several shared-hosting setups stop PHP work after the response is
+    // flushed, which makes Meta see HTTP 200 while the inbox write never runs.
     if (isset($input['object']) && $input['object'] === 'whatsapp_business_account') {
-        fast_respond();
+        if (defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK) {
+            fast_respond();
+        }
     } else {
         exit;
     }
@@ -285,18 +289,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // ============ HANDLE INCOMING MESSAGES (SINGLE OWNER WRITE) ============
                 foreach ($value['messages'] ?? [] as $message) {
-                    // DEDUP: Skip if this WhatsApp message was already processed (Meta retries)
+                    // DEDUP: Skip only messages confirmed as successfully processed.
+                    // Older code wrote this marker BEFORE the Firestore commit, so a
+                    // timeout/host abort could permanently hide a retried incoming message.
                     $wamid = $message['id'] ?? '';
+                    $dedupFile = null;
                     if (!empty($wamid)) {
                         $dedupDir = __DIR__ . '/../cache/dedup';
                         if (!is_dir($dedupDir))
                             @mkdir($dedupDir, 0755, true);
                         $dedupFile = $dedupDir . '/' . md5($wamid) . '.lock';
                         if (file_exists($dedupFile)) {
-                            webhook_log("DEDUP: SKIP already processed wamid=$wamid");
-                            continue;
+                            $dedupAge = time() - (filemtime($dedupFile) ?: time());
+                            if ($dedupAge < 86400) {
+                                webhook_log("DEDUP: SKIP already processed wamid=$wamid age={$dedupAge}s");
+                                continue;
+                            }
+                            @unlink($dedupFile);
                         }
-                        @file_put_contents($dedupFile, time());
                         // Cleanup old dedup files (1% chance, >24hr old)
                         if (random_int(1, 100) === 1) {
                             $cutoff = time() - 86400;
@@ -306,7 +316,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     }
-                    handle_incoming_message($owner, $phoneNumberId, $message, $value['contacts'] ?? []);
+                    $handled = handle_incoming_message($owner, $phoneNumberId, $message, $value['contacts'] ?? []);
+                    if ($handled && $dedupFile) {
+                        @file_put_contents($dedupFile, time());
+                    }
                     webhook_log('TIMER: after_handle_incoming_message=' . round((microtime(true) - $t0) * 1000) . 'ms');
                 }
 
@@ -356,6 +369,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
+
+
+function resolve_data_owner_id($uid)
+{
+    static $cache = [];
+    if (empty($uid))
+        return $uid;
+    if (isset($cache[$uid]))
+        return $cache[$uid];
+
+    $cache[$uid] = $uid;
+    $doc = firestore_get("users/$uid");
+    if (($doc['code'] ?? 404) === 200) {
+        $fields = $doc['data']['fields'] ?? [];
+        $owner = trim($fields['dataOwner']['stringValue'] ?? '');
+        if ($owner !== '' && $owner !== $uid) {
+            $cache[$uid] = $owner;
+            webhook_log("RESOLVE_OWNER: dataOwner redirect $uid => $owner");
+        }
+    }
+    return $cache[$uid];
+}
+
+function build_resolved_owner_entry($uid, $cachedAccessToken = null, $cachedFcmToken = null)
+{
+    if (empty($uid))
+        return null;
+
+    $ownerUid = resolve_data_owner_id($uid);
+    $accessToken = ($ownerUid === $uid) ? $cachedAccessToken : null;
+    $fcmToken = ($ownerUid === $uid) ? $cachedFcmToken : null;
+
+    if (empty($accessToken) || empty($fcmToken)) {
+        $tokens = get_user_access_token($ownerUid);
+        if (empty($accessToken))
+            $accessToken = $tokens['accessToken'] ?? null;
+        if (empty($fcmToken))
+            $fcmToken = $tokens['fcmToken'] ?? null;
+    }
+
+    $data = [];
+    if (!empty($accessToken))
+        $data['whatsappAccessToken'] = ['stringValue' => $accessToken];
+    if (!empty($fcmToken))
+        $data['fcmToken'] = ['stringValue' => $fcmToken];
+
+    $cacheEntry = ['userId' => $ownerUid];
+    if (!empty($accessToken))
+        $cacheEntry['accessToken'] = $accessToken;
+    if (!empty($fcmToken))
+        $cacheEntry['fcmToken'] = $fcmToken;
+
+    return [
+        'user' => ['id' => $ownerUid, 'data' => $data],
+        'cache' => $cacheEntry,
+    ];
+}
 
 
 // ================================================================
@@ -519,20 +589,27 @@ function resolve_all_users_by_phone_map($phoneNumberId)
 
         if (isset($map[$phoneNumberId]) && !empty($map[$phoneNumberId]['users'])) {
             $ts = $map[$phoneNumberId]['ts'] ?? 0;
-            if (time() - $ts < 86400) {
+            if (time() - $ts < 300) {
                 $users = [];
+                $cacheUsers = [];
+                $seenOwners = [];
                 foreach ($map[$phoneNumberId]['users'] as $u) {
                     $uid = $u['userId'] ?? null;
                     if (!$uid)
                         continue;
-                    $data = [];
-                    if (!empty($u['accessToken']))
-                        $data['whatsappAccessToken'] = ['stringValue' => $u['accessToken']];
-                    if (!empty($u['fcmToken']))
-                        $data['fcmToken'] = ['stringValue' => $u['fcmToken']];
-                    $users[] = ['id' => $uid, 'data' => $data];
+                    $built = build_resolved_owner_entry($uid, $u['accessToken'] ?? null, $u['fcmToken'] ?? null);
+                    if (!$built)
+                        continue;
+                    $ownerUid = $built['user']['id'];
+                    if (isset($seenOwners[$ownerUid]))
+                        continue;
+                    $seenOwners[$ownerUid] = true;
+                    $users[] = $built['user'];
+                    $cacheUsers[] = $built['cache'];
                 }
                 if (!empty($users)) {
+                    $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
+                    @file_put_contents($cacheFile, json_encode($map));
                     webhook_log("RESOLVE[1-cache]: HIT for $phoneNumberId => " . count($users) . " users");
                     return $users;
                 }
@@ -551,18 +628,25 @@ function resolve_all_users_by_phone_map($phoneNumberId)
             $map = $allDocs;
             if (isset($map[$phoneNumberId]) && !empty($map[$phoneNumberId]['users'])) {
                 $users = [];
+                $cacheUsers = [];
+                $seenOwners = [];
                 foreach ($map[$phoneNumberId]['users'] as $u) {
                     $uid = $u['userId'] ?? null;
                     if (!$uid)
                         continue;
-                    $data = [];
-                    if (!empty($u['accessToken']))
-                        $data['whatsappAccessToken'] = ['stringValue' => $u['accessToken']];
-                    if (!empty($u['fcmToken']))
-                        $data['fcmToken'] = ['stringValue' => $u['fcmToken']];
-                    $users[] = ['id' => $uid, 'data' => $data];
+                    $built = build_resolved_owner_entry($uid, $u['accessToken'] ?? null, $u['fcmToken'] ?? null);
+                    if (!$built)
+                        continue;
+                    $ownerUid = $built['user']['id'];
+                    if (isset($seenOwners[$ownerUid]))
+                        continue;
+                    $seenOwners[$ownerUid] = true;
+                    $users[] = $built['user'];
+                    $cacheUsers[] = $built['cache'];
                 }
                 if (!empty($users)) {
+                    $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
+                    @file_put_contents($cacheFile, json_encode($map));
                     webhook_log("RESOLVE[1b-prewarm]: HIT after prewarm => " . count($users) . " users");
                     return $users;
                 }
@@ -601,20 +685,17 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         if (!empty($userIds)) {
             $users = [];
             $cacheUsers = [];
+            $seenOwners = [];
             foreach ($userIds as $uid) {
-                $tokens = get_user_access_token($uid);
-                $accessToken = $tokens['accessToken'] ?? null;
-                $fcmToken = $tokens['fcmToken'] ?? null;
-                $data = $accessToken ? ['whatsappAccessToken' => ['stringValue' => $accessToken]] : [];
-                if ($fcmToken)
-                    $data['fcmToken'] = ['stringValue' => $fcmToken];
-                $users[] = ['id' => $uid, 'data' => $data];
-                $ce = ['userId' => $uid];
-                if ($accessToken)
-                    $ce['accessToken'] = $accessToken;
-                if ($fcmToken)
-                    $ce['fcmToken'] = $fcmToken;
-                $cacheUsers[] = $ce;
+                $built = build_resolved_owner_entry($uid);
+                if (!$built)
+                    continue;
+                $ownerUid = $built['user']['id'];
+                if (isset($seenOwners[$ownerUid]))
+                    continue;
+                $seenOwners[$ownerUid] = true;
+                $users[] = $built['user'];
+                $cacheUsers[] = $built['cache'];
             }
             // Cache
             $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
@@ -633,21 +714,17 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         // Self-heal: rebuild wa_map with all found users
         $cacheUsers = [];
         $resolvedUsers = [];
+        $seenOwners = [];
         foreach ($foundUsers as $fu) {
-            $tokens = get_user_access_token($fu['id']);
-            $accessToken = $tokens['accessToken'] ?? null;
-            $fcmToken = $tokens['fcmToken'] ?? null;
-            $data = $accessToken ? ['whatsappAccessToken' => ['stringValue' => $accessToken]] : [];
-            if ($fcmToken)
-                $data['fcmToken'] = ['stringValue' => $fcmToken];
-            $fu['data'] = array_merge($fu['data'] ?? [], $data);
-            $ce = ['userId' => $fu['id']];
-            if ($accessToken)
-                $ce['accessToken'] = $accessToken;
-            if ($fcmToken)
-                $ce['fcmToken'] = $fcmToken;
-            $cacheUsers[] = $ce;
-            $resolvedUsers[] = $fu;
+            $built = build_resolved_owner_entry($fu['id']);
+            if (!$built)
+                continue;
+            $ownerUid = $built['user']['id'];
+            if (isset($seenOwners[$ownerUid]))
+                continue;
+            $seenOwners[$ownerUid] = true;
+            $cacheUsers[] = $built['cache'];
+            $resolvedUsers[] = $built['user'];
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
@@ -660,12 +737,22 @@ function resolve_all_users_by_phone_map($phoneNumberId)
     if (!empty($configUsers)) {
         webhook_log("RESOLVE[4-config-query]: FOUND " . count($configUsers) . " users");
         $cacheUsers = [];
+        $resolvedUsers = [];
+        $seenOwners = [];
         foreach ($configUsers as $cu) {
-            $cacheUsers[] = ['userId' => $cu['id']];
+            $built = build_resolved_owner_entry($cu['id']);
+            if (!$built)
+                continue;
+            $ownerUid = $built['user']['id'];
+            if (isset($seenOwners[$ownerUid]))
+                continue;
+            $seenOwners[$ownerUid] = true;
+            $cacheUsers[] = $built['cache'];
+            $resolvedUsers[] = $built['user'];
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
-        return $configUsers;
+        return $resolvedUsers;
     }
     webhook_log("RESOLVE[4-config-query]: FAILED — no user found for phoneNumberId=$phoneNumberId anywhere");
 
@@ -884,6 +971,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
 {
     $userId = $user['id'];
     $userData = $user['data'];
+    $lockFile = null;
 
     $from = $message['from'] ?? '';
     $messageId = $message['id'] ?? '';
@@ -899,7 +987,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $lockAge = time() - filemtime($lockFile);
             if ($lockAge < 120) { // Lock valid for 120 seconds
                 webhook_log("DEDUP: Message $messageId already processing (lock age: {$lockAge}s) — SKIPPING");
-                return;
+                return false;
             }
             // Lock expired, remove it
             @unlink($lockFile);
@@ -1156,8 +1244,9 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $isBlockedRaw = $convFields['isBlocked']['booleanValue'] ?? false;
             if ($isBlockedRaw === true || $isBlockedRaw === 'true') {
                 webhook_log("BLOCKED: Dropping message from $from — contact is blocked by $userId");
-                @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
-                return;
+                if (!empty($lockFile))
+                    @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
+                return true;
             }
 
             // Check if welcomeMessage was already sent for this conversation
@@ -1335,6 +1424,13 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     $commitResult = firestore_commit($writes);
     $commitHttpCode = $commitResult['code'] ?? 500;
     webhook_log("COMMIT_RESULT: HTTP_CODE=$commitHttpCode PATH=$path (" . round((microtime(true) - $commitStart) * 1000) . "ms)");
+
+    if ($commitHttpCode < 200 || $commitHttpCode >= 300) {
+        webhook_log("COMMIT_FAILED: incoming message NOT saved wamid=$messageId userId=$userId response=" . json_encode($commitResult['data'] ?? []));
+        if (!empty($lockFile))
+            @unlink($lockFile);
+        return false;
+    }
 
     // Cleanup FCM handles
     if (!empty($handles)) {
@@ -1533,6 +1629,8 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         $proxyUrl = 'https://api.wabees.live/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
         firestore_update($path, ['mediaUrl' => $proxyUrl], ['mediaUrl']);
     }
+
+    return true;
 }
 
 

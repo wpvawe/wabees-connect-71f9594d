@@ -57,7 +57,13 @@ if ($clearAll) {
     foreach (glob(__DIR__ . '/../cache/fs/*.json') ?: [] as $fsFile) {
         @unlink($fsFile);
     }
-    $cleared[] = 'token and Firestore list caches deleted';
+    foreach (glob(__DIR__ . '/../cache/dedup/*.lock') ?: [] as $dedupFile) {
+        @unlink($dedupFile);
+    }
+    foreach (glob(sys_get_temp_dir() . '/wabees_msg_*.lock') ?: [] as $msgLockFile) {
+        @unlink($msgLockFile);
+    }
+    $cleared[] = 'token, Firestore list, webhook dedup, and processing lock caches deleted';
     // Clear all wabees_owner_* APCu entries
     if (function_exists('apcu_clear_cache')) {
         apcu_clear_cache();
