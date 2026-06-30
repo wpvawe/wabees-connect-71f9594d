@@ -707,21 +707,17 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         // Self-heal: rebuild wa_map with all found users
         $cacheUsers = [];
         $resolvedUsers = [];
+        $seenOwners = [];
         foreach ($foundUsers as $fu) {
-            $tokens = get_user_access_token($fu['id']);
-            $accessToken = $tokens['accessToken'] ?? null;
-            $fcmToken = $tokens['fcmToken'] ?? null;
-            $data = $accessToken ? ['whatsappAccessToken' => ['stringValue' => $accessToken]] : [];
-            if ($fcmToken)
-                $data['fcmToken'] = ['stringValue' => $fcmToken];
-            $fu['data'] = array_merge($fu['data'] ?? [], $data);
-            $ce = ['userId' => $fu['id']];
-            if ($accessToken)
-                $ce['accessToken'] = $accessToken;
-            if ($fcmToken)
-                $ce['fcmToken'] = $fcmToken;
-            $cacheUsers[] = $ce;
-            $resolvedUsers[] = $fu;
+            $built = build_resolved_owner_entry($fu['id']);
+            if (!$built)
+                continue;
+            $ownerUid = $built['user']['id'];
+            if (isset($seenOwners[$ownerUid]))
+                continue;
+            $seenOwners[$ownerUid] = true;
+            $cacheUsers[] = $built['cache'];
+            $resolvedUsers[] = $built['user'];
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
