@@ -50,7 +50,12 @@ export function fbAuthOrNull(): Auth | null {
 
 function normalizeWabeesApiBase(value: string | undefined): string {
   const base = (value || "https://api.wabees.live/api").replace(/\/+$/, "");
-  return /^https:\/\/api\.wabees\.live$/i.test(base) ? `${base}/api` : base;
+  // The `api.` subdomain serves PHP files at the root (no `/api` subfolder).
+  // Strip a misconfigured trailing `/api` so requests hit the real files.
+  if (/^https:\/\/api\.wabees\.live(\/api)?$/i.test(base)) {
+    return "https://api.wabees.live";
+  }
+  return base;
 }
 
 export const WABEES_API_BASE = normalizeWabeesApiBase(
