@@ -964,6 +964,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
 {
     $userId = $user['id'];
     $userData = $user['data'];
+    $lockFile = null;
 
     $from = $message['from'] ?? '';
     $messageId = $message['id'] ?? '';
@@ -979,7 +980,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $lockAge = time() - filemtime($lockFile);
             if ($lockAge < 120) { // Lock valid for 120 seconds
                 webhook_log("DEDUP: Message $messageId already processing (lock age: {$lockAge}s) — SKIPPING");
-                return;
+                return false;
             }
             // Lock expired, remove it
             @unlink($lockFile);
@@ -1236,8 +1237,9 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $isBlockedRaw = $convFields['isBlocked']['booleanValue'] ?? false;
             if ($isBlockedRaw === true || $isBlockedRaw === 'true') {
                 webhook_log("BLOCKED: Dropping message from $from — contact is blocked by $userId");
-                @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
-                return;
+                if (!empty($lockFile))
+                    @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
+                return true;
             }
 
             // Check if welcomeMessage was already sent for this conversation
@@ -1415,6 +1417,13 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     $commitResult = firestore_commit($writes);
     $commitHttpCode = $commitResult['code'] ?? 500;
     webhook_log("COMMIT_RESULT: HTTP_CODE=$commitHttpCode PATH=$path (" . round((microtime(true) - $commitStart) * 1000) . "ms)");
+
+    if ($commitHttpCode < 200 || $commitHttpCode >= 300) {
+        webhook_log("COMMIT_FAILED: incoming message NOT saved wamid=$messageId userId=$userId response=" . json_encode($commitResult['data'] ?? []));
+        if (!empty($lockFile))
+            @unlink($lockFile);
+        return false;
+    }
 
     // Cleanup FCM handles
     if (!empty($handles)) {
@@ -1613,6 +1622,8 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         $proxyUrl = 'https://api.wabees.live/media-proxy.php?id=' . urlencode($mediaId) . '&uid=' . urlencode($userId);
         firestore_update($path, ['mediaUrl' => $proxyUrl], ['mediaUrl']);
     }
+
+    return true;
 }
 
 
