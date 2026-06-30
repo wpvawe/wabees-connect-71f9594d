@@ -7,7 +7,7 @@ import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBu
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
