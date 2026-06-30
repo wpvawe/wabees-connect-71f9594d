@@ -6,7 +6,7 @@
  * Gracefully no-ops when VAPID key is missing or messaging unsupported.
  */
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { initializeApp, getApps } from "firebase/app";
 import { toast } from "sonner";
@@ -60,17 +60,16 @@ export async function initFcm(uid: string): Promise<void> {
       serviceWorkerRegistration: reg,
     });
     if (token) {
-      await setDoc(
-        doc(fbDb(), "users", uid, "fcm_tokens", token),
-        {
-          token,
-          platform: "web",
-          userAgent: navigator.userAgent,
-          createdAt: serverTimestamp(),
+      // Match Flutter app: single `fcmToken` field on users/{uid}. The PHP
+      // webhook reads exactly that field to target push notifications.
+      try {
+        await updateDoc(doc(fbDb(), "users", uid), {
+          fcmToken: token,
           updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+        });
+      } catch {
+        /* user doc may not exist yet; ignore */
+      }
     }
     onMessage(messaging, (payload) => {
       const title =
