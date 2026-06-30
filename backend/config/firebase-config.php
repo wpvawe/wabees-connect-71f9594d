@@ -427,24 +427,40 @@ function find_all_users_by_whatsapp_config($phoneNumberId)
  */
 function get_user_access_token($userId)
 {
+    // Token cache can safely hold WhatsApp accessToken for a while, but an
+    // empty fcmToken must refresh quickly because the browser may grant push
+    // permission after the first webhook cache was created.
+    $tokenCacheTTL = 3600;
+    $emptyFcmCacheTTL = 60;
+
     // 0. APCu cache — avoids Firestore calls for repeated requests
     $apcuKey = "wabees_token_$userId";
     if (function_exists('apcu_fetch')) {
         $cached = apcu_fetch($apcuKey, $ok);
-        if ($ok && $cached)
-            return $cached;
+        if ($ok && $cached && !empty($cached['accessToken'])) {
+            $age = time() - ($cached['ts'] ?? 0);
+            $maxAge = !empty($cached['fcmToken']) ? $tokenCacheTTL : $emptyFcmCacheTTL;
+            if ($age < $maxAge)
+                return $cached;
+        }
     }
 
     // 1. File cache (survives worker restarts on shared hosting)
     // TTL reduced to 3600s (1 hour) so that a token update in the app takes
     // effect within 1 hour rather than 24 hours.
-    $tokenCacheTTL = 3600;
     $cacheFile = __DIR__ . "/../cache/token_$userId.json";
     if (file_exists($cacheFile)) {
         $cache = json_decode(@file_get_contents($cacheFile), true);
-        if ($cache && !empty($cache['accessToken']) && (time() - ($cache['ts'] ?? 0) < $tokenCacheTTL)) {
-            if (function_exists('apcu_store')) apcu_store($apcuKey, $cache, $tokenCacheTTL);
-            return $cache;
+        if ($cache && !empty($cache['accessToken'])) {
+            $age = time() - ($cache['ts'] ?? 0);
+            $maxAge = !empty($cache['fcmToken']) ? $tokenCacheTTL : $emptyFcmCacheTTL;
+            if ($age < $maxAge) {
+                if (function_exists('apcu_store')) apcu_store($apcuKey, $cache, $maxAge);
+                return $cache;
+            }
+            // Old cache had no browser push token. Force a fresh user-doc read.
+            if (empty($cache['fcmToken']))
+                @unlink($cacheFile);
         }
     }
 
@@ -465,7 +481,7 @@ function get_user_access_token($userId)
         $fcmToken = $doc['fields']['fcmToken']['stringValue'] ?? null;
         if ($token) {
             $result = ['accessToken' => $token, 'fcmToken' => $fcmToken, 'ts' => time()];
-            if (function_exists('apcu_store')) apcu_store($apcuKey, $result, 86400);
+            if (function_exists('apcu_store')) apcu_store($apcuKey, $result, $fcmToken ? $tokenCacheTTL : $emptyFcmCacheTTL);
             _save_token_to_file_cache($userId, $result);
             return $result;
         }
@@ -493,7 +509,7 @@ function get_user_access_token($userId)
         $token = $doc['fields']['accessToken']['stringValue'] ?? null;
         if ($token) {
             $result = ['accessToken' => $token, 'fcmToken' => null, 'ts' => time()];
-            if (function_exists('apcu_store')) apcu_store($apcuKey, $result, 86400);
+            if (function_exists('apcu_store')) apcu_store($apcuKey, $result, $emptyFcmCacheTTL);
             _save_token_to_file_cache($userId, $result);
             return $result;
         }
