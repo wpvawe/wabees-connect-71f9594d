@@ -205,10 +205,12 @@ function SendTemplateDialog({
   template,
   onClose,
   credentialUid,
+  ownerUid,
 }: {
   template: Template | null;
   onClose: () => void;
   credentialUid: string | null;
+  ownerUid: string | null;
 }) {
   const [phone, setPhone] = useState("");
   const [vars, setVars] = useState<Record<string, string>>({});
@@ -251,6 +253,58 @@ function SendTemplateDialog({
         components,
       });
       if (!res.success) throw new Error(res.message ?? "Send failed");
+      // Mirror the sent template into the conversation so it shows up
+      // immediately in /inbox/{phone} and the conversation list bumps to top.
+      if (ownerUid) {
+        try {
+          const db = fbDb();
+          const normalized = normalizePhone(phone);
+          const convId = phoneDocId(phone);
+          // Preserve known contactName from the existing conversation doc.
+          let knownName = normalized;
+          try {
+            const snap = await getDoc(doc(db, "users", ownerUid, "conversations", convId));
+            const existing = snap.data()?.contactName;
+            if (typeof existing === "string" && existing && existing !== normalized) {
+              knownName = existing;
+            }
+          } catch {
+            /* fall back to phone */
+          }
+          // Render body with substituted variables for the conversation preview.
+          const rendered = template.variables.reduce<string>(
+            (acc, v) => acc.replaceAll(`{{${v}}}`, vars[v] ?? ""),
+            template.body || `[Template: ${template.name}]`,
+          );
+          const wamid = extractWamid(res.raw);
+          await addDoc(collection(db, "users", ownerUid, "messages"), {
+            contactPhone: normalized,
+            contactName: knownName,
+            type: "template",
+            direction: "outgoing",
+            status: "sent",
+            body: rendered,
+            templateName: template.name,
+            templateLanguage: template.languageCode || "en_US",
+            whatsappMessageId: wamid,
+            sentVia: "template",
+            createdAt: serverTimestamp(),
+          });
+          await setDoc(
+            doc(db, "users", ownerUid, "conversations", convId),
+            {
+              contactPhone: normalized,
+              contactName: knownName,
+              lastMessage: rendered.slice(0, 100),
+              lastMessageType: "template",
+              lastMessageAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        } catch {
+          /* non-fatal — Meta already accepted the template */
+        }
+      }
       toast.success("Template sent");
       reset();
     } catch (e) {
