@@ -11,10 +11,16 @@ import {
   faTrash,
   faFaceSmile,
   faEllipsisVertical,
+  faLocationDot,
+  faAddressCard,
+  faShareNodes,
+  faKey,
+  faCircleQuestion,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { toast } from "sonner";
 
 const linkifyOpts = {
   target: "_blank",
@@ -38,7 +44,8 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
 
   function copy() {
-    if (m.body) void navigator.clipboard?.writeText(m.body);
+    const txt = m.body || m.caption || m.otpCode || "";
+    if (txt) void navigator.clipboard?.writeText(txt);
     setMenuOpen(false);
   }
 
@@ -57,28 +64,8 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
         {!isDeleted && mine && m.botName && (
           <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
         )}
-        {!isDeleted && m.mediaUrl && (
-          <div className="mb-1 overflow-hidden rounded-md">
-            {m.mimeType?.startsWith("image/") ? (
-              <img
-                src={m.mediaUrl}
-                alt={m.caption ?? "image"}
-                className="max-h-64 w-auto rounded-md"
-                loading="lazy"
-              />
-            ) : m.mimeType?.startsWith("audio/") ? (
-              <audio controls src={m.mediaUrl} className="h-10 w-full" />
-            ) : m.mimeType?.startsWith("video/") ? (
-              <video controls src={m.mediaUrl} className="max-h-64 w-full rounded-md" />
-            ) : (
-              <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="underline">
-                {m.fileName ?? "Attachment"}
-                {typeof m.fileSize === "number" && m.fileSize > 0 && (
-                  <span className="ml-1 opacity-70">({formatBytes(m.fileSize)})</span>
-                )}
-              </a>
-            )}
-          </div>
+        {!isDeleted && m.replyToBody && (
+          <ReplyQuote text={m.replyToBody} type={m.replyToType} mine={mine} />
         )}
         {isDeleted ? (
           <p className="flex items-center gap-1.5 whitespace-pre-wrap break-words text-xs">
@@ -86,11 +73,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             This message was deleted
           </p>
         ) : (
-          m.body && (
-            <p className="whitespace-pre-wrap break-words">
-              <Linkify options={linkifyOpts}>{m.body}</Linkify>
-            </p>
-          )
+          <MessageContent m={m} mine={mine} />
         )}
         <div
           className={cn(
