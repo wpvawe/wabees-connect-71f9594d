@@ -1,7 +1,7 @@
 /**
  * Firebase Cloud Messaging — browser push notifications.
  * Requests permission, registers SW, gets token, saves under
- * users/{uid}/fcm_tokens/{token} so the PHP backend webhook can target it.
+ * users/{uid}.fcmToken so the PHP backend webhook can target it.
  * Foreground messages surface as toasts + native browser notifications.
  * Gracefully no-ops when VAPID key is missing or messaging unsupported.
  */

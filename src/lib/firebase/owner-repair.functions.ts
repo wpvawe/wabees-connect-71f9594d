@@ -62,6 +62,12 @@ function readRuntimeEnv(...keys: string[]): string {
   return "";
 }
 
+function normalizeWabeesApiBase(value: string): string {
+  const base = (value || "https://api.wabees.live").replace(/\/+$/, "");
+  if (/^https:\/\/api\.wabees\.live\/api$/i.test(base)) return "https://api.wabees.live";
+  return base;
+}
+
 function parseInput(raw: unknown): RepairInput {
   const data = raw as Partial<RepairInput> | null;
   const idToken = typeof data?.idToken === "string" ? data.idToken.trim() : "";
@@ -645,8 +651,9 @@ function topLevelWhatsAppPatch(input: RepairInput, cfgPatch: FsFields): FsFields
 }
 
 async function clearRemoteCache(phoneNumberId: string) {
-  const base =
-    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
+  const base = normalizeWabeesApiBase(
+    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live",
+  );
   const url = new URL(`${base.replace(/\/$/, "")}/clear-cache.php`);
   url.searchParams.set("phone_number_id", phoneNumberId);
   url.searchParams.set("secret", "wabees_cache_clear_2024");
@@ -655,8 +662,9 @@ async function clearRemoteCache(phoneNumberId: string) {
 
 async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
   if (!accessToken) return;
-  const base =
-    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live/api";
+  const base = normalizeWabeesApiBase(
+    readRuntimeEnv("WABEES_API_BASE", "VITE_WABEES_API_BASE") || "https://api.wabees.live",
+  );
   await fetch(`${base.replace(/\/$/, "")}/subscribe-webhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

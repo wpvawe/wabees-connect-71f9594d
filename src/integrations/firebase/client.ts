@@ -48,8 +48,16 @@ export function fbAuthOrNull(): Auth | null {
   return fbAuth();
 }
 
-export const WABEES_API_BASE =
-  (import.meta.env.VITE_WABEES_API_BASE as string | undefined) ?? "https://api.wabees.live";
+function normalizeWabeesApiBase(value: string | undefined): string {
+  const base = (value || "https://api.wabees.live").replace(/\/+$/, "");
+  // api.wabees.live serves PHP files from domain root; /api/* is the wabees.live path.
+  if (/^https:\/\/api\.wabees\.live\/api$/i.test(base)) return "https://api.wabees.live";
+  return base;
+}
+
+export const WABEES_API_BASE = normalizeWabeesApiBase(
+  import.meta.env.VITE_WABEES_API_BASE as string | undefined,
+);
 
 /** Browser-only: returns the Firestore instance, or null in SSR. */
 export function fbDbOrNull(): Firestore | null {

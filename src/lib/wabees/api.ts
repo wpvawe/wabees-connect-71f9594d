@@ -170,6 +170,43 @@ export function fetchMetaTemplates(args: { business_account_id: string; access_t
   return postJson("get-templates.php", args);
 }
 
+export type MessageLink = {
+  id: string;
+  code: string;
+  deep_link_url: string;
+  prefilled_message: string;
+  qr_image_url?: string;
+};
+
+export function listMessageLinks(args: { phone_number_id: string; access_token: string }) {
+  return postJson<{ links?: MessageLink[]; total?: number }>("message-links.php", {
+    action: "list",
+    ...args,
+  });
+}
+
+export function createMessageLink(args: {
+  phone_number_id: string;
+  access_token: string;
+  prefilled_message: string;
+}) {
+  return postJson<{ link?: MessageLink }>("message-links.php", {
+    action: "create",
+    ...args,
+  });
+}
+
+export function deleteMessageLink(args: {
+  phone_number_id: string;
+  access_token: string;
+  link_id: string;
+}) {
+  return postJson<{ deleted?: boolean }>("message-links.php", {
+    action: "delete",
+    ...args,
+  });
+}
+
 /**
  * Upload media via the PHP proxy. Returns the media URL/ID the backend
  * issues — store that in the Firestore message row.
