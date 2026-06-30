@@ -242,9 +242,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw = file_get_contents('php://input');
     $input = json_decode($raw, true);
 
-    // Fast acknowledge to Meta (only for valid looking requests)
+    // Validate Meta payload first. Do NOT fast-ack on Hostinger/LiteSpeed by
+    // default: several shared-hosting setups stop PHP work after the response is
+    // flushed, which makes Meta see HTTP 200 while the inbox write never runs.
     if (isset($input['object']) && $input['object'] === 'whatsapp_business_account') {
-        fast_respond();
+        if (defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK) {
+            fast_respond();
+        }
     } else {
         exit;
     }
@@ -285,18 +289,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // ============ HANDLE INCOMING MESSAGES (SINGLE OWNER WRITE) ============
                 foreach ($value['messages'] ?? [] as $message) {
-                    // DEDUP: Skip if this WhatsApp message was already processed (Meta retries)
+                    // DEDUP: Skip only messages confirmed as successfully processed.
+                    // Older code wrote this marker BEFORE the Firestore commit, so a
+                    // timeout/host abort could permanently hide a retried incoming message.
                     $wamid = $message['id'] ?? '';
+                    $dedupFile = null;
                     if (!empty($wamid)) {
                         $dedupDir = __DIR__ . '/../cache/dedup';
                         if (!is_dir($dedupDir))
                             @mkdir($dedupDir, 0755, true);
                         $dedupFile = $dedupDir . '/' . md5($wamid) . '.lock';
                         if (file_exists($dedupFile)) {
-                            webhook_log("DEDUP: SKIP already processed wamid=$wamid");
-                            continue;
+                            $dedupAge = time() - (filemtime($dedupFile) ?: time());
+                            if ($dedupAge < 86400) {
+                                webhook_log("DEDUP: SKIP already processed wamid=$wamid age={$dedupAge}s");
+                                continue;
+                            }
+                            @unlink($dedupFile);
                         }
-                        @file_put_contents($dedupFile, time());
                         // Cleanup old dedup files (1% chance, >24hr old)
                         if (random_int(1, 100) === 1) {
                             $cutoff = time() - 86400;
@@ -306,7 +316,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     }
-                    handle_incoming_message($owner, $phoneNumberId, $message, $value['contacts'] ?? []);
+                    $handled = handle_incoming_message($owner, $phoneNumberId, $message, $value['contacts'] ?? []);
+                    if ($handled && $dedupFile) {
+                        @file_put_contents($dedupFile, time());
+                    }
                     webhook_log('TIMER: after_handle_incoming_message=' . round((microtime(true) - $t0) * 1000) . 'ms');
                 }
 
