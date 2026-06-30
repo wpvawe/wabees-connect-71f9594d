@@ -206,6 +206,18 @@ export function sendReactionMessage(args: {
   return postJson("send-message.php", { ...args, type: "reaction" });
 }
 
+/**
+ * Mark an inbound WhatsApp message as read so the sender sees blue ticks.
+ * Mirrors backend/api/mark-read.php on wabees.live.
+ */
+export function markMessageRead(args: {
+  phone_number_id: string;
+  access_token: string;
+  message_id: string;
+}) {
+  return postJson("mark-read.php", args);
+}
+
 export function fetchMetaTemplates(args: { business_account_id: string; access_token: string }) {
   return postJson("get-templates.php", args);
 }
