@@ -81,7 +81,7 @@ export function useMessages(phone: string | undefined): {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows: Message[] = snap.docs
+        const allRows: Message[] = snap.docs
           .map((d) => {
             const x = d.data() as Record<string, unknown>;
             const contactPhone = str(x.contactPhone, phone);
@@ -156,17 +156,34 @@ export function useMessages(phone: string | undefined): {
               replyToType: strOrNull(x.replyToType),
               raw: null,
             };
-          })
-          // Hide pure reaction-event docs from the chat — the reaction is
-          // surfaced as a chip on the original bubble instead.
+          });
+        // Merge orphan reaction events onto the original message so the chip
+        // shows even when the webhook stored them as separate docs.
+        const byWamid = new Map<string, Message>();
+        for (const m of allRows) {
+          if (m.whatsappMessageId) byWamid.set(m.whatsappMessageId, m);
+        }
+        for (const m of allRows) {
+          if (m.type === "reaction" && m.reactionMsgId) {
+            // reactionMsgId can be "msg_<wamid>" (webhook) or the bare wamid.
+            const candidates = [
+              m.reactionMsgId,
+              m.reactionMsgId.replace(/^msg_/, ""),
+            ];
+            for (const k of candidates) {
+              const parent = byWamid.get(k) ?? allRows.find((p) => p.id === k);
+              if (parent) {
+                parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
+                parent.reactionMsgId = m.reactionMsgId;
+                break;
+              }
+            }
+          }
+        }
+        const rows: Message[] = allRows
           .filter(
             (m) =>
-              !(
-                m.type === "reaction" &&
-                !m.body &&
-                !m.mediaUrl &&
-                m.reactionMsgId
-              ),
+              !(m.type === "reaction" && !m.mediaUrl),
           )
           .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
         setData(rows);
