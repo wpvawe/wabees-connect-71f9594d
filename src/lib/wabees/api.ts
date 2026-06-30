@@ -220,6 +220,21 @@ export function markMessageRead(args: {
 }
 
 /**
+ * Send a WhatsApp typing indicator to the customer.
+ *
+ * Per Meta: typing indicators ride along with a read receipt — they require
+ * the wamid of an inbound message and stay visible for up to ~25s, dismissing
+ * automatically when the next message is sent. Best-effort; ignore errors.
+ */
+export function sendTypingIndicator(args: {
+  phone_number_id: string;
+  access_token: string;
+  message_id: string;
+}) {
+  return postJson("mark-read.php", { ...args, typing_indicator: "text" });
+}
+
+/**
  * Revoke a previously sent message ("delete for everyone") via the PHP
  * proxy. Only works for messages still inside Meta's revoke window
  * (~48h) and whose wamid we know.

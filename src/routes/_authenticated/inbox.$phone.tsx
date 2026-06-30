@@ -270,7 +270,15 @@ function Thread({ phone }: { phone: string }) {
         )}
         <div ref={bottomRef} />
       </div>
-      <Composer phone={phone} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
+      <Composer
+        phone={phone}
+        replyTo={replyTo}
+        onClearReply={() => setReplyTo(null)}
+        lastInboundWamid={
+          data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
+            ?.whatsappMessageId ?? null
+        }
+      />
     </section>
   );
 }
