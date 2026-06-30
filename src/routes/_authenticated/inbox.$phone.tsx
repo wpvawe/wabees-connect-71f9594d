@@ -7,7 +7,7 @@ import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBu
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
@@ -97,15 +97,32 @@ function Thread({ phone }: { phone: string }) {
   const onReact = useCallback(
     async (m: Message, emoji: string) => {
       if (!uid || !selfUid) return;
+      const wamid = m.whatsappMessageId ?? null;
       try {
+        // 1) Update parent so website renders the chip instantly.
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
-          reactionEmoji: emoji,
-          reactionMsgId: m.whatsappMessageId ?? null,
+          reactionEmoji: emoji || null,
+          reactionMsgId: wamid,
         });
+        // 2) Also write a separate reaction event doc — this is the shape the
+        //    Flutter app reads to render reactions on outgoing messages.
+        if (wamid) {
+          await addDoc(collection(fbDb(), `users/${uid}/messages`), {
+            contactPhone: m.contactPhone,
+            contactName: m.contactName ?? m.contactPhone,
+            type: "reaction",
+            direction: "outgoing",
+            status: "sent",
+            body: "",
+            reactionEmoji: emoji || null,
+            reactionMsgId: `msg_${wamid}`,
+            createdAt: serverTimestamp(),
+          });
+        }
       } catch {
         /* local update best-effort */
       }
-      if (m.whatsappMessageId) {
+      if (wamid) {
         try {
           const creds = await loadWaCredentials(selfUid);
           if (!creds) return;
@@ -113,7 +130,7 @@ function Thread({ phone }: { phone: string }) {
             phone_number_id: creds.phone_number_id,
             access_token: creds.access_token,
             to: whatsappRecipientId(phone),
-            message_id: m.whatsappMessageId,
+            message_id: wamid,
             emoji,
           });
         } catch (e) {
