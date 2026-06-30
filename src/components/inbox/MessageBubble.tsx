@@ -19,7 +19,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const linkifyOpts = {
@@ -42,6 +42,26 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
+  // H-3 helper: reactions need a wamid to forward to Meta. Pending outgoing
+  // messages don't have one yet, so disable the react button until the
+  // webhook writes whatsappMessageId back. Otherwise the user reacts and
+  // the WhatsApp contact never sees the emoji.
+  const reactDisabled = mine && (m.status === "pending" || !m.whatsappMessageId);
+  // M-4 fix: close popovers on any outside pointerdown (mouse + touch).
+  // onMouseLeave alone never fires on mobile.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!reactOpen && !menuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) {
+        setReactOpen(false);
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [reactOpen, menuOpen]);
 
   function copy() {
     const txt = m.body || m.caption || m.otpCode || "";
@@ -50,7 +70,10 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   }
 
   return (
-    <div className={cn("group relative flex w-full flex-col", mine ? "items-end" : "items-start")}>
+    <div
+      ref={rootRef}
+      className={cn("group relative flex w-full flex-col", mine ? "items-end" : "items-start")}
+    >
       <div className="relative max-w-[78%]">
       <div
         className={cn(
