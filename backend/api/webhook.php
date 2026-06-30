@@ -620,8 +620,11 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         webhook_log("RESOLVE[1-cache]: MISS — cache file does not exist");
     }
 
-    // 1b) COLD START PRE-WARM
-    if (!$cacheLoaded) {
+    // 1b) Optional cold-start pre-warm. Disabled by default because on shared
+    // hosting a full wa_map scan + token refresh can take >10s after cache clear,
+    // making Meta retry/timeout before the incoming message is saved. Direct
+    // wa_map/{phoneNumberId} lookup below is the safe critical path.
+    if (!$cacheLoaded && defined('ENABLE_WA_MAP_PREWARM') && ENABLE_WA_MAP_PREWARM) {
         webhook_log("RESOLVE[1b-prewarm]: Cold start detected, pre-warming cache");
         $allDocs = _prewarm_wa_map_cache($cacheFile);
         if (!empty($allDocs)) {
@@ -1335,7 +1338,22 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         ],
     ];
 
-    // ============ PRE-WARM BOT CACHE (starts in parallel with commit) ============
+    // ============ STEP 1: COMMIT FIRST — Store message before any slow work ============
+    // Meta webhooks must finish quickly. Push notifications, bot fetches and AI
+    // replies are allowed to fail/timeout, but the inbox write must happen first.
+    $commitStart = microtime(true);
+    $commitResult = firestore_commit($writes);
+    $commitHttpCode = $commitResult['code'] ?? 500;
+    webhook_log("COMMIT_RESULT: HTTP_CODE=$commitHttpCode PATH=$path (" . round((microtime(true) - $commitStart) * 1000) . "ms)");
+
+    if ($commitHttpCode < 200 || $commitHttpCode >= 300) {
+        webhook_log("COMMIT_FAILED: incoming message NOT saved wamid=$messageId userId=$userId response=" . json_encode($commitResult['data'] ?? []));
+        if (!empty($lockFile))
+            @unlink($lockFile);
+        return false;
+    }
+
+    // ============ PRE-WARM BOT CACHE (after inbox commit) ============
     $adminToken = get_firebase_admin_token();
     $authHeaders = get_firebase_auth_headers();
     $botCacheFile = sys_get_temp_dir() . "/wabees_bots_{$userId}.json";
@@ -1358,7 +1376,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         curl_multi_exec($botMh, $botActive); // start the request (non-blocking)
     }
 
-    // ============ STEP 1: FCM + NOTIFICATIONS — CRITICAL: RUN ASAP ============
+    // ============ STEP 1.5: FCM + NOTIFICATIONS — after message is safely stored ============
     // We send FCM to Owner AND Agents in PARALLEL to save 3-4 seconds.
     $parallelStart = microtime(true);
     $mh = curl_multi_init();
@@ -1417,20 +1435,6 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     }
 
     webhook_log('TIMER: parallel_fcm_dispatched=' . round((microtime(true) - $parallelStart) * 1000) . 'ms');
-
-    // ============ STEP 1.5: COMMIT — Store message in Firestore ============
-    // Now that notification is on the way, we save the data.
-    $commitStart = microtime(true);
-    $commitResult = firestore_commit($writes);
-    $commitHttpCode = $commitResult['code'] ?? 500;
-    webhook_log("COMMIT_RESULT: HTTP_CODE=$commitHttpCode PATH=$path (" . round((microtime(true) - $commitStart) * 1000) . "ms)");
-
-    if ($commitHttpCode < 200 || $commitHttpCode >= 300) {
-        webhook_log("COMMIT_FAILED: incoming message NOT saved wamid=$messageId userId=$userId response=" . json_encode($commitResult['data'] ?? []));
-        if (!empty($lockFile))
-            @unlink($lockFile);
-        return false;
-    }
 
     // Cleanup FCM handles
     if (!empty($handles)) {
