@@ -1,52 +1,62 @@
-# Wabees Website — Full Fix Plan
+# Comprehensive Improvements Plan
 
-Aap ne 13 major issues batae (aur 30+ aur expected). Itna kaam aik turn me carefully nahin ho sakta — quality bachane ke liye **4 batches** me karunga. Har batch ke baad aap test karke confirm karenge, phir agla batch.
+Pehle se working code ko bilkul touch nahi karoon ga — sirf jo specific cheezein aap ne batayee hain.
 
-Pehle clarifications zaroori hain (taake working code touch na ho):
+## 1. Settings Page — 2 columns + auto-fetch
 
-## Clarifying questions
+**File:** `src/routes/_authenticated/settings.tsx`, `src/components/settings/BusinessProfileSection.tsx`
 
-1. **Audio call (point 3):** WhatsApp Cloud API browser se direct voice/audio calling **support nahin karti** — sirf WhatsApp Business Calling API hai jo abhi limited beta me hai aur PHP backend se chahiye. Iska matlab:
-   - (a) Skip audio call (sirf voice message + reactions + delete karun), ya
-   - (b) Calling API ka placeholder UI banadun jo "Coming soon" dikhae?
+- Layout: `max-w-5xl` + `lg:grid-cols-2` — left column "Account Profile" + Session, right column "WhatsApp Business Profile" + connection summary.
+- WhatsApp Business Profile section:
+  - **Auto-fetch on mount** — jab WhatsApp connected ho aur `phone_number_id` mile, automatically `business-profile.php` se data load ho (no button click needed). "Reload" button optional rakhen ge.
+  - **Profile picture preview** — backend already `profile_picture_url` return karta hai; ab UI me round avatar ke saath show karen ge.
+  - **Business name fetch** — `wa.business_name` (Firestore) already aata hai, usay clearly display karen ge top par avatar + name + display phone ke saath.
+  - **Save fix** — current save sirf jo fields user ne change ki hain bhejta hai. Verify karen ge ke server kis field ko reject kar raha hai aur empty strings ko correctly handle karen ge (Meta Graph empty string ko skip karna chahta hai).
 
-2. **AI bots deploy (point 7):** Aap ne kaha "code ftp se deploy kar dena server pe". Mera sandbox **FTP egress se Hostinger pe push nahin kar sakta** reliably credentials ke saath (aur RULES.md says secrets hardcode na karo). Ya to:
-   - (a) Main PHP code ready karke aap ko file dedun, aap khud FTP karein, ya
-   - (b) Sirf website-side AI bot UI/logic fix karun, PHP backend aap khud handle karein?
+## 2. Left Sidebar — expandable + layout fix
 
-3. **Settings page "Load from WhatsApp" HTTP 400:** Ye PHP backend ka response hai (`api.wabees.live/api/...`). Bug PHP me hai ya website me — pehle network request inspect karke confirm karunga. Theek?
+**Files:** `src/components/shell/SideRail.tsx`, `src/routes/_authenticated/route.tsx`
 
-## Batch breakdown
+- Add toggle button (hamburger/chevron) at top — collapsed `w-[72px]` (icons only) ↔ expanded `w-[220px]` (icon + label).
+- State persist in `localStorage` (`wb_sidebar_collapsed`).
+- Hover state, active highlight retain karen ge.
+- **Layout space fix:** screenshot me dikha raha hai page content ke neeche bohot white space hai. Main reason: `<main className="... pb-14 md:pb-0">` + child pages me apna `min-h-screen` nahi. Fix: `<main>` ko `min-h-screen` aur child pages me unnecessary fixed height hatayen ge. Plus support page (jisme aapne screenshot bheja) ka inner scroll container check karen ge.
 
-### Batch 1 — Dashboard + Settings + Connect (points 1, 10, 13)
-- Dashboard ko premium redesign: latest contacts/messages/bots/agents sections (empty hide), plan card pe Upgrade button, contacts fix.
-- Settings: business name field, profile image upload/show, data fetch fix, "Load from WhatsApp" 400 debug.
-- Connect WhatsApp page UX polish.
+## 3. Firebase Cloud Messaging (FCM) — Bell notifications
 
-### Batch 2 — Inbox/Chat premium (point 3)
-- Message bubble premium redesign.
-- Reactions (emoji picker, long-press/hover).
-- Voice message recording + playback.
-- Delete message (for me / for everyone, WhatsApp 1-day rule).
-- Reply / forward / copy actions.
-- Audio call — pending Q1 answer.
+**New files:**
+- `public/firebase-messaging-sw.js` — service worker for background push
+- `src/lib/firebase/fcm.ts` — request permission, get token, save under `users/{uid}/fcm_tokens/{token}`, foreground `onMessage` → `toast` + browser notification
+- `src/hooks/useFcm.ts` — hook to wire up on mount
 
-### Batch 3 — Campaigns + Templates + Bots + AI Bot (points 5, 6, 7, 8)
-- New campaign create flow fix (missing pages/UI).
-- Bot delete option.
-- Templates: create new, delete, send-in-message.
-- AI bots: working logic fix (pending Q2 for PHP side).
+**Wire-up:** `route.tsx` me FCM init call. Bell icon (TopBar) me unread count + sound on new message. VAPID key user ke Firebase project (`wabees-app`) se aati hai — agar already configured nahi to user ko VAPID key add karne ka kahna paray ga (Firebase Console → Cloud Messaging → Web Push certificates).
 
-### Batch 4 — Analytics + Contacts I/E + Plans + Links + Support (points 2, 4, 9, 11, 12)
-- Analytics HTTP 400 fix + real data.
-- Contacts import/export verify.
-- Plans message count fix.
-- Message links permission fix (Firestore rules issue likely).
-- Support page polish + image attachment.
+Backend (`webhook.php`) ko FCM messages send karne ke liye Firebase Admin SDK chahye — wo already server pe hai. Lekin webhook ko FCM trigger karne ka code add karna server-side change hoga — abhi sirf client-side foreground notifications + browser permission flow add karen ge. Background push tab kaam karega jab backend webhook me FCM send call add ho jaye.
 
-## Estimated turns: 4–6 (one per batch, plus polish)
+**Scope clarification needed:** Background FCM (jab tab band ho) ke liye backend webhook me code add karna paray ga jo `users/{uid}/fcm_tokens` se token le ke send karay. Yeh repo me karoon ya server pe alag se add karen ge?
 
-## Confirm karein:
-- Q1, Q2, Q3 ka jawab dein.
-- Batch order theek hai ya koi batch pehle chahiye?
-- Aap ne kaha "30+ issues find karke fix karne hen" — baqi issues bhi mention karein ya main har batch me audit karke nikalun?
+## 4. Message Links — "Missing or insufficient permissions" fix
+
+**File:** `src/routes/_authenticated/message-links.tsx`
+
+Firestore rules (Flutter app/server) likely require a `userId` field matching `auth.uid` on the document. Currently doc me sirf `{message, url, createdAt}` save hota hai.
+
+**Fix:** addDoc payload me `userId: uid` field add karen ge — yeh standard pattern hai jo aap ke baqi collections (contacts, campaigns) me bhi use hota hoga.
+
+## 5. Plans Page — contacts count
+
+**File:** `src/routes/_authenticated/plans.tsx`
+
+Currently `usage.contacts = sub.contactsUsed || profile.totalContacts || 0` — agar dono 0 hen to live contacts count nahi dikhta. 
+
+**Fix:** `useContacts()` hook se actual length le ke fallback me use karen ge: `sub.contactsUsed || profile.totalContacts || contacts?.length || 0`. Messages ke liye `useMessages` heavy hai is liye usay touch nahi karoon ga.
+
+## Technical notes
+
+- All edits keep existing working code intact — no refactors outside requested areas.
+- FCM requires VAPID key. If absent in env, code degrades gracefully (no toast spam).
+- Sidebar toggle uses CSS transitions + Tailwind responsive classes; mobile tab bar unchanged.
+
+## Question for you
+
+FCM background push (closed tab) ke liye `backend/api/webhook.php` me FCM send code add karna chahyay? Ya pehle client-side (open tab) notifications + permission flow add karoon, phir backend ka batayen ge?
