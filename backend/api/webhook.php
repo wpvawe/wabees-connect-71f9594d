@@ -632,6 +632,7 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         webhook_log("RESOLVE[3-users-query]: FOUND " . count($foundUsers) . " users");
         // Self-heal: rebuild wa_map with all found users
         $cacheUsers = [];
+        $resolvedUsers = [];
         foreach ($foundUsers as $fu) {
             $tokens = get_user_access_token($fu['id']);
             $accessToken = $tokens['accessToken'] ?? null;
@@ -646,10 +647,11 @@ function resolve_all_users_by_phone_map($phoneNumberId)
             if ($fcmToken)
                 $ce['fcmToken'] = $fcmToken;
             $cacheUsers[] = $ce;
+            $resolvedUsers[] = $fu;
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
-        return $foundUsers;
+        return $resolvedUsers;
     }
     webhook_log("RESOLVE[3-users-query]: No user with whatsappPhoneNumberId=$phoneNumberId");
 
