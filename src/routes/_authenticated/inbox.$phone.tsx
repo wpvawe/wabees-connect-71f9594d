@@ -97,12 +97,13 @@ function Thread({ phone }: { phone: string }) {
   const onReact = useCallback(
     async (m: Message, emoji: string) => {
       if (!uid || !selfUid) return;
-      const wamid = m.whatsappMessageId ?? null;
+      const wamid = whatsappContextMessageId(m);
+      const reactionTargetId = wamid ? `msg_${wamid}` : null;
       try {
         // 1) Update parent so website renders the chip instantly.
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           reactionEmoji: emoji || null,
-          reactionMsgId: wamid,
+          reactionMsgId: reactionTargetId,
         });
         // 2) Also write a separate reaction event doc — this is the shape the
         //    Flutter app reads to render reactions on outgoing messages.
@@ -115,7 +116,7 @@ function Thread({ phone }: { phone: string }) {
             status: "sent",
             body: "",
             reactionEmoji: emoji || null,
-            reactionMsgId: `msg_${wamid}`,
+            reactionMsgId: reactionTargetId,
             createdAt: serverTimestamp(),
           });
         }
@@ -212,6 +213,11 @@ function Thread({ phone }: { phone: string }) {
       <Composer phone={phone} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
     </section>
   );
+}
+
+function whatsappContextMessageId(message: Message): string | null {
+  const raw = message.whatsappMessageId ?? (message.id.startsWith("msg_") ? message.id.slice(4) : null);
+  return raw?.replace(/^msg_/, "") ?? null;
 }
 
 function dayLabel(d: Date): string {
