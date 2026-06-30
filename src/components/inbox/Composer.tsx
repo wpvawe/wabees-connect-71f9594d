@@ -84,6 +84,7 @@ export function Composer({
               replyToId: replyTo.id,
               replyToBody: replyTo.body?.slice(0, 200) ?? "",
               replyToWamid: replyTo.whatsappMessageId ?? null,
+              replyToType: replyTo.type ?? null,
             }
           : {}),
         createdAt: serverTimestamp(),
