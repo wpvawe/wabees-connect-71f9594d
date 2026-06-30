@@ -1210,6 +1210,31 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         $firestoreMsg['reactionEmoji'] = $emoji;
         if (!empty($reactedMsgId)) {
             $firestoreMsg['reactionMsgId'] = 'msg_' . $reactedMsgId;
+            // Also patch the ORIGINAL message so the website/app render the
+            // reaction chip on the correct bubble (not as a separate row).
+            @firestore_set(
+                "users/$userId/messages/msg_" . $reactedMsgId,
+                [
+                    'reactionEmoji' => $emoji,
+                    'reactionMsgId' => $reactedMsgId,
+                ],
+                true
+            );
+        }
+    }
+
+    // Persist Meta's reply-to context so the bubble can render the quoted
+    // snippet, and so outgoing replies on web/app can link back.
+    if (!empty($replyToWamid)) {
+        $firestoreMsg['replyToWamid'] = $replyToWamid;
+        $firestoreMsg['replyToId'] = 'msg_' . $replyToWamid;
+        // Best-effort fetch the original body so the quote shows text even
+        // before the receiver's chat is opened.
+        $origResp = @firestore_get("users/$userId/messages/msg_" . $replyToWamid);
+        if (($origResp['code'] ?? 404) === 200) {
+            $of = $origResp['data']['fields'] ?? [];
+            $firestoreMsg['replyToBody'] = $of['body']['stringValue'] ?? '';
+            $firestoreMsg['replyToType'] = $of['type']['stringValue'] ?? '';
         }
     }
 
