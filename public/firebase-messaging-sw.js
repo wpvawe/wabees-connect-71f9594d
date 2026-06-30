@@ -32,7 +32,7 @@ function init(config) {
       self.registration.showNotification(title, {
         body,
         icon: "/wabees-icon.png",
-        badge: "/favicon.ico",
+        badge: "/wabees-icon.png",
         tag: (payload.data && payload.data.tag) || "wabees-message",
         renotify: true,
         data: payload.data || {},
