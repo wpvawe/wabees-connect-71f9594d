@@ -1,11 +1,15 @@
 import { useEffect } from "react";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { initFcm } from "@/lib/firebase/fcm";
 
 export function useFcm() {
-  const uid = useFirebaseUid();
+  const session = useFirebaseSession();
   useEffect(() => {
-    if (!uid) return;
-    void initFcm(uid);
-  }, [uid]);
+    if (session.status !== "ready") return;
+    void initFcm({
+      uid: session.uid,
+      effectiveUid: session.effectiveUid,
+      dataOwner: session.dataOwner,
+    });
+  }, [session]);
 }

@@ -6,18 +6,70 @@
  * Gracefully no-ops when VAPID key is missing or messaging unsupported.
  */
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { initializeApp, getApps } from "firebase/app";
 import { toast } from "sonner";
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
-let started = false;
+let listening = false;
+let lastSavedKey = "";
 
-export async function initFcm(uid: string): Promise<void> {
-  if (started) return;
+type InitFcmInput = {
+  uid: string;
+  effectiveUid?: string | null;
+  dataOwner?: string | null;
+};
+
+function postFirebaseConfig(reg: ServiceWorkerRegistration) {
+  const message = {
+    type: "FIREBASE_CONFIG",
+    config: {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    },
+  };
+  reg.active?.postMessage(message);
+  reg.waiting?.postMessage(message);
+  reg.installing?.postMessage(message);
+}
+
+async function saveFcmToken(input: InitFcmInput, token: string) {
+  const db = fbDb();
+  const tokenData = {
+    fcmToken: token,
+    fcmTokenUpdatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  // Own user doc is what the webhook reads for owners, and it also keeps the
+  // browser token with the signed-in account even if this account is an agent.
+  await setDoc(doc(db, "users", input.uid), tokenData, { merge: true });
+
+  // For agent accounts, the PHP webhook reads users/{owner}/agents/{agent}.fcmToken.
+  // Mirror the browser token there so agents receive pushes too.
+  const ownerUid = input.dataOwner || input.effectiveUid;
+  if (ownerUid && ownerUid !== input.uid) {
+    await setDoc(
+      doc(db, "users", ownerUid, "agents", input.uid),
+      {
+        fcmToken: token,
+        fcmTokenUpdatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ).catch(() => undefined);
+  }
+}
+
+export async function initFcm(input: InitFcmInput): Promise<void> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+  if (!("Notification" in window)) return;
   if (!VAPID_KEY) {
     // Silent: project hasn't configured a Web Push VAPID key yet.
     return;
@@ -33,18 +85,9 @@ export async function initFcm(uid: string): Promise<void> {
     // Ensure the messaging service worker is registered. It re-initializes
     // Firebase inside the worker scope using the same config.
     const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-    // Pass config to the SW (in case it's a fresh install).
-    reg.active?.postMessage({
-      type: "FIREBASE_CONFIG",
-      config: {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        appId: import.meta.env.VITE_FIREBASE_APP_ID,
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      },
-    });
+    const readyReg = await navigator.serviceWorker.ready;
+    postFirebaseConfig(reg);
+    postFirebaseConfig(readyReg);
     if (getApps().length === 0) {
       initializeApp({
         apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
@@ -57,20 +100,20 @@ export async function initFcm(uid: string): Promise<void> {
     const messaging = getMessaging();
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: reg,
+      serviceWorkerRegistration: readyReg,
     });
     if (token) {
-      // Match Flutter app: single `fcmToken` field on users/{uid}. The PHP
-      // webhook reads exactly that field to target push notifications.
       try {
-        await updateDoc(doc(fbDb(), "users", uid), {
-          fcmToken: token,
-          updatedAt: serverTimestamp(),
-        });
+        const saveKey = `${input.uid}:${input.effectiveUid || ""}:${input.dataOwner || ""}:${token}`;
+        if (saveKey !== lastSavedKey) {
+          await saveFcmToken(input, token);
+          lastSavedKey = saveKey;
+        }
       } catch {
-        /* user doc may not exist yet; ignore */
+        /* rules may block in edge cases; push is best-effort */
       }
     }
+    if (listening) return;
     onMessage(messaging, (payload) => {
       const title =
         payload.notification?.title ||
@@ -79,6 +122,19 @@ export async function initFcm(uid: string): Promise<void> {
       const body =
         payload.notification?.body || (payload.data?.body as string | undefined) || "";
       toast(title, { description: body });
+      if (Notification.permission === "granted") {
+        try {
+          new Notification(title, {
+            body,
+            icon: "/wabees-icon.png",
+            badge: "/favicon.ico",
+            tag: (payload.data?.tag as string | undefined) || "wabees-message",
+            data: payload.data || {},
+          });
+        } catch {
+          /* ignore */
+        }
+      }
       // Play a short ping for new-message feel.
       try {
         const a = new Audio(
@@ -90,7 +146,7 @@ export async function initFcm(uid: string): Promise<void> {
         /* ignore */
       }
     });
-    started = true;
+    listening = true;
   } catch {
     /* swallow — push is best-effort */
   }
