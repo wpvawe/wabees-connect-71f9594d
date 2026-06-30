@@ -39,6 +39,23 @@ export type Message = {
   deliveredAt?: string | null;
   readAt?: string | null;
   fileSize?: number | null;
+  // Extended message-type payload — keeps every WhatsApp message renderable
+  // so the bubble never falls back to "message type unknown".
+  latitude?: number | null;
+  longitude?: number | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+  contactsPayload?: Array<Record<string, unknown>> | null;
+  buttonReplyId?: string | null;
+  buttonReplyText?: string | null;
+  interactiveType?: string | null;
+  ctaUrl?: string | null;
+  otpCode?: string | null;
+  replyToId?: string | null;
+  replyToBody?: string | null;
+  replyToWamid?: string | null;
+  replyToType?: string | null;
+  raw?: Record<string, unknown> | null;
 };
 
 export function useMessages(phone: string | undefined): {
@@ -68,6 +85,23 @@ export function useMessages(phone: string | undefined): {
           .map((d) => {
             const x = d.data() as Record<string, unknown>;
             const contactPhone = str(x.contactPhone, phone);
+            const locRaw = (x.location as Record<string, unknown> | undefined) ?? null;
+            const latitude =
+              typeof x.latitude === "number"
+                ? (x.latitude as number)
+                : typeof locRaw?.latitude === "number"
+                  ? (locRaw.latitude as number)
+                  : null;
+            const longitude =
+              typeof x.longitude === "number"
+                ? (x.longitude as number)
+                : typeof locRaw?.longitude === "number"
+                  ? (locRaw.longitude as number)
+                  : null;
+            const body = str(x.body);
+            const otpFromBody = /\b(\d{4,8})\b/.exec(body);
+            const looksLikeOtp =
+              /\b(otp|verification|code|pin)\b/i.test(body) && otpFromBody;
             return {
               id: d.id,
               contactPhone: normalizePhone(contactPhone),
@@ -77,7 +111,7 @@ export function useMessages(phone: string | undefined): {
                 | "incoming"
                 | "outgoing",
               status: str(x.status, "sent"),
-              body: str(x.body),
+              body,
               mediaUrl: strOrNull(x.mediaUrl),
               mediaId: strOrNull(x.mediaId),
               mimeType: strOrNull(x.mimeType),
@@ -102,8 +136,38 @@ export function useMessages(phone: string | undefined): {
               deliveredAt: toIso(x.deliveredAt),
               readAt: toIso(x.readAt),
               fileSize: typeof x.fileSize === "number" ? x.fileSize : null,
+              latitude,
+              longitude,
+              locationName: strOrNull(locRaw?.name),
+              locationAddress: strOrNull(locRaw?.address),
+              contactsPayload: Array.isArray(x.contacts)
+                ? (x.contacts as Array<Record<string, unknown>>)
+                : null,
+              buttonReplyId: strOrNull(x.buttonReplyId),
+              buttonReplyText: strOrNull(x.buttonReplyText),
+              interactiveType: strOrNull(x.interactiveType),
+              ctaUrl: strOrNull(x.ctaUrl),
+              otpCode:
+                strOrNull(x.otpCode) ??
+                (looksLikeOtp ? otpFromBody![1] : null),
+              replyToId: strOrNull(x.replyToId),
+              replyToBody: strOrNull(x.replyToBody),
+              replyToWamid: strOrNull(x.replyToWamid),
+              replyToType: strOrNull(x.replyToType),
+              raw: null,
             };
           })
+          // Hide pure reaction-event docs from the chat — the reaction is
+          // surfaced as a chip on the original bubble instead.
+          .filter(
+            (m) =>
+              !(
+                m.type === "reaction" &&
+                !m.body &&
+                !m.mediaUrl &&
+                m.reactionMsgId
+              ),
+          )
           .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
         setData(rows);
       },
