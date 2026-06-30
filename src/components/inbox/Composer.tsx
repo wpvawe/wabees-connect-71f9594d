@@ -20,7 +20,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { sendTextMessage, sendMediaMessage, uploadMedia } from "@/lib/wabees/api";
+import { sendTextMessage, sendMediaMessage, uploadMedia, mediaProxyUrl } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
@@ -152,8 +152,11 @@ export function Composer({
       if (!up.success || (!up.data?.url && !up.data?.id)) {
         throw new Error(up.message ?? "Upload failed");
       }
-      const mediaUrl = up.data?.url ?? null;
       const mediaId = up.data?.id ?? null;
+      // If upload only returned a Meta media_id, build a media-proxy URL so the
+      // Flutter app (which renders from `mediaUrl`) can display outgoing media.
+      const mediaUrl =
+        up.data?.url ?? (mediaId ? mediaProxyUrl(mediaId, uid) : null);
       const caption = kind === "audio" ? "" : text.trim();
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
