@@ -48,13 +48,13 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const recChunksRef = useRef<Blob[]>([]);
+  // Voice notes use opus-recorder (encodes directly to ogg/opus) so WhatsApp
+  // renders the waveform UI. MediaRecorder's webm/opus is rejected by Meta.
+  const recRef = useRef<{
+    stop: () => Promise<Blob>;
+    cancel: () => void;
+  } | null>(null);
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track whether the current recording was started via the mic button so we
-  // can send it as a true WhatsApp voice note (waveform UI) vs a generic
-  // audio attachment uploaded from the file picker.
-  const recIsVoiceRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uid = useEffectiveUid();
@@ -63,7 +63,8 @@ export function Composer({
   useEffect(() => {
     return () => {
       if (recTimerRef.current) clearInterval(recTimerRef.current);
-      recRef.current?.stream.getTracks().forEach((t) => t.stop());
+      recRef.current?.cancel();
+      recRef.current = null;
     };
   }, []);
 
@@ -175,8 +176,13 @@ export function Composer({
     } catch {
       /* fall back to phone */
     }
-    const isVoice = kind === "audio" && recIsVoiceRef.current;
-    recIsVoiceRef.current = false;
+    // Voice-note flag is encoded in the file MIME (audio/ogg from opus-recorder)
+    // & file extension. We only set is_voice=true for that specific shape so
+    // documents named "voice.ogg" uploaded via the file picker don't masquerade.
+    const isVoice =
+      kind === "audio" &&
+      file.type.startsWith("audio/ogg") &&
+      file.name.startsWith("voice-");
     try {
       const creds = await loadWaCredentials(selfUid);
       if (!creds) {
@@ -269,27 +275,47 @@ export function Composer({
 
   async function startRecording() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "audio/webm";
-      const mr = new MediaRecorder(stream, { mimeType: mime });
-      recChunksRef.current = [];
-      recIsVoiceRef.current = true;
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) recChunksRef.current.push(e.data);
+      // Dynamic import keeps the 80KB encoder out of the initial bundle.
+      const { default: Recorder } = await import("opus-recorder");
+      if (!Recorder.isRecordingSupported()) {
+        toast.error("Voice recording isn't supported in this browser");
+        return;
+      }
+      const recorder = new Recorder({
+        encoderPath: "/opus/encoderWorker.min.js",
+        encoderApplication: 2048, // voip
+        encoderFrameSize: 20,
+        encoderSampleRate: 48000,
+        numberOfChannels: 1,
+        streamPages: false,
+      });
+      let resolveBlob: ((b: Blob) => void) | null = null;
+      const ready = new Promise<Blob>((res) => {
+        resolveBlob = res;
+      });
+      recorder.ondataavailable = (typedArray: Uint8Array) => {
+        // Copy into a fresh ArrayBuffer so BlobPart typing is happy regardless
+        // of whether the worker emitted a SharedArrayBuffer-backed view.
+        const copy = new Uint8Array(typedArray.byteLength);
+        copy.set(typedArray);
+        const blob = new Blob([copy.buffer], { type: "audio/ogg; codecs=opus" });
+        resolveBlob?.(blob);
       };
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(recChunksRef.current, { type: mime });
-        const ext = mime.includes("mp4") ? "m4a" : "webm";
-        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mime });
-        await sendFile(file, "audio");
+      await recorder.start();
+      recRef.current = {
+        stop: async () => {
+          await recorder.stop();
+          return ready;
+        },
+        cancel: () => {
+          resolveBlob = null;
+          try {
+            recorder.close();
+          } catch {
+            /* ignore */
+          }
+        },
       };
-      mr.start();
-      recRef.current = mr;
       setRecording(true);
       setRecSeconds(0);
       recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
@@ -298,30 +324,35 @@ export function Composer({
     }
   }
 
-  function stopRecording(send: boolean) {
-    if (!recRef.current) return;
+  async function stopRecording(send: boolean) {
+    const rec = recRef.current;
+    if (!rec) return;
     if (recTimerRef.current) {
       clearInterval(recTimerRef.current);
       recTimerRef.current = null;
     }
-    if (!send) {
-      // M-6 fix: clear any chunks already pushed before we detach handlers,
-      // otherwise a queued `dataavailable` racing with `stop()` can leave
-      // stale audio in recChunksRef for the NEXT recording session.
-      recChunksRef.current = [];
-      recRef.current.ondataavailable = null;
-      recRef.current.onstop = () => {
-        recRef.current?.stream.getTracks().forEach((t) => t.stop());
-      };
-    }
-    try {
-      recRef.current.stop();
-    } catch {
-      /* already stopped */
-    }
     recRef.current = null;
     setRecording(false);
     setRecSeconds(0);
+    if (!send) {
+      rec.cancel();
+      return;
+    }
+    try {
+      const blob = await rec.stop();
+      if (!blob || blob.size === 0) {
+        toast.error("Recording was empty");
+        return;
+      }
+      const file = new File(
+        [blob],
+        `voice-${Date.now()}.ogg`,
+        { type: "audio/ogg; codecs=opus" },
+      );
+      await sendFile(file, "audio");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to finalize recording");
+    }
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
