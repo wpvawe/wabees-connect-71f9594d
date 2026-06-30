@@ -208,3 +208,259 @@ function StatusIcon({ status }: { status: string }) {
   if (status === "pending") return <FontAwesomeIcon icon={faClock} className="h-3 w-3" />;
   return <FontAwesomeIcon icon={faCheck} className="h-3 w-3" />;
 }
+
+function ReplyQuote({
+  text,
+  type,
+  mine,
+}: {
+  text: string;
+  type?: string | null;
+  mine: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-1.5 flex items-stretch gap-2 rounded-md px-2 py-1 text-[11px]",
+        mine ? "bg-white/15" : "bg-muted",
+      )}
+    >
+      <span
+        className={cn(
+          "w-0.5 shrink-0 rounded-full",
+          mine ? "bg-white/70" : "bg-primary",
+        )}
+      />
+      <div className="min-w-0">
+        {type && type !== "text" && (
+          <p className="font-semibold opacity-80">[{type}]</p>
+        )}
+        <p className="line-clamp-2 break-words opacity-90">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
+  // Inline media renderer used by image/video/audio/document/sticker.
+  const Media = () =>
+    m.mediaUrl ? (
+      <div className="mb-1 overflow-hidden rounded-md">
+        {m.mimeType?.startsWith("image/") || m.type === "sticker" || m.type === "image" ? (
+          <img
+            src={m.mediaUrl}
+            alt={m.caption ?? "image"}
+            className={cn("w-auto rounded-md", m.type === "sticker" ? "max-h-32" : "max-h-64")}
+            loading="lazy"
+          />
+        ) : m.mimeType?.startsWith("audio/") || m.type === "audio" ? (
+          <audio controls src={m.mediaUrl} className="h-10 w-full" />
+        ) : m.mimeType?.startsWith("video/") || m.type === "video" ? (
+          <video controls src={m.mediaUrl} className="max-h-64 w-full rounded-md" />
+        ) : (
+          <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
+            📄 {m.fileName ?? "Attachment"}
+            {typeof m.fileSize === "number" && m.fileSize > 0 && (
+              <span className="opacity-70">({formatBytes(m.fileSize)})</span>
+            )}
+          </a>
+        )}
+      </div>
+    ) : null;
+
+  const TextBody = ({ value }: { value: string }) =>
+    value ? (
+      <p className="whitespace-pre-wrap break-words">
+        <Linkify options={linkifyOpts}>{value}</Linkify>
+      </p>
+    ) : null;
+
+  // Authentication / OTP detection — show large copyable code.
+  if (m.otpCode || (m.templateName && /otp|auth|verif/i.test(m.templateName))) {
+    const code = m.otpCode ?? (m.body.match(/\b(\d{4,8})\b/)?.[1] ?? "");
+    return (
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold opacity-80">
+          <FontAwesomeIcon icon={faKey} className="h-3 w-3" /> Verification code
+        </p>
+        <TextBody value={m.body} />
+        {code && (
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(code);
+              toast.success(`Copied ${code}`);
+            }}
+            className={cn(
+              "mt-1.5 inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-base tracking-widest",
+              mine ? "bg-white/20" : "bg-muted",
+            )}
+          >
+            {code} <FontAwesomeIcon icon={faCopy} className="h-3 w-3 opacity-70" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  switch (m.type) {
+    case "text":
+      return <TextBody value={m.body} />;
+
+    case "image":
+    case "video":
+    case "audio":
+    case "sticker":
+      return (
+        <>
+          <Media />
+          <TextBody value={m.caption || m.body} />
+        </>
+      );
+
+    case "document":
+      return (
+        <>
+          <Media />
+          <TextBody value={m.caption || m.body} />
+        </>
+      );
+
+    case "location": {
+      const lat = m.latitude;
+      const lng = m.longitude;
+      const hasCoords = typeof lat === "number" && typeof lng === "number";
+      const href = hasCoords
+        ? `https://www.google.com/maps?q=${lat},${lng}`
+        : null;
+      return (
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 font-semibold">
+            <FontAwesomeIcon icon={faLocationDot} className="h-3.5 w-3.5" />
+            {m.locationName || "Location"}
+          </p>
+          {m.locationAddress && (
+            <p className="text-xs opacity-90">{m.locationAddress}</p>
+          )}
+          {hasCoords && (
+            <p className="text-[11px] opacity-75">
+              {lat!.toFixed(5)}, {lng!.toFixed(5)}
+            </p>
+          )}
+          {href && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block text-xs underline"
+            >
+              Open in Maps
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    case "contacts": {
+      const list = m.contactsPayload ?? [];
+      return (
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 font-semibold">
+            <FontAwesomeIcon icon={faAddressCard} className="h-3.5 w-3.5" />
+            Contact{list.length > 1 ? "s" : ""}
+          </p>
+          {list.length > 0 ? (
+            list.map((c, i) => {
+              const name =
+                ((c.name as Record<string, unknown>)?.formatted_name as string | undefined) ??
+                String(c.formatted_name ?? "Contact");
+              const phones = Array.isArray(c.phones)
+                ? (c.phones as Array<{ phone?: string; wa_id?: string }>)
+                : [];
+              return (
+                <div key={i} className="text-xs opacity-90">
+                  <p className="font-medium">{name}</p>
+                  {phones.map((p, j) => (
+                    <p key={j}>{p.phone || p.wa_id}</p>
+                  ))}
+                </div>
+              );
+            })
+          ) : (
+            <p className="text-xs opacity-80">{m.body || "Shared contact"}</p>
+          )}
+        </div>
+      );
+    }
+
+    case "button":
+    case "interactive": {
+      const label = m.buttonReplyText || m.body || "Reply";
+      return (
+        <div>
+          <p className="text-[11px] font-semibold opacity-80">
+            🔘 {m.interactiveType || m.type}
+          </p>
+          <TextBody value={label} />
+          {m.ctaUrl && (
+            <a
+              href={m.ctaUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs underline"
+            >
+              <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
+              {m.ctaUrl}
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    case "template":
+      return (
+        <div>
+          {m.headerText && (
+            <p className="mb-1 text-xs font-semibold opacity-80">{m.headerText}</p>
+          )}
+          <TextBody value={m.body} />
+          {m.footerText && (
+            <p className="mt-1 text-[11px] opacity-70">{m.footerText}</p>
+          )}
+        </div>
+      );
+
+    case "order":
+      return <TextBody value={m.body || "🛒 Order received"} />;
+
+    case "system":
+    case "ephemeral":
+    case "request_welcome":
+    case "referral":
+      return <TextBody value={m.body || `[${m.type}]`} />;
+
+    case "unsupported":
+      return (
+        <p className="flex items-center gap-1.5 text-xs italic opacity-80">
+          <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
+          {m.body || "Message not supported by WhatsApp Business"}
+        </p>
+      );
+
+    default:
+      // Never blank — fall back to whatever payload we have.
+      return (
+        <>
+          <Media />
+          {m.body ? (
+            <TextBody value={m.body} />
+          ) : (
+            <p className="flex items-center gap-1.5 text-xs italic opacity-70">
+              <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
+              {`[${m.type || "message"}]`}
+            </p>
+          )}
+        </>
+      );
+  }
+}
