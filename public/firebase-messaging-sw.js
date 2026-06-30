@@ -6,6 +6,15 @@ importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js");
 
 let initialized = false;
+const defaultFirebaseConfig = {
+  apiKey: "AIzaSyCPERUDcrM-IUPqy9ZKjen9Hx5-y1X5pTA",
+  authDomain: "wabees-app.firebaseapp.com",
+  projectId: "wabees-app",
+  appId: "1:221545100008:web:7e73a0122fb0884ba14f5d",
+  messagingSenderId: "221545100008",
+  storageBucket: "wabees-app.firebasestorage.app",
+};
+
 function init(config) {
   if (initialized) return;
   try {
@@ -22,8 +31,10 @@ function init(config) {
         "";
       self.registration.showNotification(title, {
         body,
-        icon: "/favicon.ico",
+        icon: "/wabees-icon.png",
         badge: "/favicon.ico",
+        tag: (payload.data && payload.data.tag) || "wabees-message",
+        renotify: true,
         data: payload.data || {},
       });
     });
@@ -33,6 +44,10 @@ function init(config) {
   }
 }
 
+// Critical for closed-tab/background delivery: the service worker may start
+// without any page open, so no FIREBASE_CONFIG message can arrive first.
+init(defaultFirebaseConfig);
+
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "FIREBASE_CONFIG") {
     init(event.data.config);
@@ -41,12 +56,14 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const phone = event.notification.data && event.notification.data.contactPhone;
+  const targetUrl = phone ? `/?contact=${encodeURIComponent(phone)}` : "/";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const c of list) {
         if ("focus" in c) return c.focus();
       }
-      if (clients.openWindow) return clients.openWindow("/");
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     }),
   );
 });

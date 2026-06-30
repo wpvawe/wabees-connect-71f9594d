@@ -102,6 +102,84 @@ function webhook_log($msg)
     }
 }
 
+function clear_fcm_token_from_caches($userId, $phoneNumberId = '')
+{
+    if (function_exists('apcu_delete')) {
+        apcu_delete("wabees_token_$userId");
+        if (!empty($phoneNumberId))
+            apcu_delete("wabees_owner_$phoneNumberId");
+    }
+    $tokenCacheFile = __DIR__ . "/../cache/token_$userId.json";
+    if (file_exists($tokenCacheFile))
+        @unlink($tokenCacheFile);
+    if (!empty($phoneNumberId)) {
+        $mapFile = __DIR__ . '/../cache/wa_map.json';
+        if (file_exists($mapFile)) {
+            $map = @json_decode(@file_get_contents($mapFile), true) ?: [];
+            if (isset($map[$phoneNumberId]['fcmToken'])) {
+                unset($map[$phoneNumberId]['fcmToken']);
+                $map[$phoneNumberId]['ts'] = 0;
+                @file_put_contents($mapFile, json_encode($map));
+            }
+        }
+    }
+}
+
+function fcm_response_is_bad_token($response)
+{
+    if (empty($response))
+        return false;
+    return strpos($response, 'UNREGISTERED') !== false
+        || strpos($response, 'INVALID_ARGUMENT') !== false
+        || strpos($response, 'Requested entity was not found') !== false;
+}
+
+function send_message_fcm_notification($token, $contactName, $messageBody, $from, $adminToken, $userId, $phoneNumberId)
+{
+    $fcmUrl = "https://fcm.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID . "/messages:send";
+    $body = mb_substr($messageBody, 0, 100);
+    $tag = 'message_' . md5($from);
+    $payload = json_encode([
+        'message' => [
+            'token' => $token,
+            'notification' => ['title' => $contactName, 'body' => $body],
+            'data' => [
+                'type' => 'message',
+                'title' => $contactName,
+                'body' => $body,
+                'contactPhone' => $from,
+                'senderName' => $contactName,
+                'tag' => $tag,
+                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            ],
+            'webpush' => [
+                'headers' => ['Urgency' => 'high'],
+                'notification' => [
+                    'title' => $contactName,
+                    'body' => $body,
+                    'icon' => '/wabees-icon.png',
+                    'badge' => '/favicon.ico',
+                    'tag' => $tag,
+                    'renotify' => true,
+                ],
+                'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+            ],
+            'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
+        ],
+    ]);
+    $ch = curl_init();
+    curl_setopt_array($ch, [CURLOPT_URL => $fcmUrl, CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3, CURLOPT_HTTPHEADER => ['Content-Type: application/json', "Authorization: Bearer $adminToken"]]);
+    $response = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    webhook_log("FCM_MESSAGE: code=$code token=" . substr($token, 0, 20) . "... body=" . substr($response ?: $error, 0, 200));
+    if ($code >= 400 && fcm_response_is_bad_token($response ?: '')) {
+        clear_fcm_token_from_caches($userId, $phoneNumberId);
+    }
+    return $code;
+}
+
 // ============ PHONE NORMALIZATION ============
 // Matches Dart PhoneUtils.normalize — consistent +923xxxxxxxxx format
 function normalize_phone($phone)
@@ -1197,18 +1275,25 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     if (!empty($fcmTokens) && $adminToken) {
         $fcmUrl = "https://fcm.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID . "/messages:send";
         foreach ($fcmTokens as $idx => $token) {
+            $body = mb_substr($messageBody, 0, 100);
+            $tag = 'message_' . md5($from);
             $fcmPayload = json_encode([
                 'message' => [
                     'token' => $token,
-                    'notification' => ['title' => $contactName, 'body' => mb_substr($messageBody, 0, 100)],
-                    'data' => ['type' => 'message', 'contactPhone' => $from, 'senderName' => $contactName, 'click_action' => 'FLUTTER_NOTIFICATION_CLICK'],
+                    'notification' => ['title' => $contactName, 'body' => $body],
+                    'data' => ['type' => 'message', 'title' => $contactName, 'body' => $body, 'contactPhone' => $from, 'senderName' => $contactName, 'tag' => $tag, 'click_action' => 'FLUTTER_NOTIFICATION_CLICK'],
+                    'webpush' => [
+                        'headers' => ['Urgency' => 'high'],
+                        'notification' => ['title' => $contactName, 'body' => $body, 'icon' => '/wabees-icon.png', 'badge' => '/favicon.ico', 'tag' => $tag, 'renotify' => true],
+                        'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+                    ],
                     'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
                 ],
             ]);
             $ch = curl_init();
             curl_setopt_array($ch, [CURLOPT_URL => $fcmUrl, CURLOPT_POST => true, CURLOPT_POSTFIELDS => $fcmPayload, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3, CURLOPT_HTTPHEADER => ['Content-Type: application/json', "Authorization: Bearer $adminToken"]]);
             curl_multi_add_handle($mh, $ch);
-            $handles[] = $ch;
+            $handles[] = ['curl' => $ch, 'token' => $token];
         }
     }
 
@@ -1233,8 +1318,16 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // Cleanup FCM handles
     if (!empty($handles)) {
         foreach ($handles as $ch) {
-            curl_multi_remove_handle($mh, $ch);
-            curl_close($ch);
+            $curl = is_array($ch) ? $ch['curl'] : $ch;
+            $token = is_array($ch) ? $ch['token'] : '';
+            $response = curl_multi_getcontent($curl);
+            $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            webhook_log("FCM_MESSAGE: code=$code token=" . substr($token, 0, 20) . "... body=" . substr($response ?: '', 0, 200));
+            if ($code >= 400 && fcm_response_is_bad_token($response ?: '')) {
+                clear_fcm_token_from_caches($userId, $phoneNumberId);
+            }
+            curl_multi_remove_handle($mh, $curl);
+            curl_close($curl);
         }
         curl_multi_close($mh);
     }
