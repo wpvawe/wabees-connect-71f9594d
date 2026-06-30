@@ -185,11 +185,12 @@ export function sendMediaMessage(args: {
   phone_number_id: string;
   access_token: string;
   to: string;
-  type: "image" | "video" | "document" | "audio";
+  type: "image" | "video" | "document" | "audio" | "sticker";
   media_url?: string;
   media_id?: string;
   caption?: string;
   filename?: string;
+  is_voice?: boolean;
   context_message_id?: string | null;
 }) {
   return postJson("send-message.php", args);
