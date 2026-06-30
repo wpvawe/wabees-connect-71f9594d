@@ -371,6 +371,63 @@ http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
 
+function resolve_data_owner_id($uid)
+{
+    static $cache = [];
+    if (empty($uid))
+        return $uid;
+    if (isset($cache[$uid]))
+        return $cache[$uid];
+
+    $cache[$uid] = $uid;
+    $doc = firestore_get("users/$uid");
+    if (($doc['code'] ?? 404) === 200) {
+        $fields = $doc['data']['fields'] ?? [];
+        $owner = trim($fields['dataOwner']['stringValue'] ?? '');
+        if ($owner !== '' && $owner !== $uid) {
+            $cache[$uid] = $owner;
+            webhook_log("RESOLVE_OWNER: dataOwner redirect $uid => $owner");
+        }
+    }
+    return $cache[$uid];
+}
+
+function build_resolved_owner_entry($uid, $cachedAccessToken = null, $cachedFcmToken = null)
+{
+    if (empty($uid))
+        return null;
+
+    $ownerUid = resolve_data_owner_id($uid);
+    $accessToken = ($ownerUid === $uid) ? $cachedAccessToken : null;
+    $fcmToken = ($ownerUid === $uid) ? $cachedFcmToken : null;
+
+    if (empty($accessToken) || empty($fcmToken)) {
+        $tokens = get_user_access_token($ownerUid);
+        if (empty($accessToken))
+            $accessToken = $tokens['accessToken'] ?? null;
+        if (empty($fcmToken))
+            $fcmToken = $tokens['fcmToken'] ?? null;
+    }
+
+    $data = [];
+    if (!empty($accessToken))
+        $data['whatsappAccessToken'] = ['stringValue' => $accessToken];
+    if (!empty($fcmToken))
+        $data['fcmToken'] = ['stringValue' => $fcmToken];
+
+    $cacheEntry = ['userId' => $ownerUid];
+    if (!empty($accessToken))
+        $cacheEntry['accessToken'] = $accessToken;
+    if (!empty($fcmToken))
+        $cacheEntry['fcmToken'] = $fcmToken;
+
+    return [
+        'user' => ['id' => $ownerUid, 'data' => $data],
+        'cache' => $cacheEntry,
+    ];
+}
+
+
 // ================================================================
 // RESOLVE OWNER — returns the single owner user for a phoneNumberId
 // (dataOwner architecture: webhook writes ONCE to owner's path)
