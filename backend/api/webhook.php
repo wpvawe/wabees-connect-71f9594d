@@ -589,20 +589,27 @@ function resolve_all_users_by_phone_map($phoneNumberId)
 
         if (isset($map[$phoneNumberId]) && !empty($map[$phoneNumberId]['users'])) {
             $ts = $map[$phoneNumberId]['ts'] ?? 0;
-            if (time() - $ts < 86400) {
+            if (time() - $ts < 300) {
                 $users = [];
+                $cacheUsers = [];
+                $seenOwners = [];
                 foreach ($map[$phoneNumberId]['users'] as $u) {
                     $uid = $u['userId'] ?? null;
                     if (!$uid)
                         continue;
-                    $data = [];
-                    if (!empty($u['accessToken']))
-                        $data['whatsappAccessToken'] = ['stringValue' => $u['accessToken']];
-                    if (!empty($u['fcmToken']))
-                        $data['fcmToken'] = ['stringValue' => $u['fcmToken']];
-                    $users[] = ['id' => $uid, 'data' => $data];
+                    $built = build_resolved_owner_entry($uid, $u['accessToken'] ?? null, $u['fcmToken'] ?? null);
+                    if (!$built)
+                        continue;
+                    $ownerUid = $built['user']['id'];
+                    if (isset($seenOwners[$ownerUid]))
+                        continue;
+                    $seenOwners[$ownerUid] = true;
+                    $users[] = $built['user'];
+                    $cacheUsers[] = $built['cache'];
                 }
                 if (!empty($users)) {
+                    $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
+                    @file_put_contents($cacheFile, json_encode($map));
                     webhook_log("RESOLVE[1-cache]: HIT for $phoneNumberId => " . count($users) . " users");
                     return $users;
                 }
