@@ -1,29 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleNotch, faCopy, faLink, faPlug, faTrash } from "@fortawesome/free-solid-svg-icons";
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-} from "firebase/firestore";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
-import { fbDb } from "@/integrations/firebase/client";
-import { toIso, str } from "@/lib/firebase/normalizers";
+import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import {
+  createMessageLink,
+  deleteMessageLink,
+  listMessageLinks,
+  type MessageLink,
+} from "@/lib/wabees/api";
 import { toast } from "sonner";
-import { format } from "date-fns";
 
-type Link = { id: string; message: string; url: string; createdAt: string | null };
+type Link = { id: string; code: string; message: string; url: string; qrUrl: string };
 
 export const Route = createFileRoute("/_authenticated/message-links")({
   head: () => ({ meta: [{ title: "Message Links — Wabees" }] }),
@@ -31,51 +25,68 @@ export const Route = createFileRoute("/_authenticated/message-links")({
 });
 
 function MessageLinksPage() {
-  // Message links are personal share links — always write under the signed-in
-  // user's own UID so Firestore rules (`auth.uid == userId`) allow create.
-  // Agents on a shared owner account still get their own private link list.
   const uid = useFirebaseUid();
   const { data: wa } = useWhatsAppConfig();
   const [links, setLinks] = useState<Link[] | null>(null);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!uid) return;
-    const q = query(collection(fbDb(), `users/${uid}/message_links`), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      setLinks(
-        snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            message: str(x.message),
-            url: str(x.url),
-            createdAt: toIso(x.createdAt),
-          };
-        }),
-      );
-    });
-  }, [uid]);
+  const mapLink = (link: MessageLink): Link => ({
+    id: link.id || link.code,
+    code: link.code || link.id,
+    message: link.prefilled_message || "",
+    url: link.deep_link_url || "",
+    qrUrl: link.qr_image_url || "",
+  });
 
-  const phoneDigits = (wa?.display_phone ?? "").replace(/[^0-9]/g, "");
+  const refreshLinks = useCallback(async () => {
+    if (!uid || !wa?.phone_number_id) return;
+    setLoading(true);
+    try {
+      const creds = await loadWaCredentials(uid);
+      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const result = await listMessageLinks({
+        phone_number_id: wa.phone_number_id,
+        access_token: creds.access_token,
+      });
+      if (!result.success) throw new Error(result.message || "Failed to fetch links");
+      const next = Array.isArray(result.data?.links) ? result.data.links.map(mapLink) : [];
+      setLinks(next);
+    } catch (e) {
+      setLinks([]);
+      toast.error(e instanceof Error ? e.message : "Failed to fetch links");
+    } finally {
+      setLoading(false);
+    }
+  }, [uid, wa?.phone_number_id]);
+
+  useEffect(() => {
+    void refreshLinks();
+  }, [refreshLinks]);
+
+  const phoneDigits = (wa?.display_phone ?? wa?.phone_number_id ?? "").replace(/[^0-9]/g, "");
   const previewUrl =
     phoneDigits && message.trim()
       ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(message.trim())}`
       : "";
 
   async function create() {
-    if (!uid || !phoneDigits || !message.trim()) return;
+    if (!uid || !phoneDigits || !message.trim() || !wa?.phone_number_id) return;
+    const phoneNumberId = wa.phone_number_id;
     setSaving(true);
     try {
-      await addDoc(collection(fbDb(), `users/${uid}/message_links`), {
-        userId: uid,
-        message: message.trim(),
-        url: previewUrl,
-        createdAt: serverTimestamp(),
+      const creds = await loadWaCredentials(uid);
+      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const result = await createMessageLink({
+        phone_number_id: phoneNumberId,
+        access_token: creds.access_token,
+        prefilled_message: message.trim(),
       });
+      if (!result.success) throw new Error(result.message || "Failed to create link");
       setMessage("");
       toast.success("Link created");
+      void refreshLinks();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -83,10 +94,20 @@ function MessageLinksPage() {
     }
   }
 
-  async function remove(id: string) {
-    if (!uid) return;
+  async function remove(code: string) {
+    if (!uid || !wa?.phone_number_id) return;
+    const phoneNumberId = wa.phone_number_id;
     try {
-      await deleteDoc(doc(fbDb(), `users/${uid}/message_links/${id}`));
+      const creds = await loadWaCredentials(uid);
+      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const result = await deleteMessageLink({
+        phone_number_id: phoneNumberId,
+        access_token: creds.access_token,
+        link_id: code,
+      });
+      if (!result.success) throw new Error(result.message || "Failed to delete link");
+      setLinks((current) => (current ? current.filter((l) => l.code !== code) : current));
+      toast.success("Link deleted");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     }
@@ -146,7 +167,7 @@ function MessageLinksPage() {
           </WbCardBody>
         </WbCard>
 
-        {links === null ? (
+        {links === null || loading ? (
           <div className="flex items-center justify-center py-6 text-muted-foreground">
             <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" /> Loading…
           </div>
@@ -170,14 +191,12 @@ function MessageLinksPage() {
                   {l.url}
                 </a>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-muted-foreground">
-                    {l.createdAt ? format(new Date(l.createdAt), "PPp") : ""}
-                  </span>
+                  <span className="text-[10px] text-muted-foreground">{l.code}</span>
                   <div className="flex gap-1">
                     <WbButton size="sm" variant="ghost" onClick={() => copyUrl(l.url)}>
                       <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" /> Copy
                     </WbButton>
-                    <WbButton size="sm" variant="ghost" onClick={() => remove(l.id)}>
+                    <WbButton size="sm" variant="ghost" onClick={() => remove(l.code)}>
                       <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5 text-destructive" />
                     </WbButton>
                   </div>

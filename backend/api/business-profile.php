@@ -26,6 +26,7 @@ require_once __DIR__ . '/../config/firebase-auth.php';
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
 $action        = (string)($body['action'] ?? 'get');
 $idToken       = (string)($body['id_token'] ?? '');
+$accessToken   = (string)($body['access_token'] ?? '');
 $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($body['phone_number_id'] ?? ''));
 
 if (!$phoneNumberId) {
@@ -33,20 +34,22 @@ if (!$phoneNumberId) {
     echo json_encode(['error' => 'Missing phone_number_id']); exit;
 }
 
-$uid = verify_firebase_id_token($idToken, $err);
-if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
+if ($idToken !== '') {
+    $uid = verify_firebase_id_token($idToken, $err);
+    if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
 
-// Resolve owner
-$ownerUid = $uid;
-$userResp = firestore_get("users/$uid");
-if (($userResp['code'] ?? 404) === 200) {
-    $f = $userResp['data']['fields'] ?? [];
-    $dataOwner = trim($f['dataOwner']['stringValue'] ?? '');
-    if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
+    // Resolve owner
+    $ownerUid = $uid;
+    $userResp = firestore_get("users/$uid");
+    if (($userResp['code'] ?? 404) === 200) {
+        $f = $userResp['data']['fields'] ?? [];
+        $dataOwner = trim($f['dataOwner']['stringValue'] ?? '');
+        if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
+    }
+
+    $tokens = get_user_access_token($ownerUid);
+    $accessToken = $tokens['accessToken'] ?? $accessToken;
 }
-
-$tokens = get_user_access_token($ownerUid);
-$accessToken = $tokens['accessToken'] ?? '';
 if (!$accessToken) {
     http_response_code(400);
     echo json_encode(['error' => 'WhatsApp not connected']); exit;
