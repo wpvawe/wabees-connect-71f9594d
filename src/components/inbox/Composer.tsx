@@ -294,7 +294,11 @@ export function Composer({
         resolveBlob = res;
       });
       recorder.ondataavailable = (typedArray: Uint8Array) => {
-        const blob = new Blob([typedArray], { type: "audio/ogg; codecs=opus" });
+        // Copy into a fresh ArrayBuffer so BlobPart typing is happy regardless
+        // of whether the worker emitted a SharedArrayBuffer-backed view.
+        const copy = new Uint8Array(typedArray.byteLength);
+        copy.set(typedArray);
+        const blob = new Blob([copy.buffer], { type: "audio/ogg; codecs=opus" });
         resolveBlob?.(blob);
       };
       await recorder.start();
