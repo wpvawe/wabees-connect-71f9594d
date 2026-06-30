@@ -56,6 +56,7 @@ export type Message = {
   replyToWamid?: string | null;
   replyToType?: string | null;
   raw?: Record<string, unknown> | null;
+  reactionAt?: string | null;
 };
 
 export function useMessages(phone: string | undefined): {
@@ -132,6 +133,7 @@ export function useMessages(phone: string | undefined): {
               createdAt: toIso(x.createdAt),
               reactionEmoji: strOrNull(x.reactionEmoji),
               reactionMsgId: strOrNull(x.reactionMsgId),
+              reactionAt: toIso(x.reactionAt),
               botName: strOrNull(x.botName),
               deliveredAt: toIso(x.deliveredAt),
               readAt: toIso(x.readAt),
@@ -173,8 +175,17 @@ export function useMessages(phone: string | undefined): {
             for (const k of candidates) {
               const parent = byWamid.get(k) ?? allRows.find((p) => p.id === k);
               if (parent) {
-                parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
-                parent.reactionMsgId = m.reactionMsgId;
+                // Newer reaction wins. Parent.reactionAt is set when the
+                // website/app writes a reaction directly on the parent doc,
+                // so we don't let a stale orphan webhook doc overwrite a
+                // fresh local reaction.
+                const orphanAt = m.createdAt ?? "";
+                const parentAt = parent.reactionAt ?? "";
+                if (!parent.reactionEmoji || orphanAt > parentAt) {
+                  parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
+                  parent.reactionMsgId = m.reactionMsgId;
+                  parent.reactionAt = orphanAt || parent.reactionAt;
+                }
                 break;
               }
             }

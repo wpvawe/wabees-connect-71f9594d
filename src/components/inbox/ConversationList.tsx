@@ -4,20 +4,48 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleNotch, faComments, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo } from "react";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
+import { useContacts, type Contact } from "@/hooks/useContacts";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { cn } from "@/lib/utils";
 
 export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data, error } = useConversations();
+  const { data: contacts } = useContacts();
   const [q, setQ] = useState("");
-  const filtered = useMemo(() => {
+  // Build a phone → Contact lookup so a saved name/photo wins over a stale
+  // conversation doc that still shows the raw phone.
+  const byPhone = useMemo(() => {
+    const m = new Map<string, Contact>();
+    for (const c of contacts ?? []) {
+      if (c.phone) m.set(c.phone, c);
+    }
+    return m;
+  }, [contacts]);
+  const merged = useMemo(() => {
     if (!data) return data;
-    if (!q.trim()) return data;
+    return data.map((conv) => {
+      const ct = byPhone.get(conv.contactPhone);
+      if (!ct) return conv;
+      const looksLikePhone =
+        !conv.contactName ||
+        conv.contactName === conv.contactPhone ||
+        /^\+?\d[\d\s\-()]+$/.test(conv.contactName);
+      return {
+        ...conv,
+        contactName: looksLikePhone && ct.name ? ct.name : conv.contactName,
+        profileImageUrl: conv.profileImageUrl ?? ct.profileImageUrl ?? null,
+      };
+    });
+  }, [data, byPhone]);
+  const filtered = useMemo(() => {
+    if (!merged) return merged;
+    if (!q.trim()) return merged;
     const needle = q.trim().toLowerCase();
-    return data.filter(
+    return merged.filter(
       (c) => c.contactName.toLowerCase().includes(needle) || c.contactPhone.includes(needle),
     );
-  }, [data, q]);
+  }, [merged, q]);
 
   return (
     <aside className="flex h-full w-full max-w-full flex-col border-r border-border bg-card md:max-w-sm">
@@ -70,6 +98,8 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
     ? formatDistanceToNowStrict(new Date(c.lastMessageAt), { addSuffix: false })
     : "";
   const preview = formatPreview(c.lastMessage, c.lastMessageType);
+  const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
+  const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
   return (
     <li>
       <Link
@@ -80,17 +110,31 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
           active && "bg-accent/40",
         )}
       >
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
-          {(c.contactName || c.contactPhone).slice(0, 2).toUpperCase()}
-        </div>
+        <Avatar className="h-10 w-10 shrink-0">
+          {c.profileImageUrl ? (
+            <AvatarImage src={c.profileImageUrl} alt={displayName || c.contactPhone} />
+          ) : null}
+          <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-semibold text-foreground">
-              {c.contactName || c.contactPhone}
+              {displayName || c.contactPhone}
             </p>
             <span className="shrink-0 text-[10px] text-muted-foreground">{when}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">{preview}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {displayName ? (
+              <>
+                <span className="opacity-70">{c.contactPhone} · </span>
+                {preview}
+              </>
+            ) : (
+              preview
+            )}
+          </p>
         </div>
         {c.unreadCount > 0 && (
           <span className="ml-1 grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">

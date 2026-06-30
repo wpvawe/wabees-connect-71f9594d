@@ -14,6 +14,9 @@ import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normal
 import { sendReactionMessage, markMessageRead, deleteWhatsAppMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { toast } from "sonner";
+import { useContacts } from "@/hooks/useContacts";
+import { useConversations } from "@/hooks/useConversations";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   head: ({ params }) => ({ meta: [{ title: `Chat ${params.phone} — Wabees` }] }),
@@ -27,6 +30,8 @@ function InboxThread() {
 
 function Thread({ phone }: { phone: string }) {
   const { data, error } = useMessages(phone);
+  const { data: contacts } = useContacts();
+  const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -140,11 +145,16 @@ function Thread({ phone }: { phone: string }) {
       if (!uid || !selfUid) return;
       const wamid = whatsappContextMessageId(m);
       const reactionTargetId = wamid ? `msg_${wamid}` : null;
+      // Toggle: clicking the same emoji removes it (mirrors WhatsApp).
+      const nextEmoji = m.reactionEmoji === emoji ? "" : emoji;
       try {
-        // 1) Update parent so website renders the chip instantly.
+        // 1) Update parent so website renders the chip instantly. reactionAt
+        //    lets useMessages tie-break against any stale orphan reaction
+        //    doc the webhook wrote earlier.
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
-          reactionEmoji: emoji || null,
+          reactionEmoji: nextEmoji || null,
           reactionMsgId: reactionTargetId,
+          reactionAt: serverTimestamp(),
         });
       } catch {
         /* local update best-effort */
@@ -158,7 +168,7 @@ function Thread({ phone }: { phone: string }) {
             access_token: creds.access_token,
             to: whatsappRecipientId(phone),
             message_id: wamid,
-            emoji,
+            emoji: nextEmoji,
           });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Reaction failed");
@@ -236,6 +246,11 @@ function Thread({ phone }: { phone: string }) {
     }
     return phone;
   })();
+  const contact = (contacts ?? []).find((c) => c.phone === phone);
+  const conv = (conversations ?? []).find((c) => c.contactPhone === phone);
+  const displayName = contact?.name || (name !== phone ? name : "");
+  const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
+  const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-background">
@@ -246,11 +261,14 @@ function Thread({ phone }: { phone: string }) {
         >
           <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
         </Link>
-        <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-          {(name || phone).slice(0, 2).toUpperCase()}
-        </div>
+        <Avatar className="h-9 w-9">
+          {photo ? <AvatarImage src={photo} alt={displayName || phone} /> : null}
+          <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+          <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
           <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
       </header>
