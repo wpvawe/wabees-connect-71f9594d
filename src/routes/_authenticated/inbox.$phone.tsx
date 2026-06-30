@@ -7,11 +7,11 @@ import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBu
 import { Composer } from "@/components/inbox/Composer";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
-import { sendReactionMessage } from "@/lib/wabees/api";
+import { sendReactionMessage, markMessageRead } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { toast } from "sonner";
 
@@ -31,8 +31,22 @@ function Thread({ phone }: { phone: string }) {
   const selfUid = useFirebaseUid();
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const lastLenRef = useRef(0);
+  // Auto-scroll only when (a) the thread just opened or (b) the user is
+  // already near the bottom. Otherwise scrolling jumps the viewport away
+  // from messages they were reading.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    const el = scrollerRef.current;
+    const len = data?.length ?? 0;
+    if (!el || len === 0) return;
+    const prevLen = lastLenRef.current;
+    lastLenRef.current = len;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceFromBottom < 160;
+    if (prevLen === 0 || nearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: prevLen === 0 ? "auto" : "smooth", block: "end" });
+    }
   }, [data?.length]);
 
   // Mark conversation read when user opens the chat on the website.
@@ -93,11 +107,33 @@ function Thread({ phone }: { phone: string }) {
             { merge: true },
           ).catch(() => {});
         }
+        // L-1 fix: also tell Meta the messages are read so the customer's
+        // phone shows blue ticks. Best-effort & dedup'd by wamid.
+        if (selfUid) {
+          try {
+            const creds = await loadWaCredentials(selfUid);
+            if (creds) {
+              const seen = new Set<string>();
+              for (const m of unread) {
+                const wamid = m.whatsappMessageId;
+                if (!wamid || seen.has(wamid)) continue;
+                seen.add(wamid);
+                await markMessageRead({
+                  phone_number_id: creds.phone_number_id,
+                  access_token: creds.access_token,
+                  message_id: wamid,
+                }).catch(() => {});
+              }
+            }
+          } catch {
+            /* mark-read is best-effort */
+          }
+        }
       } catch {
         /* ignore */
       }
     })();
-  }, [uid, phone, data]);
+  }, [uid, selfUid, phone, data]);
 
   const onReact = useCallback(
     async (m: Message, emoji: string) => {
@@ -110,21 +146,6 @@ function Thread({ phone }: { phone: string }) {
           reactionEmoji: emoji || null,
           reactionMsgId: reactionTargetId,
         });
-        // 2) Also write a separate reaction event doc — this is the shape the
-        //    Flutter app reads to render reactions on outgoing messages.
-        if (wamid) {
-          await addDoc(collection(fbDb(), `users/${uid}/messages`), {
-            contactPhone: m.contactPhone,
-            contactName: m.contactName ?? m.contactPhone,
-            type: "reaction",
-            direction: "outgoing",
-            status: "sent",
-            body: "",
-            reactionEmoji: emoji || null,
-            reactionMsgId: reactionTargetId,
-            createdAt: serverTimestamp(),
-          });
-        }
       } catch {
         /* local update best-effort */
       }
@@ -207,7 +228,7 @@ function Thread({ phone }: { phone: string }) {
           <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
       </header>
-      <div className="flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background">
+      <div ref={scrollerRef} className="flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background">
         {error && <p className="text-sm text-destructive">{error}</p>}
         {data === null ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
