@@ -5,8 +5,10 @@ import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbInput } from "@/components/wb/WbInput";
 import { WbButton } from "@/components/wb/WbButton";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
+import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { toast } from "sonner";
 
 const VERTICALS = [
@@ -49,6 +51,7 @@ const EMPTY: ProfileForm = {
 };
 
 export function BusinessProfileSection() {
+  const uid = useFirebaseUid();
   const { data: wa } = useWhatsAppConfig();
   const [form, setForm] = useState<ProfileForm>(EMPTY);
   const [profilePic, setProfilePic] = useState<string>("");
@@ -61,10 +64,11 @@ export function BusinessProfileSection() {
   }
 
   const load = useCallback(async (silent = false) => {
-    if (!wa?.phone_number_id) return;
+    if (!uid || !wa?.phone_number_id) return;
     if (!silent) setLoading(true);
     try {
       const idToken = await fbAuth().currentUser!.getIdToken();
+      const creds = await loadWaCredentials(uid);
       const res = await fetch(`${WABEES_API_BASE}/business-profile.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,28 +76,33 @@ export function BusinessProfileSection() {
           action: "get",
           phone_number_id: wa.phone_number_id,
           id_token: idToken,
+          access_token: creds?.access_token,
         }),
       });
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
       if (!res.ok || raw.error)
         throw new Error(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
-      const websites = Array.isArray(raw.websites) ? (raw.websites as string[]) : [];
+      const profile =
+        raw.profile && typeof raw.profile === "object"
+          ? (raw.profile as Record<string, unknown>)
+          : raw;
+      const websites = Array.isArray(profile.websites) ? (profile.websites as string[]) : [];
       setForm({
-        about: String(raw.about ?? ""),
-        description: String(raw.description ?? ""),
-        email: String(raw.email ?? ""),
-        address: String(raw.address ?? ""),
+        about: String(profile.about ?? ""),
+        description: String(profile.description ?? ""),
+        email: String(profile.email ?? ""),
+        address: String(profile.address ?? ""),
         website: websites[0] ?? "",
-        vertical: String(raw.vertical ?? "UNDEFINED"),
+        vertical: String(profile.vertical ?? "UNDEFINED"),
       });
-      setProfilePic(String(raw.profile_picture_url ?? ""));
+      setProfilePic(String(profile.profile_picture_url ?? ""));
       if (!silent) toast.success("Loaded from WhatsApp");
     } catch (e) {
       if (!silent) toast.error(e instanceof Error ? e.message : "Load failed");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [wa?.phone_number_id]);
+  }, [uid, wa?.phone_number_id]);
 
   // Auto-fetch once per connected phone_number_id.
   useEffect(() => {
@@ -105,15 +114,17 @@ export function BusinessProfileSection() {
   }, [wa?.phone_number_id, load]);
 
   async function save() {
-    if (!wa?.phone_number_id) return;
+    if (!uid || !wa?.phone_number_id) return;
     setSaving(true);
     try {
       const idToken = await fbAuth().currentUser!.getIdToken();
+      const creds = await loadWaCredentials(uid);
       // Meta Graph rejects empty strings for some fields — only send non-empty.
       const body: Record<string, unknown> = {
         action: "update",
         phone_number_id: wa.phone_number_id,
         id_token: idToken,
+        access_token: creds?.access_token,
         vertical: form.vertical || "UNDEFINED",
         websites: form.website ? [form.website] : [],
       };
