@@ -65,7 +65,7 @@ function MessageLinksPage() {
     void refreshLinks();
   }, [refreshLinks]);
 
-  const phoneDigits = (wa?.display_phone ?? "").replace(/[^0-9]/g, "");
+  const phoneDigits = (wa?.display_phone ?? wa?.phone_number_id ?? "").replace(/[^0-9]/g, "");
   const previewUrl =
     phoneDigits && message.trim()
       ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(message.trim())}`
