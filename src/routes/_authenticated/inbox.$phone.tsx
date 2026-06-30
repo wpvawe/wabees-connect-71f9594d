@@ -140,11 +140,16 @@ function Thread({ phone }: { phone: string }) {
       if (!uid || !selfUid) return;
       const wamid = whatsappContextMessageId(m);
       const reactionTargetId = wamid ? `msg_${wamid}` : null;
+      // Toggle: clicking the same emoji removes it (mirrors WhatsApp).
+      const nextEmoji = m.reactionEmoji === emoji ? "" : emoji;
       try {
-        // 1) Update parent so website renders the chip instantly.
+        // 1) Update parent so website renders the chip instantly. reactionAt
+        //    lets useMessages tie-break against any stale orphan reaction
+        //    doc the webhook wrote earlier.
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
-          reactionEmoji: emoji || null,
+          reactionEmoji: nextEmoji || null,
           reactionMsgId: reactionTargetId,
+          reactionAt: serverTimestamp(),
         });
       } catch {
         /* local update best-effort */
@@ -158,7 +163,7 @@ function Thread({ phone }: { phone: string }) {
             access_token: creds.access_token,
             to: whatsappRecipientId(phone),
             message_id: wamid,
-            emoji,
+            emoji: nextEmoji,
           });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Reaction failed");
