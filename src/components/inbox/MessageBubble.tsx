@@ -281,7 +281,7 @@ function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
             loading="lazy"
           />
         ) : m.mimeType?.startsWith("audio/") || m.type === "audio" ? (
-          <audio controls src={m.mediaUrl} className="h-10 w-full" />
+          <VoiceNote url={m.mediaUrl} mime={m.mimeType} />
         ) : m.mimeType?.startsWith("video/") || m.type === "video" ? (
           <video controls src={m.mediaUrl} className="max-h-64 w-full rounded-md" />
         ) : (
