@@ -27,6 +27,7 @@ import {
   sendMediaMessage,
   uploadMedia,
   mediaProxyUrl,
+  sendTypingIndicator,
 } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
@@ -38,10 +39,12 @@ export function Composer({
   phone,
   replyTo,
   onClearReply,
+  lastInboundWamid,
 }: {
   phone: string;
   replyTo?: Message | null;
   onClearReply?: () => void;
+  lastInboundWamid?: string | null;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -59,12 +62,16 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  // Outbound typing indicator: debounced, throttled to once per 20s per wamid.
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingSentRef = useRef<{ wamid: string; ts: number } | null>(null);
 
   useEffect(() => {
     return () => {
       if (recTimerRef.current) clearInterval(recTimerRef.current);
       recRef.current?.cancel();
       recRef.current = null;
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, []);
 
