@@ -28,16 +28,22 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AppShell() {
-  useFcm();
   return (
     <FirebaseSessionProvider>
-      <div className="flex min-h-screen bg-background text-foreground">
-        <SideRail />
-        <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
-          <Outlet />
-        </main>
-        <MobileTabBar />
-      </div>
+      <AuthenticatedShell />
     </FirebaseSessionProvider>
+  );
+}
+
+function AuthenticatedShell() {
+  useFcm();
+  return (
+    <div className="flex min-h-screen bg-background text-foreground">
+      <SideRail />
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
+        <Outlet />
+      </main>
+      <MobileTabBar />
+    </div>
   );
 }
