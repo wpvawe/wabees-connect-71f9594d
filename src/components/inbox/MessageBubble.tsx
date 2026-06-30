@@ -226,6 +226,37 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// WhatsApp voice notes are ogg/opus. Declare MIME via <source> so browsers
+// pick the right decoder, and offer a download fallback on decode errors.
+function VoiceNote({ url, mime }: { url: string; mime?: string | null }) {
+  const [errored, setErrored] = useState(false);
+  const type = mime || "audio/ogg";
+  if (errored) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs underline"
+      >
+        🎤 Download voice message
+      </a>
+    );
+  }
+  return (
+    <audio
+      controls
+      preload="metadata"
+      className="h-10 w-[260px] max-w-full"
+      onError={() => setErrored(true)}
+    >
+      <source src={url} type={type} />
+      <source src={url} type="audio/ogg" />
+      <source src={url} type="audio/mpeg" />
+    </audio>
+  );
+}
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "read") return <FontAwesomeIcon icon={faCheckDouble} className="h-3 w-3" />;
   if (status === "delivered")
