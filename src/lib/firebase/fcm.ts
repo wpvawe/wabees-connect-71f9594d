@@ -10,6 +10,7 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { initializeApp, getApps } from "firebase/app";
 import { toast } from "sonner";
+import { playNotificationChime } from "@/lib/notification-sound";
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -127,7 +128,7 @@ export async function initFcm(input: InitFcmInput): Promise<void> {
           new Notification(title, {
             body,
             icon: "/wabees-icon.png",
-            badge: "/favicon.ico",
+            badge: "/wabees-icon.png",
             tag: (payload.data?.tag as string | undefined) || "wabees-message",
             data: payload.data || {},
           });
@@ -135,16 +136,11 @@ export async function initFcm(input: InitFcmInput): Promise<void> {
           /* ignore */
         }
       }
-      // Play a short ping for new-message feel.
-      try {
-        const a = new Audio(
-          "data:audio/mp3;base64,SUQzAwAAAAAAFlRJVDIAAAAGAAAAYWxlcnQAVENPTgAAAAYAAABTb3VuZAA=",
-        );
-        a.volume = 0.4;
-        void a.play();
-      } catch {
-        /* ignore */
-      }
+      // Play a short ping for new-message feel. Uses the WebAudio-based
+      // notification chime so we never depend on a real audio source (the old
+      // inline base64 MP3 was an empty ID3 header that some browsers reject
+      // with NotSupportedError, polluting the console).
+      playNotificationChime();
     });
     listening = true;
   } catch {
