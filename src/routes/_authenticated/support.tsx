@@ -127,7 +127,7 @@ function SupportPage() {
   return (
     <>
       <TopBar title="Support" subtitle="Chat with the Wabees support team" />
-      <section className="flex h-[calc(100vh-7.5rem)] flex-col">
+      <section className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-2 overflow-y-auto bg-muted/30 p-3 sm:p-4">
           {error && <p className="text-sm text-destructive">{error}</p>}
           {data === null ? (

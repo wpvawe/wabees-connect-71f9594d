@@ -64,8 +64,8 @@ function SettingsPage() {
   return (
     <>
       <TopBar title="Settings" subtitle="Your account & profile" />
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
-        {/* Profile summary */}
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+        {/* Profile summary — full width */}
         <WbCard>
           <WbCardBody>
             <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -85,61 +85,75 @@ function SettingsPage() {
           </WbCardBody>
         </WbCard>
 
-        {/* WhatsApp connection summary */}
-        {wa && (
-          <WbCard>
-            <WbCardHeader title="WhatsApp connection" subtitle="Live from your linked Business account" />
-            <WbCardBody className="space-y-3">
-              <ReadOnlyRow
-                icon={faWhatsapp}
-                label="WhatsApp Business name"
-                value={wa.business_name || "—"}
-              />
-              <ReadOnlyRow
-                icon={faCheckCircle}
-                label="Display phone"
-                value={wa.display_phone || "—"}
-              />
-              {wa.quality_rating && (
-                <ReadOnlyRow icon={faCheckCircle} label="Quality rating" value={wa.quality_rating} />
-              )}
-            </WbCardBody>
-          </WbCard>
-        )}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* LEFT column: account profile + session */}
+          <div className="space-y-6">
+            <WbCard>
+              <WbCardHeader title="Account profile" subtitle="Your internal business details" />
+              <WbCardBody className="space-y-4">
+                <WbInput label="Business name" value={name} onChange={(e) => setName(e.target.value)} />
+                <WbInput
+                  label="Phone number"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <WbInput
+                  label="Profile image URL"
+                  placeholder="https://…"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  hint="Paste a public image URL. Direct uploads coming soon."
+                />
+                <WbInput label="Email" value={profile?.email ?? ""} disabled />
+                <div className="flex justify-end">
+                  <WbButton onClick={save} loading={saving}>
+                    Save changes
+                  </WbButton>
+                </div>
+              </WbCardBody>
+            </WbCard>
+            <WbCard>
+              <WbCardHeader title="Session" />
+              <WbCardBody>
+                <WbButton variant="danger" onClick={signOut}>
+                  Sign out
+                </WbButton>
+              </WbCardBody>
+            </WbCard>
+          </div>
 
-        <WbCard>
-          <WbCardHeader title="Account profile" subtitle="Your internal business details" />
-          <WbCardBody className="space-y-4">
-            <WbInput label="Business name" value={name} onChange={(e) => setName(e.target.value)} />
-            <WbInput
-              label="Phone number"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-            <WbInput
-              label="Profile image URL"
-              placeholder="https://…"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              hint="Paste a public image URL. Direct uploads coming soon."
-            />
-            <WbInput label="Email" value={profile?.email ?? ""} disabled />
-            <div className="flex justify-end">
-              <WbButton onClick={save} loading={saving}>
-                Save changes
-              </WbButton>
-            </div>
-          </WbCardBody>
-        </WbCard>
-        <BusinessProfileSection />
-        <WbCard>
-          <WbCardHeader title="Session" />
-          <WbCardBody>
-            <WbButton variant="danger" onClick={signOut}>
-              Sign out
-            </WbButton>
-          </WbCardBody>
-        </WbCard>
+          {/* RIGHT column: WhatsApp connection + business profile */}
+          <div className="space-y-6">
+            {wa && (
+              <WbCard>
+                <WbCardHeader
+                  title="WhatsApp connection"
+                  subtitle="Live from your linked Business account"
+                />
+                <WbCardBody className="space-y-3">
+                  <ReadOnlyRow
+                    icon={faWhatsapp}
+                    label="WhatsApp Business name"
+                    value={wa.business_name || "—"}
+                  />
+                  <ReadOnlyRow
+                    icon={faCheckCircle}
+                    label="Display phone"
+                    value={wa.display_phone || "—"}
+                  />
+                  {wa.quality_rating && (
+                    <ReadOnlyRow
+                      icon={faCheckCircle}
+                      label="Quality rating"
+                      value={wa.quality_rating}
+                    />
+                  )}
+                </WbCardBody>
+              </WbCard>
+            )}
+            <BusinessProfileSection />
+          </div>
+        </div>
       </div>
     </>
   );
