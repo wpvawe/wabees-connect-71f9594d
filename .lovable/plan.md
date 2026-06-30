@@ -1,62 +1,59 @@
-# Comprehensive Improvements Plan
 
-Pehle se working code ko bilkul touch nahi karoon ga — sirf jo specific cheezein aap ne batayee hain.
+# Inbox upgrade plan
 
-## 1. Settings Page — 2 columns + auto-fetch
+Aap ke 7 issues — priority ke saath. Calling ko alag last phase me rakha hai (WhatsApp Business Calling API limited access aur SDP/WebRTC plumbing chahye).
 
-**File:** `src/routes/_authenticated/settings.tsx`, `src/components/settings/BusinessProfileSection.tsx`
+## Phase 1 — Notification bell + chat polish (frontend only, fast)
 
-- Layout: `max-w-5xl` + `lg:grid-cols-2` — left column "Account Profile" + Session, right column "WhatsApp Business Profile" + connection summary.
-- WhatsApp Business Profile section:
-  - **Auto-fetch on mount** — jab WhatsApp connected ho aur `phone_number_id` mile, automatically `business-profile.php` se data load ho (no button click needed). "Reload" button optional rakhen ge.
-  - **Profile picture preview** — backend already `profile_picture_url` return karta hai; ab UI me round avatar ke saath show karen ge.
-  - **Business name fetch** — `wa.business_name` (Firestore) already aata hai, usay clearly display karen ge top par avatar + name + display phone ke saath.
-  - **Save fix** — current save sirf jo fields user ne change ki hain bhejta hai. Verify karen ge ke server kis field ko reject kar raha hai aur empty strings ko correctly handle karen ge (Meta Graph empty string ko skip karna chahta hai).
+1. **Bell sound on incoming message / notification**
+   - `src/lib/notification-sound.ts` — short embedded base64 chime, `playNotificationChime()` with user-gesture unlock (browsers autoplay-block).
+   - `useNotifications` hook: detect new doc added after first snapshot → fire toast + chime.
+   - Also fire on new incoming message arriving in any conversation (subscribe to `users/{uid}/messages` with `direction == incoming` `where createdAt > sessionStart`).
+   - Toggle in TopBar (mute icon, persisted in localStorage).
 
-## 2. Left Sidebar — expandable + layout fix
+2. **Render every WhatsApp message type (fix "type unknown")**
+   - `MessageBubble.tsx` rewrite content area with type-aware renderers:
+     - `text`, `image`, `video`, `audio`/voice, `document`, `sticker` (image), `location` (lat/lng + Maps link), `contacts` (vCard summary), `button` / `interactive` (button-reply / list-reply / cta_url / nfm_reply), `order`, `system`, `unsupported`, `template` (header/body/footer + buttons), `authentication` OTP template (show OTP code + "Copy" action).
+   - Fallback: never blank — show `"[message type: X]"` with raw payload toggle.
+   - `ConversationList` last-message preview: type-aware label (📷 Photo, 🎤 Voice, 📄 Doc, 📍 Location, 🔘 Button reply, 🔐 OTP code, etc.).
+   - Add missing fields to `useMessages.Message` type: `latitude`, `longitude`, `contactsPayload`, `buttonReplyId`, `buttonReplyText`, `interactiveType`, `otpCode`, `rawPayload`.
 
-**Files:** `src/components/shell/SideRail.tsx`, `src/routes/_authenticated/route.tsx`
+3. **Reply context visible on WhatsApp**
+   - `Composer.send()` and `sendFile()` already capture `replyToWamid` — also pass `context: { message_id: replyTo.whatsappMessageId }` to Graph API.
+   - `backend/api/send-message.php` — accept `context_message_id` and forward as `context.message_id` to Graph (for text/media/interactive).
+   - Frontend `sendTextMessage` / `sendMediaMessage` API typings updated.
+   - `MessageBubble` shows the quoted snippet inline (small bordered block above body) when `replyToId` or `replyToBody` exists, for both incoming and outgoing messages. Webhook already saves `replyToWamid`/`replyToBody` when WA delivers context.
 
-- Add toggle button (hamburger/chevron) at top — collapsed `w-[72px]` (icons only) ↔ expanded `w-[220px]` (icon + label).
-- State persist in `localStorage` (`wb_sidebar_collapsed`).
-- Hover state, active highlight retain karen ge.
-- **Layout space fix:** screenshot me dikha raha hai page content ke neeche bohot white space hai. Main reason: `<main className="... pb-14 md:pb-0">` + child pages me apna `min-h-screen` nahi. Fix: `<main>` ko `min-h-screen` aur child pages me unnecessary fixed height hatayen ge. Plus support page (jisme aapne screenshot bheja) ka inner scroll container check karen ge.
+4. **React both ways**
+   - Web → WA: already calls `sendReactionMessage`. Bug: when user picks the SAME emoji twice WhatsApp treats as remove; document and add a "Remove reaction" item.
+   - WA → Web: webhook stores `reactionEmoji` + `reactionMsgId` against a NEW doc, not the original. Fix in `webhook.php`: when type=`reaction`, look up the original message by `whatsappMessageId == reactionMsgId` and update IT with `reactionEmoji` (keep current "reaction event" doc as system-only, hidden from chat). `useMessages` already maps `reactionEmoji` to the bubble.
+   - `MessageBubble`: render reaction chip anchored to the parent bubble (already does — verify after webhook fix).
 
-## 3. Firebase Cloud Messaging (FCM) — Bell notifications
+5. **Delete (revoke) message**
+   - WhatsApp does NOT expose message-revoke API for Business accounts. So:
+     - "Delete for me" → current behaviour (Firestore status=deleted), works everywhere.
+     - Add a clarifying line in the confirm dialog: "Sirf aap ki website/app se hide hoga, WhatsApp pe receiver ko visible rahega — Meta business API revoke support nahi karta."
+   - Add delete entry for incoming messages too (currently only `mine`).
 
-**New files:**
-- `public/firebase-messaging-sw.js` — service worker for background push
-- `src/lib/firebase/fcm.ts` — request permission, get token, save under `users/{uid}/fcm_tokens/{token}`, foreground `onMessage` → `toast` + browser notification
-- `src/hooks/useFcm.ts` — hook to wire up on mount
+## Phase 2 — Voice/media sending parity (already partly done — confirm + fix gaps)
 
-**Wire-up:** `route.tsx` me FCM init call. Bell icon (TopBar) me unread count + sound on new message. VAPID key user ke Firebase project (`wabees-app`) se aati hai — agar already configured nahi to user ko VAPID key add karne ka kahna paray ga (Firebase Console → Cloud Messaging → Web Push certificates).
+Composer already supports image/video/document picker + voice recording. Gaps observed:
+- Audio MIME `audio/webm;codecs=opus` is NOT accepted by WhatsApp Graph — Meta needs `audio/ogg; codecs=opus` or AAC. We'll record as `audio/webm` and let `upload-media.php` transcode via `ffmpeg` to `audio/ogg` (Hostinger has ffmpeg). If ffmpeg missing, fall back to sending as `document`.
+- Caption support: text typed while attaching is already captured — verify on image/video.
+- Long-press / inline preview before sending (small preview card with cancel).
 
-Backend (`webhook.php`) ko FCM messages send karne ke liye Firebase Admin SDK chahye — wo already server pe hai. Lekin webhook ko FCM trigger karne ka code add karna server-side change hoga — abhi sirf client-side foreground notifications + browser permission flow add karen ge. Background push tab kaam karega jab backend webhook me FCM send call add ho jaye.
+## Phase 3 — WhatsApp audio call (deferred, needs your sign-off)
 
-**Scope clarification needed:** Background FCM (jab tab band ho) ke liye backend webhook me code add karna paray ga jo `users/{uid}/fcm_tokens` se token le ke send karay. Yeh repo me karoon ya server pe alag se add karen ge?
+Calling requires Meta's **WhatsApp Business Calling API** (currently limited access, must be enabled on your WABA). Work involved:
+- Backend: `/api/call-initiate.php`, `/api/call-action.php` (accept/reject/terminate), webhook handlers for `calls` events (already partially in webhook.php line 1928).
+- Frontend: WebRTC peer (SDP offer/answer via Graph), ringer UI, mic permission, in-call screen, mute/hangup, call log in Firestore.
+- ~1-2 days of focused work; ship as a separate update once Phase 1+2 are verified.
 
-## 4. Message Links — "Missing or insufficient permissions" fix
-
-**File:** `src/routes/_authenticated/message-links.tsx`
-
-Firestore rules (Flutter app/server) likely require a `userId` field matching `auth.uid` on the document. Currently doc me sirf `{message, url, createdAt}` save hota hai.
-
-**Fix:** addDoc payload me `userId: uid` field add karen ge — yeh standard pattern hai jo aap ke baqi collections (contacts, campaigns) me bhi use hota hoga.
-
-## 5. Plans Page — contacts count
-
-**File:** `src/routes/_authenticated/plans.tsx`
-
-Currently `usage.contacts = sub.contactsUsed || profile.totalContacts || 0` — agar dono 0 hen to live contacts count nahi dikhta. 
-
-**Fix:** `useContacts()` hook se actual length le ke fallback me use karen ge: `sub.contactsUsed || profile.totalContacts || contacts?.length || 0`. Messages ke liye `useMessages` heavy hai is liye usay touch nahi karoon ga.
+Confirm: should I proceed with Phase 1 + 2 right now (no extra approvals needed), and we tackle Phase 3 in a follow-up turn?
 
 ## Technical notes
 
-- All edits keep existing working code intact — no refactors outside requested areas.
-- FCM requires VAPID key. If absent in env, code degrades gracefully (no toast spam).
-- Sidebar toggle uses CSS transitions + Tailwind responsive classes; mobile tab bar unchanged.
-
-## Question for you
-
-FCM background push (closed tab) ke liye `backend/api/webhook.php` me FCM send code add karna chahyay? Ya pehle client-side (open tab) notifications + permission flow add karoon, phir backend ka batayen ge?
+- Reaction-event docs created by webhook: keep them in Firestore for audit but filter out of chat by `useMessages` (skip rows where `type === 'reaction'` AND no body/media).
+- Bell sound asset: tiny WAV embedded as data URL (~3 KB) — no extra request, no asset bundling complexity.
+- All PHP changes will be re-zipped for upload alongside the existing fix bundle.
+- No DB schema changes; purely Firestore writes + frontend rendering.
