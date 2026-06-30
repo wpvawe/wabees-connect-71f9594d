@@ -3,6 +3,8 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
+import { toast } from "sonner";
+import { playNotificationChime } from "@/lib/notification-sound";
 
 export type AppNotification = {
   id: string;
@@ -27,12 +29,13 @@ export function useNotifications(): {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    let first = true;
+    const seen = new Set<string>();
     const q = query(collection(db, `users/${uid}/notifications`), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setData(
-          snap.docs.map((d) => {
+        const list = snap.docs.map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
               id: d.id,
@@ -43,8 +46,24 @@ export function useNotifications(): {
               read: Boolean(x.read),
               createdAt: toIso(x.createdAt),
             };
-          }),
-        );
+          });
+        if (first) {
+          for (const n of list) seen.add(n.id);
+          first = false;
+        } else {
+          for (const n of list) {
+            if (!seen.has(n.id)) {
+              seen.add(n.id);
+              if (!n.read) {
+                playNotificationChime();
+                toast(n.title || "New notification", {
+                  description: n.body || undefined,
+                });
+              }
+            }
+          }
+        }
+        setData(list);
       },
       (err) => setError(err.message),
     );
