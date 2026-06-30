@@ -402,7 +402,11 @@ function resolve_owner_by_phone_map($phoneNumberId)
 
         if (isset($map[$phoneNumberId]['ownerId'])) {
             $ts = $map[$phoneNumberId]['ts'] ?? 0;
-            if (time() - $ts < 86400) {
+            $hasCachedFcm = !empty($map[$phoneNumberId]['fcmToken']);
+            // Owner mapping can live for a day, but a missing fcmToken is only
+            // trusted briefly. Otherwise the first “no push token yet” result
+            // blocks notifications for the rest of the day.
+            if (time() - $ts < ($hasCachedFcm ? 86400 : 60)) {
                 $uid = $map[$phoneNumberId]['ownerId'];
                 $data = [];
                 // Use cached tokens (no Firestore call needed!)
@@ -415,10 +419,13 @@ function resolve_owner_by_phone_map($phoneNumberId)
                 $result = ['id' => $uid, 'data' => $data];
                 // Store in APCu for next request
                 if (function_exists('apcu_store'))
-                    apcu_store($apcuKey, $result, 86400);
+                    apcu_store($apcuKey, $result, $hasCachedFcm ? 86400 : 60);
                 webhook_log("RESOLVE_OWNER[cache]: HIT for $phoneNumberId => owner=$uid");
                 return $result;
             }
+            // Cached owner is okay but its push token is stale/missing; refresh
+            // from Firestore and rebuild wa_map with the latest fcmToken.
+            unset($map[$phoneNumberId]);
         }
     }
 
@@ -444,7 +451,7 @@ function resolve_owner_by_phone_map($phoneNumberId)
             @file_put_contents($cacheFile, json_encode($map));
             $result = ['id' => $uid, 'data' => $data];
             if (function_exists('apcu_store'))
-                apcu_store($apcuKey, $result, 86400);
+                apcu_store($apcuKey, $result, !empty($tokens['fcmToken']) ? 86400 : 60);
             webhook_log("RESOLVE_OWNER[firestore]: FOUND ownerId=$uid");
             return $result;
         }
@@ -471,7 +478,7 @@ function resolve_owner_by_phone_map($phoneNumberId)
         @file_put_contents($cacheFile, json_encode($map));
         $result = ['id' => $owner['id'], 'data' => $owner['data']];
         if (function_exists('apcu_store'))
-            apcu_store($apcuKey, $result, 86400);
+            apcu_store($apcuKey, $result, !empty($tokens['fcmToken']) ? 86400 : 60);
         webhook_log("RESOLVE_OWNER[query]: FOUND ownerId=" . $owner['id']);
         return $result;
     }

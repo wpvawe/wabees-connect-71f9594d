@@ -51,6 +51,13 @@ if ($clearAll) {
         @unlink($cacheFile);
         $cleared[] = 'entire wa_map.json cache deleted';
     }
+    foreach (glob(__DIR__ . '/../cache/token_*.json') ?: [] as $tokenFile) {
+        @unlink($tokenFile);
+    }
+    foreach (glob(__DIR__ . '/../cache/fs/*.json') ?: [] as $fsFile) {
+        @unlink($fsFile);
+    }
+    $cleared[] = 'token and Firestore list caches deleted';
     // Clear all wabees_owner_* APCu entries
     if (function_exists('apcu_clear_cache')) {
         apcu_clear_cache();
@@ -101,6 +108,16 @@ if (($waMapDoc['code'] ?? 404) === 200) {
         if (function_exists('apcu_delete')) {
             apcu_delete($tokenKey);
             $cleared[] = "APCu token cache for owner '$ownerId' cleared";
+        }
+        $tokenCacheFile = __DIR__ . "/../cache/token_$ownerId.json";
+        if (file_exists($tokenCacheFile)) {
+            @unlink($tokenCacheFile);
+            $cleared[] = "file token cache for owner '$ownerId' deleted";
+        }
+        $agentsCacheFile = __DIR__ . '/../cache/fs/' . str_replace(['/', '(', ')'], ['_', '', ''], "users/$ownerId/agents") . '.json';
+        if (file_exists($agentsCacheFile)) {
+            @unlink($agentsCacheFile);
+            $cleared[] = "agents Firestore cache for owner '$ownerId' deleted";
         }
         $cleared[] = "Firestore wa_map/$phoneNumberId → ownerId=$ownerId";
     } else {
