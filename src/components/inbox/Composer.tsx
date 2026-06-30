@@ -51,6 +51,10 @@ export function Composer({
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether the current recording was started via the mic button so we
+  // can send it as a true WhatsApp voice note (waveform UI) vs a generic
+  // audio attachment uploaded from the file picker.
+  const recIsVoiceRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uid = useEffectiveUid();
@@ -158,6 +162,21 @@ export function Composer({
     const convId = phoneDocId(phone);
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
+    // M-3 fix: preserve the contact's display name on optimistic media writes
+    // too — without this, the conversation list briefly flashed back to the
+    // raw phone number whenever you sent a photo/voice/document.
+    let knownName = normalizedPhone;
+    try {
+      const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
+      const existing = snap.data()?.contactName;
+      if (typeof existing === "string" && existing && existing !== normalizedPhone) {
+        knownName = existing;
+      }
+    } catch {
+      /* fall back to phone */
+    }
+    const isVoice = kind === "audio" && recIsVoiceRef.current;
+    recIsVoiceRef.current = false;
     try {
       const creds = await loadWaCredentials(selfUid);
       if (!creds) {
@@ -181,7 +200,7 @@ export function Composer({
       const caption = kind === "audio" ? "" : text.trim();
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
-        contactName: normalizedPhone,
+        contactName: knownName,
         type: kind,
         direction: "outgoing",
         status: "pending",
@@ -192,6 +211,7 @@ export function Composer({
         mimeType: file.type || null,
         fileName: kind === "document" ? file.name : null,
         fileSize: file.size,
+        ...(isVoice ? { isVoice: true } : {}),
         ...(replyTo
           ? {
               replyToId: replyTo.id,
@@ -206,7 +226,7 @@ export function Composer({
         doc(db, "users", uid, "conversations", convId),
         {
           contactPhone: normalizedPhone,
-          contactName: normalizedPhone,
+          contactName: knownName,
           lastMessage: caption || `[${kind}]`,
           lastMessageType: kind,
           lastMessageAt: serverTimestamp(),
@@ -223,6 +243,7 @@ export function Composer({
         ...(mediaId ? { media_id: mediaId } : mediaUrl ? { media_url: mediaUrl } : {}),
         ...(caption ? { caption } : {}),
         ...(kind === "document" ? { filename: file.name } : {}),
+        ...(isVoice ? { is_voice: true } : {}),
         context_message_id: whatsappContextMessageId(replyTo),
       });
       const wamid = extractWamid(res.raw);
@@ -256,6 +277,7 @@ export function Composer({
           : "audio/webm";
       const mr = new MediaRecorder(stream, { mimeType: mime });
       recChunksRef.current = [];
+      recIsVoiceRef.current = true;
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) recChunksRef.current.push(e.data);
       };
