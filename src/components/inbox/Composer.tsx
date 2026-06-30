@@ -115,7 +115,7 @@ export function Composer({
         ...(replyTo
           ? {
               replyToId: replyTo.id,
-              replyToBody: replyTo.body?.slice(0, 200) ?? "",
+              replyToBody: replyPreview(replyTo).slice(0, 200),
               replyToWamid: replyTo.whatsappMessageId ?? null,
               replyToType: replyTo.type ?? null,
             }
@@ -228,7 +228,7 @@ export function Composer({
         ...(replyTo
           ? {
               replyToId: replyTo.id,
-              replyToBody: replyTo.body?.slice(0, 200) ?? "",
+              replyToBody: replyPreview(replyTo).slice(0, 200),
               replyToWamid: replyTo.whatsappMessageId ?? null,
               replyToType: replyTo.type ?? null,
             }
