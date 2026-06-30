@@ -19,10 +19,11 @@ import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { deleteDoc, doc } from "firebase/firestore";
+import { addDoc, collection, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { sendTemplateMessage } from "@/lib/wabees/api";
+import { extractWamid, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
-import { whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import {
   Dialog,
   DialogContent,
