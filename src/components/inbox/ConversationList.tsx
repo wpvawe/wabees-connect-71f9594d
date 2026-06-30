@@ -69,6 +69,7 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
   const when = c.lastMessageAt
     ? formatDistanceToNowStrict(new Date(c.lastMessageAt), { addSuffix: false })
     : "";
+  const preview = formatPreview(c.lastMessage, c.lastMessageType);
   return (
     <li>
       <Link
@@ -89,7 +90,7 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
             </p>
             <span className="shrink-0 text-[10px] text-muted-foreground">{when}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">{c.lastMessage || "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{preview}</p>
         </div>
         {c.unreadCount > 0 && (
           <span className="ml-1 grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
@@ -99,4 +100,29 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
       </Link>
     </li>
   );
+}
+
+function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
+  const t = (type || "").toLowerCase();
+  const text = (body || "").trim();
+  const tagMap: Record<string, string> = {
+    image: "📷 Photo",
+    sticker: "💟 Sticker",
+    video: "🎥 Video",
+    audio: "🎤 Voice message",
+    document: "📄 Document",
+    location: "📍 Location",
+    contacts: "👤 Contact",
+    reaction: "❤️ Reaction",
+    button: "🔘 Button reply",
+    interactive: "🔘 Interactive",
+    template: "📋 Template",
+    order: "🛒 Order",
+    system: "ℹ️ System",
+    unsupported: "⚠️ Unsupported",
+  };
+  const tag = tagMap[t];
+  if (tag && !text) return tag;
+  if (tag && text) return `${tag.split(" ")[0]} ${text}`;
+  return text || "—";
 }

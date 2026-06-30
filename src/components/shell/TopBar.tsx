@@ -1,7 +1,39 @@
 import { Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBell } from "@fortawesome/free-solid-svg-icons";
+import { faBell, faBellSlash } from "@fortawesome/free-solid-svg-icons";
+import { useEffect, useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
+import {
+  installAutoplayUnlocker,
+  isNotificationMuted,
+  setNotificationMuted,
+  playNotificationChime,
+} from "@/lib/notification-sound";
+
+function MuteToggle() {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    installAutoplayUnlocker();
+    setMuted(isNotificationMuted());
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const next = !muted;
+        setNotificationMuted(next);
+        setMuted(next);
+        if (!next) playNotificationChime();
+      }}
+      aria-label={muted ? "Unmute notifications" : "Mute notifications"}
+      title={muted ? "Unmute notifications" : "Mute notifications"}
+      className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <FontAwesomeIcon icon={muted ? faBellSlash : faBell} className="h-4 w-4" />
+    </button>
+  );
+}
 
 function NotificationBell() {
   const { unread } = useNotifications();
@@ -30,6 +62,7 @@ export function TopBar({
   subtitle?: string;
   right?: React.ReactNode;
 }) {
+  useIncomingMessageAlerts();
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
       <div className="min-w-0">
@@ -38,6 +71,7 @@ export function TopBar({
       </div>
       <div className="flex items-center gap-2">
         {right}
+        <MuteToggle />
         <NotificationBell />
       </div>
     </header>

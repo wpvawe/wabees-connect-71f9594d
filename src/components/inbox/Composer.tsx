@@ -84,6 +84,7 @@ export function Composer({
               replyToId: replyTo.id,
               replyToBody: replyTo.body?.slice(0, 200) ?? "",
               replyToWamid: replyTo.whatsappMessageId ?? null,
+              replyToType: replyTo.type ?? null,
             }
           : {}),
         createdAt: serverTimestamp(),
@@ -106,6 +107,7 @@ export function Composer({
         access_token: creds.access_token,
         to: whatsappRecipientId(phone),
         message: body,
+        context_message_id: replyTo?.whatsappMessageId ?? null,
       });
       const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
       if (!res.success) {
@@ -166,6 +168,14 @@ export function Composer({
         mimeType: file.type || null,
         fileName: kind === "document" ? file.name : null,
         fileSize: file.size,
+        ...(replyTo
+          ? {
+              replyToId: replyTo.id,
+              replyToBody: replyTo.body?.slice(0, 200) ?? "",
+              replyToWamid: replyTo.whatsappMessageId ?? null,
+              replyToType: replyTo.type ?? null,
+            }
+          : {}),
         createdAt: serverTimestamp(),
       });
       await setDoc(
@@ -180,6 +190,7 @@ export function Composer({
         { merge: true },
       );
       setText("");
+      onClearReply?.();
       const res = await sendMediaMessage({
         phone_number_id: creds.phone_number_id,
         access_token: creds.access_token,
@@ -189,6 +200,7 @@ export function Composer({
         ...(mediaId ? { media_id: mediaId } : {}),
         ...(caption ? { caption } : {}),
         ...(kind === "document" ? { filename: file.name } : {}),
+        context_message_id: replyTo?.whatsappMessageId ?? null,
       });
       const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
       if (!res.success) {

@@ -127,7 +127,12 @@ function Thread({ phone }: { phone: string }) {
   const onDelete = useCallback(
     async (m: Message) => {
       if (!uid) return;
-      if (!confirm("Delete this message? This hides it on the website and the app.")) return;
+      if (
+        !confirm(
+          "Delete this message?\n\nIt will be hidden on your website and app only. WhatsApp Business API does not support revoking messages from the recipient's phone.",
+        )
+      )
+        return;
       try {
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           status: "deleted",

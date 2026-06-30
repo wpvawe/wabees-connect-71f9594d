@@ -5,6 +5,9 @@ import { SideRail } from "@/components/shell/SideRail";
 import { MobileTabBar } from "@/components/shell/MobileTabBar";
 import { FirebaseSessionProvider } from "@/hooks/useFirebaseSession";
 import { useFcm } from "@/hooks/useFcm";
+import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
+import { useEffect } from "react";
+import { installAutoplayUnlocker } from "@/lib/notification-sound";
 
 function waitForFirebaseUser(): Promise<User | null> {
   const auth = fbAuth();
@@ -37,6 +40,10 @@ function AppShell() {
 
 function AuthenticatedShell() {
   useFcm();
+  useIncomingMessageAlerts();
+  useEffect(() => {
+    installAutoplayUnlocker();
+  }, []);
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <SideRail />

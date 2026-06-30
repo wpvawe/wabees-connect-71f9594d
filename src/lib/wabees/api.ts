@@ -126,6 +126,7 @@ export function sendTextMessage(args: {
   access_token: string;
   to: string;
   message: string;
+  context_message_id?: string | null;
 }) {
   return postJson("send-message.php", { ...args, type: "text" });
 }
@@ -151,6 +152,7 @@ export function sendMediaMessage(args: {
   media_id?: string;
   caption?: string;
   filename?: string;
+  context_message_id?: string | null;
 }) {
   return postJson("send-message.php", args);
 }
