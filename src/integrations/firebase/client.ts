@@ -49,10 +49,7 @@ export function fbAuthOrNull(): Auth | null {
 }
 
 function normalizeWabeesApiBase(value: string | undefined): string {
-  const base = (value || "https://api.wabees.live").replace(/\/+$/, "");
-  // api.wabees.live serves PHP files from domain root; /api/* is the wabees.live path.
-  if (/^https:\/\/api\.wabees\.live\/api$/i.test(base)) return "https://api.wabees.live";
-  return base;
+  return (value || "https://api.wabees.live/api").replace(/\/+$/, "");
 }
 
 export const WABEES_API_BASE = normalizeWabeesApiBase(

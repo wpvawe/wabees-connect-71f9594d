@@ -20,7 +20,13 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { sendTextMessage, sendMediaMessage, uploadMedia, mediaProxyUrl } from "@/lib/wabees/api";
+import {
+  extractWamid,
+  sendTextMessage,
+  sendMediaMessage,
+  uploadMedia,
+  mediaProxyUrl,
+} from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
@@ -107,9 +113,9 @@ export function Composer({
         access_token: creds.access_token,
         to: whatsappRecipientId(phone),
         message: body,
-        context_message_id: replyTo?.whatsappMessageId ?? null,
+        context_message_id: whatsappContextMessageId(replyTo),
       });
-      const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
+      const wamid = extractWamid(res.raw);
       if (!res.success) {
         await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
         toast.error(res.message ?? "Could not send");
@@ -199,13 +205,12 @@ export function Composer({
         access_token: creds.access_token,
         to: whatsappRecipientId(phone),
         type: kind,
-        ...(mediaUrl ? { media_url: mediaUrl } : {}),
-        ...(mediaId ? { media_id: mediaId } : {}),
+        ...(mediaId ? { media_id: mediaId } : mediaUrl ? { media_url: mediaUrl } : {}),
         ...(caption ? { caption } : {}),
         ...(kind === "document" ? { filename: file.name } : {}),
-        context_message_id: replyTo?.whatsappMessageId ?? null,
+        context_message_id: whatsappContextMessageId(replyTo),
       });
-      const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
+      const wamid = extractWamid(res.raw);
       if (!res.success) {
         await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
         toast.error(res.message ?? "Could not send");
@@ -401,6 +406,15 @@ export function Composer({
       />
     </div>
   );
+}
+
+function whatsappContextMessageId(message?: Message | null): string | null {
+  if (!message) return null;
+  const raw =
+    message.whatsappMessageId ??
+    message.replyToWamid ??
+    (message.id.startsWith("msg_") ? message.id.slice(4) : null);
+  return raw?.replace(/^msg_/, "") ?? null;
 }
 
 function AttachMenu({

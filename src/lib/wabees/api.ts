@@ -13,6 +13,35 @@ export type WabeesApiResult<T = unknown> = {
   raw: Record<string, unknown>;
 };
 
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** Accept every response shape used by the PHP endpoints and Meta directly. */
+export function extractWamid(raw: Record<string, unknown> | undefined | null): string | null {
+  if (!raw) return null;
+  const direct =
+    readString(raw.messageId) ??
+    readString(raw.message_id) ??
+    readString(raw.id) ??
+    readString(raw.wamid);
+  if (direct) return direct;
+
+  const messages = Array.isArray(raw.messages) ? raw.messages : null;
+  const firstMessage = readRecord(messages?.[0]);
+  const fromMessages = readString(firstMessage?.id) ?? readString(firstMessage?.messageId);
+  if (fromMessages) return fromMessages;
+
+  const data = readRecord(raw.data);
+  return data ? extractWamid(data) : null;
+}
+
 async function postJson<T = unknown>(
   path: string,
   body: Record<string, unknown>,
