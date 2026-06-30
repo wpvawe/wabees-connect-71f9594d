@@ -7,6 +7,7 @@ import { usePlans, type Plan } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
+import { useContacts } from "@/hooks/useContacts";
 import { requestSubscription } from "@/lib/firebase/subscriptions";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
@@ -20,13 +21,15 @@ function PlansPage() {
   const { data: plans, error } = usePlans();
   const { data: sub, loading } = useSubscription();
   const { data: profile } = useProfile("effective");
+  const { data: contacts } = useContacts();
   const uid = useFirebaseUid();
   // Subscription counters can lag behind profile totals (PHP webhook updates
   // both, but websites may render before sub doc is touched). Fall back to
   // profile counters when subscription shows 0 so users see real usage.
   const usage = {
     messages: sub?.messagesUsed || profile?.totalMessages || 0,
-    contacts: sub?.contactsUsed || profile?.totalContacts || 0,
+    contacts:
+      sub?.contactsUsed || profile?.totalContacts || (contacts ? contacts.length : 0),
   };
   return (
     <>

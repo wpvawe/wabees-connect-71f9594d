@@ -69,6 +69,7 @@ function MessageLinksPage() {
     setSaving(true);
     try {
       await addDoc(collection(fbDb(), `users/${uid}/message_links`), {
+        userId: uid,
         message: message.trim(),
         url: previewUrl,
         createdAt: serverTimestamp(),
