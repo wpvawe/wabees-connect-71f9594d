@@ -219,6 +219,19 @@ export function markMessageRead(args: {
   return postJson("mark-read.php", args);
 }
 
+/**
+ * Revoke a previously sent message ("delete for everyone") via the PHP
+ * proxy. Only works for messages still inside Meta's revoke window
+ * (~48h) and whose wamid we know.
+ */
+export function deleteWhatsAppMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  message_id: string;
+}) {
+  return postJson("delete-message.php", args);
+}
+
 export function fetchMetaTemplates(args: { business_account_id: string; access_token: string }) {
   return postJson("get-templates.php", args);
 }
