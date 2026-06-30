@@ -1024,6 +1024,11 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     $buttonReplyId = null;
     $buttonReplyText = null;
 
+    // ---- Reply context (Meta sends `context.id` when user replied to a msg) ----
+    $replyToWamid = $message['context']['id'] ?? '';
+    $replyToBody = '';
+    $replyToType = '';
+
     switch ($type) {
         case 'text':
             $messageBody = $message['text']['body'] ?? '';
