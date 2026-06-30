@@ -730,12 +730,22 @@ function resolve_all_users_by_phone_map($phoneNumberId)
     if (!empty($configUsers)) {
         webhook_log("RESOLVE[4-config-query]: FOUND " . count($configUsers) . " users");
         $cacheUsers = [];
+        $resolvedUsers = [];
+        $seenOwners = [];
         foreach ($configUsers as $cu) {
-            $cacheUsers[] = ['userId' => $cu['id']];
+            $built = build_resolved_owner_entry($cu['id']);
+            if (!$built)
+                continue;
+            $ownerUid = $built['user']['id'];
+            if (isset($seenOwners[$ownerUid]))
+                continue;
+            $seenOwners[$ownerUid] = true;
+            $cacheUsers[] = $built['cache'];
+            $resolvedUsers[] = $built['user'];
         }
         $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
         @file_put_contents($cacheFile, json_encode($map));
-        return $configUsers;
+        return $resolvedUsers;
     }
     webhook_log("RESOLVE[4-config-query]: FAILED — no user found for phoneNumberId=$phoneNumberId anywhere");
 
