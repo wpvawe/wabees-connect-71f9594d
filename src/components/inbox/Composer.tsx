@@ -167,6 +167,14 @@ export function Composer({
         mimeType: file.type || null,
         fileName: kind === "document" ? file.name : null,
         fileSize: file.size,
+        ...(replyTo
+          ? {
+              replyToId: replyTo.id,
+              replyToBody: replyTo.body?.slice(0, 200) ?? "",
+              replyToWamid: replyTo.whatsappMessageId ?? null,
+              replyToType: replyTo.type ?? null,
+            }
+          : {}),
         createdAt: serverTimestamp(),
       });
       await setDoc(
@@ -181,6 +189,7 @@ export function Composer({
         { merge: true },
       );
       setText("");
+      onClearReply?.();
       const res = await sendMediaMessage({
         phone_number_id: creds.phone_number_id,
         access_token: creds.access_token,
