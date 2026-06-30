@@ -678,20 +678,17 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         if (!empty($userIds)) {
             $users = [];
             $cacheUsers = [];
+            $seenOwners = [];
             foreach ($userIds as $uid) {
-                $tokens = get_user_access_token($uid);
-                $accessToken = $tokens['accessToken'] ?? null;
-                $fcmToken = $tokens['fcmToken'] ?? null;
-                $data = $accessToken ? ['whatsappAccessToken' => ['stringValue' => $accessToken]] : [];
-                if ($fcmToken)
-                    $data['fcmToken'] = ['stringValue' => $fcmToken];
-                $users[] = ['id' => $uid, 'data' => $data];
-                $ce = ['userId' => $uid];
-                if ($accessToken)
-                    $ce['accessToken'] = $accessToken;
-                if ($fcmToken)
-                    $ce['fcmToken'] = $fcmToken;
-                $cacheUsers[] = $ce;
+                $built = build_resolved_owner_entry($uid);
+                if (!$built)
+                    continue;
+                $ownerUid = $built['user']['id'];
+                if (isset($seenOwners[$ownerUid]))
+                    continue;
+                $seenOwners[$ownerUid] = true;
+                $users[] = $built['user'];
+                $cacheUsers[] = $built['cache'];
             }
             // Cache
             $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
