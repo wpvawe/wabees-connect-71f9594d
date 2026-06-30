@@ -105,6 +105,7 @@ export function TemplateGrid() {
         template={sendingTpl}
         onClose={() => setSendingTpl(null)}
         credentialUid={selfUid}
+        ownerUid={uid}
       />
     </div>
   );
