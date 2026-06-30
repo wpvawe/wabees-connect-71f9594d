@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faCircleNotch,
-  faRotateRight,
-  faSave,
-  faWhatsapp as _ignored,
-} from "@fortawesome/free-solid-svg-icons";
+import { faCircleNotch, faRotateRight, faSave } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbInput } from "@/components/wb/WbInput";
