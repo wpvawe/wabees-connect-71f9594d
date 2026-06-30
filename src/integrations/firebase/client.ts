@@ -49,7 +49,8 @@ export function fbAuthOrNull(): Auth | null {
 }
 
 function normalizeWabeesApiBase(value: string | undefined): string {
-  return (value || "https://api.wabees.live/api").replace(/\/+$/, "");
+  const base = (value || "https://api.wabees.live/api").replace(/\/+$/, "");
+  return /^https:\/\/api\.wabees\.live$/i.test(base) ? `${base}/api` : base;
 }
 
 export const WABEES_API_BASE = normalizeWabeesApiBase(
