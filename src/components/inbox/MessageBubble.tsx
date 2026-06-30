@@ -121,8 +121,12 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             <button
               type="button"
               onClick={() => setReactOpen((v) => !v)}
-              title="React"
-              className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+              disabled={reactDisabled}
+              title={reactDisabled ? "Waiting for send to complete…" : "React"}
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted",
+                reactDisabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+              )}
             >
               <FontAwesomeIcon icon={faFaceSmile} className="h-3.5 w-3.5" />
             </button>
