@@ -106,6 +106,7 @@ export function Composer({
         access_token: creds.access_token,
         to: whatsappRecipientId(phone),
         message: body,
+        context_message_id: replyTo?.whatsappMessageId ?? null,
       });
       const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
       if (!res.success) {
@@ -189,6 +190,7 @@ export function Composer({
         ...(mediaId ? { media_id: mediaId } : {}),
         ...(caption ? { caption } : {}),
         ...(kind === "document" ? { filename: file.name } : {}),
+        context_message_id: replyTo?.whatsappMessageId ?? null,
       });
       const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
       if (!res.success) {
