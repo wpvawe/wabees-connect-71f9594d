@@ -75,7 +75,19 @@ export function useAiBotConfig(): { data: AiBotConfig | null; error: string | nu
           afterHoursMessage: str(x.afterHoursMessage),
         });
       },
-      (err) => setError(err.message),
+      (err) => {
+        // Firestore rules may block agents (non-owner) from reading the owner's
+        // bot_config subcollection, or the collection may not yet be granted.
+        // Treat permission errors as "no config yet" so the UI still renders
+        // (writes stay gated by the owner check in the page itself).
+        const code = (err as { code?: string }).code ?? "";
+        if (code === "permission-denied") {
+          setData({ ...EMPTY_AI_CONFIG });
+          setError(null);
+          return;
+        }
+        setError(err.message);
+      },
     );
     return () => unsub();
   }, [uid]);
