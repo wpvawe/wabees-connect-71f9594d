@@ -26,6 +26,8 @@ export type Conversation = {
   activeChatterEmail?: string | null;
   isBlocked?: boolean;
   tags?: string[];
+  assignedAgentId?: string | null;
+  assignedAgentEmail?: string | null;
 };
 
 export function useConversations(): { data: Conversation[] | null; error: string | null } {
