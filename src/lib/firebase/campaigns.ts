@@ -10,13 +10,24 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { sendTextMessage } from "@/lib/wabees/api";
+import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+
+export type VariableSource = "static" | "contact";
 
 export type CreateCampaignInput = {
   name: string;
   description: string;
-  messageBody: string;
+  messageType: "template" | "text";
+  messageBody: string; // rendered body (for preview/text mode)
+  templateName?: string | null;
+  templateLanguage?: string | null;
+  selectedTemplateId?: string | null;
+  templateVariables?: string[];
+  variableSource?: VariableSource;
+  staticVariableValues?: Record<string, string>;
+  /** For "contact" source: variable name -> contact field key (name/phone/email/company). */
+  contactFieldMap?: Record<string, string>;
   audiencePhones: string[];
 };
 
@@ -24,14 +35,15 @@ export type CampaignCreatePayload = {
   name: string;
   description: string;
   status: "draft";
-  messageType: "text";
+  messageType: "template" | "text";
   messageBody: string;
-  templateName: null;
-  templateLanguage: null;
-  selectedTemplateId: null;
+  templateName: string | null;
+  templateLanguage: string | null;
+  selectedTemplateId: string | null;
   templateVariables: string[];
-  variableSource: "static";
+  variableSource: VariableSource;
   staticVariableValues: Record<string, string>;
+  contactFieldMap: Record<string, string>;
   recipientData: Array<Record<string, string>>;
   audiencePhones: string[];
   audienceTags: string[];
@@ -52,14 +64,15 @@ export function buildCampaignCreatePayload(input: CreateCampaignInput): Campaign
     name: input.name,
     description: input.description,
     status: "draft",
-    messageType: "text",
+    messageType: input.messageType,
     messageBody: input.messageBody,
-    templateName: null,
-    templateLanguage: null,
-    selectedTemplateId: null,
-    templateVariables: [],
-    variableSource: "static",
-    staticVariableValues: {},
+    templateName: input.templateName ?? null,
+    templateLanguage: input.templateLanguage ?? null,
+    selectedTemplateId: input.selectedTemplateId ?? null,
+    templateVariables: input.templateVariables ?? [],
+    variableSource: input.variableSource ?? "static",
+    staticVariableValues: input.staticVariableValues ?? {},
+    contactFieldMap: input.contactFieldMap ?? {},
     recipientData: [],
     audiencePhones: input.audiencePhones,
     audienceTags: [],
@@ -161,7 +174,16 @@ export async function duplicateCampaign(uid: string, id: string): Promise<{ id: 
     buildCampaignCreatePayload({
       name: `${(data.name as string) ?? "Untitled"} (copy)`,
       description: (data.description as string) ?? "",
+      messageType: ((data.messageType as string) ?? "text") as "text" | "template",
       messageBody: (data.messageBody as string) ?? "",
+      templateName: (data.templateName as string | null) ?? null,
+      templateLanguage: (data.templateLanguage as string | null) ?? null,
+      selectedTemplateId: (data.selectedTemplateId as string | null) ?? null,
+      templateVariables: (data.templateVariables as string[] | undefined) ?? [],
+      variableSource: ((data.variableSource as string) ?? "static") as VariableSource,
+      staticVariableValues:
+        (data.staticVariableValues as Record<string, string> | undefined) ?? {},
+      contactFieldMap: (data.contactFieldMap as Record<string, string> | undefined) ?? {},
       audiencePhones,
     }),
   );
@@ -181,12 +203,26 @@ export async function runCampaign(
   id: string,
   audience: string[],
   messageBody: string,
+  opts?: {
+    messageType?: "text" | "template";
+    templateName?: string | null;
+    templateLanguage?: string | null;
+    templateVariables?: string[];
+    variableSource?: VariableSource;
+    staticVariableValues?: Record<string, string>;
+    contactFieldMap?: Record<string, string>;
+    /** phone (normalized) -> contact field map for variable resolution */
+    contactsByPhone?: Record<string, Record<string, string>>;
+  },
 ): Promise<{ sent: number; failed: number }> {
   const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
   await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });
+
+  const isTemplate = opts?.messageType === "template" && opts?.templateName;
+  const vars = opts?.templateVariables ?? [];
 
   let sent = 0;
   let failed = 0;
@@ -214,12 +250,32 @@ export async function runCampaign(
     const to = phone.replace(/[^0-9]/g, "");
     let res;
     try {
-      res = await sendTextMessage({
-        phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
-        to,
-        message: messageBody,
-      });
+      if (isTemplate) {
+        const values = vars.map((v) => resolveVar(v, opts, phone));
+        const components = values.length
+          ? [
+              {
+                type: "body",
+                parameters: values.map((t) => ({ type: "text", text: t })),
+              },
+            ]
+          : [];
+        res = await sendTemplateMessage({
+          phone_number_id: creds.phone_number_id,
+          access_token: creds.access_token,
+          to,
+          template_name: opts!.templateName!,
+          language_code: opts?.templateLanguage || "en_US",
+          components,
+        });
+      } else {
+        res = await sendTextMessage({
+          phone_number_id: creds.phone_number_id,
+          access_token: creds.access_token,
+          to,
+          message: messageBody,
+        });
+      }
     } catch (e) {
       res = { success: false, message: e instanceof Error ? e.message : "Network error", raw: {} };
     }
@@ -251,4 +307,26 @@ export async function runCampaign(
 
   await updateDoc(campaignRef, { status: "completed", completedAt: serverTimestamp() });
   return { sent, failed };
+}
+
+function resolveVar(
+  varName: string,
+  opts:
+    | {
+        variableSource?: VariableSource;
+        staticVariableValues?: Record<string, string>;
+        contactFieldMap?: Record<string, string>;
+        contactsByPhone?: Record<string, Record<string, string>>;
+      }
+    | undefined,
+  phone: string,
+): string {
+  if (!opts) return "";
+  if (opts.variableSource === "contact") {
+    const field = opts.contactFieldMap?.[varName];
+    const contact = opts.contactsByPhone?.[phone];
+    const v = field && contact ? contact[field] : "";
+    return (v ?? "").toString().trim() || opts.staticVariableValues?.[varName] || "";
+  }
+  return (opts.staticVariableValues?.[varName] ?? "").toString();
 }
