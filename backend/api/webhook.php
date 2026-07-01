@@ -3490,7 +3490,7 @@ function _call_deepseek_api($messages)
     $payload = json_encode([
         'model' => 'deepseek-chat',
         'messages' => $messages,
-        'max_tokens' => 500,
+        'max_tokens' => defined('AI_BOT_MAX_TOKENS') ? AI_BOT_MAX_TOKENS : 220,
         'temperature' => 0.1,
         'top_p' => 0.85,
         'presence_penalty' => 0.1,
