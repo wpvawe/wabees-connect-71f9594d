@@ -8,9 +8,11 @@ import {
   faXmark,
   faCircleNotch,
   faFaceSmile,
+  faBolt,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
+import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
 import {
   addDoc,
   collection,
@@ -67,6 +69,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiWrapRef = useRef<HTMLDivElement | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [interactiveOpen, setInteractiveOpen] = useState(false);
 
   useEffect(() => {
     if (!emojiOpen) return;
@@ -489,6 +492,16 @@ export function Composer({
           >
             <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setInteractiveOpen(true)}
+            aria-label="Interactive"
+            title="Send location / buttons / list"
+            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <FontAwesomeIcon icon={faBolt} className="h-4 w-4" />
+          </button>
           <div className="relative" ref={emojiWrapRef}>
             <button
               type="button"
@@ -599,6 +612,16 @@ export function Composer({
         onClose={() => setAttachOpen(false)}
         onPick={(file, kind, caption) => void sendFile(file, kind, caption)}
       />
+      {uid && selfUid && (
+        <InteractiveDialog
+          open={interactiveOpen}
+          onClose={() => setInteractiveOpen(false)}
+          phone={phone}
+          uid={uid}
+          selfUid={selfUid}
+          contextMessageId={whatsappContextMessageId(replyTo)}
+        />
+      )}
     </div>
   );
 }
