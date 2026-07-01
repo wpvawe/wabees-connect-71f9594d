@@ -3,6 +3,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDocs,
   increment,
   onSnapshot,
   orderBy,
@@ -96,12 +97,11 @@ export function useScheduledDispatcher() {
           collection(db!, `users/${uid}/scheduled_messages`),
           where("status", "==", "pending"),
         );
-        const unsubOnce = onSnapshot(snapRef, async (snap) => {
-          unsubOnce();
-          if (!alive) return;
-          const creds = await loadWaCredentials(selfUid!).catch(() => null);
-          if (!creds) return;
-          for (const d of snap.docs) {
+        const snap = await getDocs(snapRef);
+        if (!alive) return;
+        const creds = await loadWaCredentials(selfUid!).catch(() => null);
+        if (!creds) return;
+        for (const d of snap.docs) {
             const x = d.data() as Record<string, unknown>;
             const iso = toIso(x.scheduledFor);
             if (!iso) continue;
@@ -165,8 +165,7 @@ export function useScheduledDispatcher() {
                 errorReason: e instanceof Error ? e.message : "Send failed",
               }).catch(() => {});
             }
-          }
-        });
+        }
       } finally {
         busy = false;
       }
