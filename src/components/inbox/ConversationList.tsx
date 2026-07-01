@@ -352,12 +352,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 setSelectedTag(selectedTag === t.name ? null : t.name);
                 setFilter("all");
               }}
-              onContextMenu={() => handleDeleteTag(t.id, t.name)}
+              onContextMenu={() => handleEditTag(t)}
             />
           ))}
           <button
             type="button"
-            onClick={handleCreateTag}
+            onClick={() => handleCreateTag()}
             title="Create tag"
             className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-dashed border-border text-muted-foreground hover:bg-muted"
           >
@@ -419,9 +419,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Create tag</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FontAwesomeIcon icon={tagDialog.mode === "edit" ? faPen : faPlus} className="h-3.5 w-3.5" />
+              {tagDialog.mode === "edit" ? "Edit tag" : "Create tag"}
+            </DialogTitle>
             <DialogDescription>
-              Give the tag a name and pick a color. Right-click a tag chip later to delete it.
+              Give the tag a name and pick a color. Right-click a tag chip later to edit or delete it.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -456,11 +459,32 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => setTagDialog({ open: false, name: "", color: "#6366f1" })}
+              onClick={() =>
+                setTagDialog({
+                  open: false,
+                  mode: "create",
+                  id: null,
+                  originalName: null,
+                  applyPhone: null,
+                  name: "",
+                  color: "#6366f1",
+                })
+              }
             >
               Cancel
             </Button>
-            <Button onClick={submitCreateTag}>Create</Button>
+            {tagDialog.mode === "edit" && tagDialog.id && tagDialog.originalName && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  void handleDeleteTag(tagDialog.id!, tagDialog.originalName!);
+                  setTagDialog((s) => ({ ...s, open: false }));
+                }}
+              >
+                Delete
+              </Button>
+            )}
+            <Button onClick={submitCreateTag}>{tagDialog.mode === "edit" ? "Save" : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
