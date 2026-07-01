@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   increment,
   serverTimestamp,
   setDoc,
@@ -241,6 +242,20 @@ export async function runCampaign(
   const isTemplate = opts?.messageType === "template" && opts?.templateName;
   const vars = opts?.templateVariables ?? [];
 
+  // Resumable: skip phones that already have a "sent" log entry. If the tab
+  // was closed mid-run, hitting Resume continues where it left off instead
+  // of double-sending. Failed rows are retried.
+  const alreadySent = new Set<string>();
+  try {
+    const logsSnap = await getDocs(collection(campaignRef, "logs"));
+    logsSnap.forEach((d) => {
+      const row = d.data() as { phone?: string; status?: string };
+      if (row.status === "sent" && row.phone) alreadySent.add(row.phone);
+    });
+  } catch {
+    // If logs read fails, fall through — worst case is a duplicate send.
+  }
+
   let sent = 0;
   let failed = 0;
   for (let i = 0; i < audience.length; i++) {
@@ -265,6 +280,7 @@ export async function runCampaign(
     }
     const phone = audience[i];
     const to = phone.replace(/[^0-9]/g, "");
+    if (alreadySent.has(to)) continue;
     let res;
     try {
       if (isTemplate) {
