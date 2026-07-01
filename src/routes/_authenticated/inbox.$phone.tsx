@@ -2,7 +2,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
+import {
+  faArrowLeft,
+  faCircleNotch,
+  faChevronDown,
+  faEllipsisVertical,
+  faPhone,
+  faCopy,
+  faUpRightFromSquare,
+  faCloudArrowUp,
+} from "@fortawesome/free-solid-svg-icons";
+import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
 import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightbox";
@@ -15,7 +25,6 @@ import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { sendReactionMessage, markMessageRead, deleteWhatsAppMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
-import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -39,9 +48,14 @@ function Thread({ phone }: { phone: string }) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [headerMenu, setHeaderMenu] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [newSinceScroll, setNewSinceScroll] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
+  const dragCounterRef = useRef(0);
   // Auto-scroll only when (a) the thread just opened or (b) the user is
   // already near the bottom. Otherwise scrolling jumps the viewport away
   // from messages they were reading.
@@ -55,8 +69,36 @@ function Thread({ phone }: { phone: string }) {
     const nearBottom = distanceFromBottom < 160;
     if (prevLen === 0 || nearBottom) {
       bottomRef.current?.scrollIntoView({ behavior: prevLen === 0 ? "auto" : "smooth", block: "end" });
+      setNewSinceScroll(0);
+    } else if (len > prevLen) {
+      setNewSinceScroll((n) => n + (len - prevLen));
     }
   }, [data?.length]);
+
+  // Track whether user has scrolled up so we can show the floating jump-to-bottom pill.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const near = distance < 160;
+      setAtBottom(near);
+      if (near) setNewSinceScroll(0);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Close header menu on outside click.
+  useEffect(() => {
+    if (!headerMenu) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest?.("[data-header-menu]")) setHeaderMenu(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [headerMenu]);
 
   // Mark conversation read when user opens the chat on the website.
   // Mirrors Flutter: reset conversation.unreadCount and stamp readAt on
@@ -278,8 +320,42 @@ function Thread({ phone }: { phone: string }) {
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setNewSinceScroll(0);
+  };
+
+  const waLink = `https://wa.me/${phone.replace(/[^\d]/g, "")}`;
+
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-background">
+    <section
+      className="relative flex min-w-0 flex-1 flex-col bg-background"
+      onDragEnter={(e) => {
+        if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+        dragCounterRef.current += 1;
+        setIsDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDragLeave={() => {
+        dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+        if (dragCounterRef.current === 0) setIsDragging(false);
+      }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length === 0) return;
+        e.preventDefault();
+        dragCounterRef.current = 0;
+        setIsDragging(false);
+        window.dispatchEvent(
+          new CustomEvent("wabees:chat-drop", { detail: { files } }),
+        );
+      }}
+    >
       <header className="flex items-center gap-3 border-b border-border bg-card px-3 py-3">
         <Link
           to="/inbox"
@@ -293,12 +369,66 @@ function Thread({ phone }: { phone: string }) {
             {initials}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
           <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
+        <a
+          href={`tel:${phone}`}
+          title="Call"
+          className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+        >
+          <FontAwesomeIcon icon={faPhone} className="h-4 w-4" />
+        </a>
+        <div className="relative" data-header-menu>
+          <button
+            type="button"
+            onClick={() => setHeaderMenu((v) => !v)}
+            title="More"
+            className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <FontAwesomeIcon icon={faEllipsisVertical} className="h-4 w-4" />
+          </button>
+          {headerMenu && (
+            <div className="absolute right-0 top-full z-30 mt-1 min-w-[200px] rounded-lg border border-border bg-card p-1 text-sm shadow-md">
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setHeaderMenu(false)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faUpRightFromSquare} className="h-3.5 w-3.5" />
+                Open in WhatsApp
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(phone);
+                  toast.success("Phone copied");
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" />
+                Copy phone
+              </button>
+              <a
+                href={`tel:${phone}`}
+                onClick={() => setHeaderMenu(false)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faPhone} className="h-3.5 w-3.5" />
+                Call {phone}
+              </a>
+            </div>
+          )}
+        </div>
       </header>
-      <div ref={scrollerRef} className="flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background">
+      <div
+        ref={scrollerRef}
+        className="relative flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background"
+      >
         {error && <p className="text-sm text-destructive">{error}</p>}
         {data === null ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
@@ -314,6 +444,21 @@ function Thread({ phone }: { phone: string }) {
         )}
         <div ref={bottomRef} />
       </div>
+      {!atBottom && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-24 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-md hover:bg-muted"
+          aria-label="Scroll to latest"
+        >
+          <FontAwesomeIcon icon={faChevronDown} className="h-4 w-4" />
+          {newSinceScroll > 0 && (
+            <span className="absolute -top-1 -right-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {newSinceScroll > 99 ? "99+" : newSinceScroll}
+            </span>
+          )}
+        </button>
+      )}
       <Composer
         phone={phone}
         replyTo={replyTo}
@@ -332,6 +477,15 @@ function Thread({ phone }: { phone: string }) {
       )}
       {forwardMsg && (
         <ForwardDialog message={forwardMsg} onClose={() => setForwardMsg(null)} />
+      )}
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
+            <FontAwesomeIcon icon={faCloudArrowUp} className="h-8 w-8" />
+            <p className="text-sm font-semibold">Drop to send</p>
+            <p className="text-xs text-muted-foreground">Photos, videos & documents</p>
+          </div>
+        </div>
       )}
     </section>
   );
