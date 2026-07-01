@@ -16,6 +16,21 @@ import {
   faShareNodes,
   faKey,
   faCircleQuestion,
+  faShare,
+  faDownload,
+  faPhone,
+  faUserPlus,
+  faFilePdf,
+  faFileWord,
+  faFileExcel,
+  faFilePowerpoint,
+  faFileZipper,
+  faFileAudio,
+  faFileVideo,
+  faFileImage,
+  faFileLines,
+  faFile,
+  faPlay,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -34,6 +49,8 @@ export type MessageActions = {
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
   onDelete?: (m: Message) => void;
+  onForward?: (m: Message) => void;
+  onOpenMedia?: (m: Message) => void;
 };
 
 export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
@@ -87,6 +104,11 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
         {!isDeleted && mine && m.botName && (
           <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
         )}
+        {!isDeleted && (m as unknown as { forwarded?: boolean }).forwarded && (
+          <p className={cn("mb-1 flex items-center gap-1 text-[10px] italic", mine ? "opacity-80" : "text-muted-foreground")}>
+            <FontAwesomeIcon icon={faShare} className="h-2.5 w-2.5" /> Forwarded
+          </p>
+        )}
         {!isDeleted && m.replyToBody && (
           <ReplyQuote text={m.replyToBody} type={m.replyToType} mine={mine} />
         )}
@@ -96,7 +118,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             This message was deleted
           </p>
         ) : (
-          <MessageContent m={m} mine={mine} />
+          <MessageContent m={m} mine={mine} actions={actions} />
         )}
         <div
           className={cn(
@@ -195,6 +217,30 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             >
               <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" /> Copy
             </button>
+          )}
+          {actions?.onForward && (
+            <button
+              type="button"
+              onClick={() => {
+                actions.onForward?.(m);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <FontAwesomeIcon icon={faShare} className="h-3.5 w-3.5" /> Forward
+            </button>
+          )}
+          {m.mediaUrl && (
+            <a
+              href={m.mediaUrl}
+              download={m.fileName ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" /> Download
+            </a>
           )}
           {actions?.onDelete && (
             <button
@@ -299,29 +345,46 @@ function ReplyQuote({
   );
 }
 
-function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
+function MessageContent({
+  m,
+  mine,
+  actions,
+}: {
+  m: Message;
+  mine: boolean;
+  actions?: MessageActions;
+}) {
   // Inline media renderer used by image/video/audio/document/sticker.
   const Media = () =>
     m.mediaUrl ? (
       <div className="mb-1 overflow-hidden rounded-md">
         {m.mimeType?.startsWith("image/") || m.type === "sticker" || m.type === "image" ? (
-          <img
-            src={m.mediaUrl}
-            alt={m.caption ?? "image"}
-            className={cn("w-auto rounded-md", m.type === "sticker" ? "max-h-32" : "max-h-64")}
-            loading="lazy"
-          />
+          <button
+            type="button"
+            onClick={() => actions?.onOpenMedia?.(m)}
+            className="block w-full cursor-zoom-in overflow-hidden rounded-md"
+            aria-label="Open image"
+          >
+            <img
+              src={m.mediaUrl}
+              alt={m.caption ?? "image"}
+              className={cn(
+                "w-auto rounded-md",
+                m.type === "sticker" ? "max-h-32" : "max-h-64",
+              )}
+              loading="lazy"
+            />
+          </button>
         ) : m.mimeType?.startsWith("audio/") || m.type === "audio" ? (
           <VoiceNote url={m.mediaUrl} mime={m.mimeType} />
         ) : m.mimeType?.startsWith("video/") || m.type === "video" ? (
-          <video controls src={m.mediaUrl} className="max-h-64 w-full rounded-md" />
+          <VideoThumb
+            url={m.mediaUrl}
+            mime={m.mimeType}
+            onOpen={() => actions?.onOpenMedia?.(m)}
+          />
         ) : (
-          <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
-            📄 {m.fileName ?? "Attachment"}
-            {typeof m.fileSize === "number" && m.fileSize > 0 && (
-              <span className="opacity-70">({formatBytes(m.fileSize)})</span>
-            )}
-          </a>
+          <DocumentCard m={m} mine={mine} />
         )}
       </div>
     ) : null;
@@ -393,6 +456,25 @@ function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
         : null;
       return (
         <div>
+          {hasCoords && (
+            <a
+              href={href!}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 block overflow-hidden rounded-md"
+              aria-label="Open map"
+            >
+              <img
+                src={`https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=320x160&markers=${lat},${lng},red-pushpin`}
+                alt="Map"
+                loading="lazy"
+                className="h-40 w-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </a>
+          )}
           <p className="mb-1 flex items-center gap-1.5 font-semibold">
             <FontAwesomeIcon icon={faLocationDot} className="h-3.5 w-3.5" />
             {m.locationName || "Location"}
@@ -428,22 +510,7 @@ function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
             Contact{list.length > 1 ? "s" : ""}
           </p>
           {list.length > 0 ? (
-            list.map((c, i) => {
-              const name =
-                ((c.name as Record<string, unknown>)?.formatted_name as string | undefined) ??
-                String(c.formatted_name ?? "Contact");
-              const phones = Array.isArray(c.phones)
-                ? (c.phones as Array<{ phone?: string; wa_id?: string }>)
-                : [];
-              return (
-                <div key={i} className="text-xs opacity-90">
-                  <p className="font-medium">{name}</p>
-                  {phones.map((p, j) => (
-                    <p key={j}>{p.phone || p.wa_id}</p>
-                  ))}
-                </div>
-              );
-            })
+            list.map((c, i) => <ContactCard key={i} raw={c} mine={mine} />)
           ) : (
             <p className="text-xs opacity-80">{m.body || "Shared contact"}</p>
           )}
@@ -521,4 +588,208 @@ function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
         </>
       );
   }
+}
+
+function VideoThumb({
+  url,
+  mime,
+  onOpen,
+}: {
+  url: string;
+  mime?: string | null;
+  onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group/vid relative block w-full cursor-pointer overflow-hidden rounded-md bg-black/60"
+      aria-label="Open video"
+    >
+      <video
+        src={url}
+        preload="metadata"
+        muted
+        playsInline
+        className="max-h-64 w-full object-cover"
+      >
+        {mime && <source src={url} type={mime} />}
+      </video>
+      <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-90 transition-opacity group-hover/vid:bg-black/40">
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-white/90 text-black shadow-md">
+          <FontAwesomeIcon icon={faPlay} className="h-4 w-4 pl-0.5" />
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function docIconFor(mime?: string | null, name?: string | null) {
+  const s = `${mime ?? ""} ${name ?? ""}`.toLowerCase();
+  if (s.includes("pdf")) return { icon: faFilePdf, color: "text-red-500" };
+  if (/(docx?|msword|officedocument\.wordprocessing)/.test(s))
+    return { icon: faFileWord, color: "text-blue-600" };
+  if (/(xlsx?|excel|spreadsheet)/.test(s)) return { icon: faFileExcel, color: "text-green-600" };
+  if (/(pptx?|powerpoint|presentation)/.test(s))
+    return { icon: faFilePowerpoint, color: "text-orange-500" };
+  if (/(zip|rar|7z|tar|gz)/.test(s)) return { icon: faFileZipper, color: "text-yellow-600" };
+  if (s.startsWith("audio") || /(mp3|wav|ogg|m4a)/.test(s))
+    return { icon: faFileAudio, color: "text-pink-500" };
+  if (s.startsWith("video") || /(mp4|mov|avi|mkv)/.test(s))
+    return { icon: faFileVideo, color: "text-purple-500" };
+  if (s.startsWith("image") || /(jpe?g|png|webp|gif|bmp|svg)/.test(s))
+    return { icon: faFileImage, color: "text-indigo-500" };
+  if (/(txt|md|log|csv|json|xml|html?)/.test(s))
+    return { icon: faFileLines, color: "text-slate-500" };
+  return { icon: faFile, color: "text-slate-500" };
+}
+
+function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
+  if (!m.mediaUrl) return null;
+  const meta = docIconFor(m.mimeType, m.fileName);
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-md px-2 py-2",
+        mine ? "bg-white/15" : "bg-muted/60",
+      )}
+    >
+      <span
+        className={cn(
+          "grid h-11 w-11 shrink-0 place-items-center rounded-md bg-background/80",
+          meta.color,
+        )}
+      >
+        <FontAwesomeIcon icon={meta.icon} className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">{m.fileName ?? "Attachment"}</p>
+        <p className="text-[10px] opacity-70">
+          {typeof m.fileSize === "number" && m.fileSize > 0 ? formatBytes(m.fileSize) : ""}
+          {m.mimeType ? ` · ${m.mimeType.split("/").pop()?.toUpperCase()}` : ""}
+        </p>
+      </div>
+      <a
+        href={m.mediaUrl}
+        target="_blank"
+        rel="noreferrer"
+        download={m.fileName ?? undefined}
+        aria-label="Download"
+        className={cn(
+          "grid h-8 w-8 place-items-center rounded-full",
+          mine ? "bg-white/20 hover:bg-white/30" : "bg-background hover:bg-muted",
+        )}
+      >
+        <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
+
+function ContactCard({ raw, mine }: { raw: Record<string, unknown>; mine: boolean }) {
+  const nameObj = (raw.name as Record<string, unknown> | undefined) ?? null;
+  const name =
+    (nameObj?.formatted_name as string | undefined) ??
+    (raw.formatted_name as string | undefined) ??
+    "Contact";
+  const phones = Array.isArray(raw.phones)
+    ? (raw.phones as Array<{ phone?: string; wa_id?: string; type?: string }>)
+    : [];
+  const first = phones[0]?.phone || phones[0]?.wa_id || "";
+  const waId = phones[0]?.wa_id || first.replace(/[^0-9]/g, "");
+  const emails = Array.isArray(raw.emails)
+    ? (raw.emails as Array<{ email?: string; type?: string }>)
+    : [];
+  const vcard = () => {
+    const lines = [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+      `FN:${name}`,
+      ...phones
+        .map((p) => (p.phone || p.wa_id ? `TEL;TYPE=${p.type ?? "CELL"}:${p.phone || p.wa_id}` : ""))
+        .filter(Boolean),
+      ...emails
+        .map((e) => (e.email ? `EMAIL;TYPE=${e.type ?? "INTERNET"}:${e.email}` : ""))
+        .filter(Boolean),
+      "END:VCARD",
+    ];
+    const blob = new Blob([lines.join("\r\n")], { type: "text/vcard" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name.replace(/[^A-Za-z0-9]+/g, "_") || "contact"}.vcf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const initials = name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+  return (
+    <div
+      className={cn(
+        "mt-1 flex flex-col gap-2 rounded-md p-2",
+        mine ? "bg-white/15" : "bg-muted/60",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "grid h-10 w-10 place-items-center rounded-full text-xs font-semibold",
+            mine ? "bg-white/25 text-white" : "bg-primary/15 text-primary",
+          )}
+        >
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{name}</p>
+          {phones.map((p, i) => (
+            <p key={i} className="truncate text-[11px] opacity-80">
+              {p.phone || p.wa_id}
+            </p>
+          ))}
+          {emails.map((e, i) => (
+            <p key={`e-${i}`} className="truncate text-[11px] opacity-80">
+              {e.email}
+            </p>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-1">
+        {waId && (
+          <a
+            href={`https://wa.me/${waId.replace(/[^0-9]/g, "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium",
+              mine ? "bg-white/25 hover:bg-white/35" : "bg-background hover:bg-muted",
+            )}
+          >
+            <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" /> Message
+          </a>
+        )}
+        {first && (
+          <a
+            href={`tel:${first}`}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium",
+              mine ? "bg-white/25 hover:bg-white/35" : "bg-background hover:bg-muted",
+            )}
+          >
+            <FontAwesomeIcon icon={faPhone} className="h-3 w-3" /> Call
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={vcard}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium",
+            mine ? "bg-white/25 hover:bg-white/35" : "bg-background hover:bg-muted",
+          )}
+        >
+          <FontAwesomeIcon icon={faUserPlus} className="h-3 w-3" /> Save
+        </button>
+      </div>
+    </div>
+  );
 }

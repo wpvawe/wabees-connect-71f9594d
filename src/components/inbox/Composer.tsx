@@ -9,6 +9,7 @@ import {
   faImage,
   faFile,
   faCircleNotch,
+  faFaceSmile,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import {
@@ -65,6 +66,38 @@ export function Composer({
   // Outbound typing indicator: debounced, throttled to once per 20s per wamid.
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingSentRef = useRef<{ wamid: string; ts: number } | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const emojiWrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!emojiWrapRef.current) return;
+      if (!emojiWrapRef.current.contains(e.target as Node)) setEmojiOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [emojiOpen]);
+
+  function insertEmoji(emoji: string) {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setText((t) => t + emoji);
+      return;
+    }
+    const start = ta.selectionStart ?? text.length;
+    const end = ta.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    setText(next);
+    // Restore caret after React re-render.
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      const pos = start + emoji.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(pos, pos);
+    });
+  }
 
   useEffect(() => {
     return () => {
@@ -419,7 +452,24 @@ export function Composer({
             onPickImage={() => imageInputRef.current?.click()}
             onPickFile={() => fileInputRef.current?.click()}
           />
+          <div className="relative" ref={emojiWrapRef}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setEmojiOpen((v) => !v)}
+              aria-label="Emoji"
+              className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
+            </button>
+            {emojiOpen && (
+              <div className="absolute bottom-12 left-0 z-30">
+                <EmojiPickerLazy onSelect={(e) => insertEmoji(e)} />
+              </div>
+            )}
+          </div>
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -601,4 +651,44 @@ function formatSec(s: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+// Dynamic import keeps ~200KB emoji data out of the initial bundle.
+function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    onEmojiClick: (e: { emoji: string }) => void;
+    width?: number;
+    height?: number;
+    lazyLoadEmojis?: boolean;
+    previewConfig?: { showPreview: boolean };
+    searchPlaceHolder?: string;
+  }> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void import("emoji-picker-react").then((m) => {
+      if (alive) setComp(() => m.default);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!Comp) {
+    return (
+      <div className="grid h-[360px] w-[320px] place-items-center rounded-lg border border-border bg-card text-xs text-muted-foreground shadow-md">
+        Loading emoji…
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-lg border border-border shadow-md">
+      <Comp
+        onEmojiClick={(e) => onSelect(e.emoji)}
+        width={320}
+        height={360}
+        lazyLoadEmojis
+        previewConfig={{ showPreview: false }}
+        searchPlaceHolder="Search"
+      />
+    </div>
+  );
 }
