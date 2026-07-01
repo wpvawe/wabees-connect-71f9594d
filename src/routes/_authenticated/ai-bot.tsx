@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
@@ -57,20 +57,35 @@ function AiBotPage() {
   const uid = useEffectiveUid();
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
-  const { data, error } = useAiBotConfig();
+  const { data, error, exists } = useAiBotConfig();
   const [form, setForm] = useState<AiBotConfig | null>(null);
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  // Track the last remote snapshot we synced so we only apply real changes.
+  const lastSyncedRef = useRef<string>("");
 
+  // Re-sync form whenever remote config changes AND the user has no unsaved
+  // edits. This mirrors the Flutter app's StreamProvider behavior so edits
+  // made on the phone show up immediately on the web (and vice-versa).
   useEffect(() => {
-    if (data && !form) {
-      setForm(data);
-      setFaqs(parseFaq(data.faq));
-    }
-  }, [data, form]);
+    if (!data) return;
+    const signature = JSON.stringify(data);
+    if (signature === lastSyncedRef.current) return;
+    if (dirty) return; // don't clobber unsaved edits
+    lastSyncedRef.current = signature;
+    setForm(data);
+    setFaqs(parseFaq(data.faq));
+  }, [data, dirty]);
 
   function set<K extends keyof AiBotConfig>(k: K, v: AiBotConfig[K]) {
+    setDirty(true);
     setForm((f) => ({ ...(f ?? EMPTY_AI_CONFIG), [k]: v }));
+  }
+
+  function updateFaqs(next: Faq[] | ((prev: Faq[]) => Faq[])) {
+    setDirty(true);
+    setFaqs((prev) => (typeof next === "function" ? (next as (p: Faq[]) => Faq[])(prev) : next));
   }
 
   async function save() {
@@ -79,6 +94,7 @@ function AiBotPage() {
     try {
       const payload = { ...form, faq: JSON.stringify(faqs), updatedAt: serverTimestamp() };
       await setDoc(doc(fbDb(), "users", uid, "bot_config", "settings"), payload, { merge: true });
+      setDirty(false);
       toast.success("Saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
