@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -7,22 +6,61 @@ import {
   increment,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 
-export async function createCampaign(
-  uid: string,
-  input: { name: string; description: string; messageBody: string; audiencePhones: string[] },
-): Promise<{ id: string }> {
-  const ref = await addDoc(collection(fbDb(), "users", uid, "campaigns"), {
+export type CreateCampaignInput = {
+  name: string;
+  description: string;
+  messageBody: string;
+  audiencePhones: string[];
+};
+
+export type CampaignCreatePayload = {
+  name: string;
+  description: string;
+  status: "draft";
+  messageType: "text";
+  messageBody: string;
+  templateName: null;
+  templateLanguage: null;
+  selectedTemplateId: null;
+  templateVariables: string[];
+  variableSource: "static";
+  staticVariableValues: Record<string, string>;
+  recipientData: Array<Record<string, string>>;
+  audiencePhones: string[];
+  audienceTags: string[];
+  audienceGroups: string[];
+  totalRecipients: number;
+  sentCount: number;
+  deliveredCount: number;
+  readCount: number;
+  failedCount: number;
+  scheduledAt: null;
+  createdAt: Timestamp;
+  startedAt: null;
+  completedAt: null;
+};
+
+export function buildCampaignCreatePayload(input: CreateCampaignInput): CampaignCreatePayload {
+  return {
     name: input.name,
     description: input.description,
     status: "draft",
     messageType: "text",
     messageBody: input.messageBody,
+    templateName: null,
+    templateLanguage: null,
+    selectedTemplateId: null,
+    templateVariables: [],
+    variableSource: "static",
+    staticVariableValues: {},
+    recipientData: [],
     audiencePhones: input.audiencePhones,
     audienceTags: [],
     audienceGroups: [],
@@ -31,10 +69,53 @@ export async function createCampaign(
     deliveredCount: 0,
     readCount: 0,
     failedCount: 0,
-    createdAt: serverTimestamp(),
-  });
-  await updateDoc(doc(fbDb(), "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
-  return { id: ref.id };
+    scheduledAt: null,
+    createdAt: Timestamp.now(),
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
+export function firestoreDebugValue(value: unknown): unknown {
+  if (value instanceof Timestamp) {
+    return {
+      __firestoreType: "Timestamp",
+      seconds: value.seconds,
+      nanoseconds: value.nanoseconds,
+      iso: value.toDate().toISOString(),
+    };
+  }
+  if (Array.isArray(value)) return value.map(firestoreDebugValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, firestoreDebugValue(v)]),
+    );
+  }
+  return value;
+}
+
+export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
+  const db = fbDb();
+  const ref = doc(collection(db, "users", uid, "campaigns"));
+  const payload = buildCampaignCreatePayload(input);
+  return {
+    id: ref.id,
+    path: `users/${uid}/campaigns/${ref.id}`,
+    payload,
+    debugPayload: firestoreDebugValue(payload) as Record<string, unknown>,
+    async commit(): Promise<{ id: string }> {
+      await setDoc(ref, payload);
+      await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
+      return { id: ref.id };
+    },
+  };
+}
+
+export async function createCampaign(
+  uid: string,
+  input: CreateCampaignInput,
+): Promise<{ id: string }> {
+  return prepareCampaignCreate(uid, input).commit();
 }
 
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
@@ -72,22 +153,19 @@ export async function duplicateCampaign(uid: string, id: string): Promise<{ id: 
   const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
   if (!src.exists()) throw new Error("Campaign not found");
   const data = src.data() as Record<string, unknown>;
-  const ref = await addDoc(collection(fbDb(), "users", uid, "campaigns"), {
-    name: `${(data.name as string) ?? "Untitled"} (copy)`,
-    description: (data.description as string) ?? "",
-    status: "draft",
-    messageType: (data.messageType as string) ?? "text",
-    messageBody: (data.messageBody as string) ?? "",
-    audiencePhones: (data.audiencePhones as string[]) ?? [],
-    audienceTags: [],
-    audienceGroups: [],
-    totalRecipients: ((data.audiencePhones as string[]) ?? []).length,
-    sentCount: 0,
-    deliveredCount: 0,
-    readCount: 0,
-    failedCount: 0,
-    createdAt: serverTimestamp(),
-  });
+  const db = fbDb();
+  const ref = doc(collection(db, "users", uid, "campaigns"));
+  const audiencePhones = (data.audiencePhones as string[] | undefined) ?? [];
+  await setDoc(
+    ref,
+    buildCampaignCreatePayload({
+      name: `${(data.name as string) ?? "Untitled"} (copy)`,
+      description: (data.description as string) ?? "",
+      messageBody: (data.messageBody as string) ?? "",
+      audiencePhones,
+    }),
+  );
+  await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
   return { id: ref.id };
 }
 

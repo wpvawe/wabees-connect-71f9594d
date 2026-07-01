@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBullhorn,
   faCircleNotch,
-  faPlus,
   faMagnifyingGlass,
   faPlay,
   faPause,
@@ -180,14 +179,6 @@ export function CampaignsWorkspace() {
                 icon={faBullhorn}
                 title="No campaigns found"
                 description="Create your first broadcast to reach many contacts at once."
-                action={
-                  <Link to="/campaigns/new">
-                    <WbButton size="sm">
-                      <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
-                      New campaign
-                    </WbButton>
-                  </Link>
-                }
               />
             </div>
           ) : (
