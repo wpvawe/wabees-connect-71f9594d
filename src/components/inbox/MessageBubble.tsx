@@ -780,10 +780,12 @@ function VideoThumb({
   url,
   mime,
   onOpen,
+  onError,
 }: {
   url: string;
   mime?: string | null;
   onOpen?: () => void;
+  onError?: () => void;
 }) {
   return (
     <button
@@ -798,6 +800,7 @@ function VideoThumb({
         muted
         playsInline
         className="max-h-64 w-full object-cover"
+        onError={onError}
       >
         {mime && <source src={url} type={mime} />}
       </video>
@@ -807,6 +810,39 @@ function VideoThumb({
         </span>
       </span>
     </button>
+  );
+}
+
+/// Fallback shown when an <img>/<video> fails to load (proxy 401/502,
+/// network dropout). Gives the user a way to retry or open the raw file.
+function MediaFallback({ m, mine }: { m: Message; mine: boolean }) {
+  if (!m.mediaUrl) return null;
+  const label =
+    m.type === "video" || m.mimeType?.startsWith("video/")
+      ? "Video unavailable"
+      : m.type === "audio" || m.mimeType?.startsWith("audio/")
+        ? "Voice message unavailable"
+        : "Image unavailable";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-md px-3 py-2 text-xs",
+        mine ? "bg-white/15" : "bg-muted/60",
+      )}
+    >
+      <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5 opacity-80" />
+      <span className="min-w-0 flex-1 truncate opacity-90">{label}</span>
+      <button
+        type="button"
+        onClick={() => void downloadAttachment(m.mediaUrl!, m.fileName, m.mimeType)}
+        className={cn(
+          "shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium",
+          mine ? "bg-white/25 hover:bg-white/35" : "bg-background hover:bg-muted",
+        )}
+      >
+        Download
+      </button>
+    </div>
   );
 }
 
