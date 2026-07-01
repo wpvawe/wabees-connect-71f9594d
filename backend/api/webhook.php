@@ -3097,36 +3097,7 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
         }
     }
 
-    // 6. LOAN CHECK FEATURE
-    $loanCheckEnabled = ($userDocFields['loanCheckEnabled']['booleanValue'] ?? false);
-    if ($loanCheckEnabled === true || $loanCheckEnabled === 'true') {
-        $loanReply = _check_loan_status_from_message($messageBody);
-        if ($loanReply !== null) {
-            webhook_log("AI_BOT: LOAN CHECK triggered — bypass DeepSeek");
-            send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $loanReply);
-            $nowIso = gmdate('Y-m-d\TH:i:s\Z');
-            $docId = 'msg_ai_' . time() . '_' . rand(1000, 9999);
-            firestore_set("users/$userId/messages/$docId", [
-                'contactPhone' => $clientPhone,
-                'contactName' => $clientName,
-                'type' => 'text',
-                'direction' => 'outgoing',
-                'status' => 'sent',
-                'body' => $loanReply,
-                'createdAt' => $nowIso,
-                'isAiBot' => true,
-            ]);
-            firestore_set("users/$userId/conversations/$clientPhone", [
-                'lastMessage' => mb_substr($loanReply, 0, 100),
-                'lastMessageType' => 'text',
-                'lastMessageAt' => $nowIso,
-            ], true);
-            _save_ai_conversation($userId, $clientPhone, $clientName, $messageBody, $loanReply);
-            return;
-        }
-    }
-
-    // 7. Handoff keywords check
+    // 6. Handoff keywords check
     $handoffKeywordsRaw = $configFields['handoffKeywords']['stringValue'] ?? '';
     if (!empty($handoffKeywordsRaw)) {
         $handoffKeywords = array_map('trim', explode(',', strtolower($handoffKeywordsRaw)));
