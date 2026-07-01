@@ -74,7 +74,9 @@ export function CampaignForm() {
   const audiencePreview = useMemo(() => {
     return Array.from(
       new Set([
-        ...Array.from(selected).map((p) => normalizePhone(p)).filter((p) => p.length >= 10),
+        ...Array.from(selected)
+          .map((p) => normalizePhone(p))
+          .filter((p) => p.length >= 10),
         ...manualAudience,
       ]),
     );
@@ -218,7 +220,6 @@ export function CampaignForm() {
       const nm = (err as { name?: string }).name;
       const raw = err instanceof Error ? err.message : String(err ?? "");
       const stack = err instanceof Error ? err.stack : undefined;
-      // eslint-disable-next-line no-console
       console.error("createCampaign failed", { code, raw, err });
       setDebug({
         at: new Date().toISOString(),
@@ -283,11 +284,7 @@ export function CampaignForm() {
           </WbCardBody>
         </WbCard>
         <div className="flex justify-end gap-2">
-          <WbButton
-            onClick={() => void save()}
-            loading={busy}
-            disabled={busy}
-          >
+          <WbButton onClick={() => void save()} loading={busy} disabled={busy}>
             Create campaign ({audiencePreview.length})
           </WbButton>
         </div>
