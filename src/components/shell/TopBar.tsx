@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBell, faBellSlash } from "@fortawesome/free-solid-svg-icons";
+import { faBell, faVolumeHigh, faVolumeXmark } from "@fortawesome/free-solid-svg-icons";
 import { useEffect, useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
@@ -10,6 +10,7 @@ import {
   setNotificationMuted,
   playNotificationChime,
 } from "@/lib/notification-sound";
+import { cn } from "@/lib/utils";
 
 function MuteToggle() {
   const [muted, setMuted] = useState(false);
@@ -17,6 +18,7 @@ function MuteToggle() {
     installAutoplayUnlocker();
     setMuted(isNotificationMuted());
   }, []);
+  const label = muted ? "Sounds muted — click to unmute" : "Sounds on — click to mute";
   return (
     <button
       type="button"
@@ -26,11 +28,21 @@ function MuteToggle() {
         setMuted(next);
         if (!next) playNotificationChime();
       }}
-      aria-label={muted ? "Unmute notifications" : "Mute notifications"}
-      title={muted ? "Unmute notifications" : "Mute notifications"}
-      className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      aria-label={label}
+      aria-pressed={!muted}
+      title={label}
+      className={cn(
+        "inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors",
+        muted
+          ? "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15"
+          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-400",
+      )}
     >
-      <FontAwesomeIcon icon={muted ? faBellSlash : faBell} className="h-4 w-4" />
+      <FontAwesomeIcon
+        icon={muted ? faVolumeXmark : faVolumeHigh}
+        className="h-3.5 w-3.5"
+      />
+      <span className="hidden sm:inline">{muted ? "Muted" : "On"}</span>
     </button>
   );
 }

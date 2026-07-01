@@ -95,7 +95,10 @@ export function CampaignForm() {
       toast.error("Write a message");
       return;
     }
-    if (selected.size === 0) {
+    const audience = Array.from(selected)
+      .map((p) => p.replace(/[^0-9+]/g, ""))
+      .filter((p) => p.length >= 6);
+    if (audience.length === 0) {
       toast.error("Pick at least one recipient");
       return;
     }
@@ -105,17 +108,23 @@ export function CampaignForm() {
         name: name.trim(),
         description: description.trim(),
         messageBody: messageBody.trim(),
-        audiencePhones: Array.from(selected),
+        audiencePhones: audience,
       });
       toast.success("Campaign created");
-      // Take the user back to the workspace so they can see the fresh row
-      // land in the list (real-time snapshot) and open the detail panel.
       navigate({ to: "/campaigns/$id", params: { id: res.id } });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e ?? "Could not create");
+      const err = e as { code?: string; message?: string } | Error;
+      const code = (err as { code?: string }).code;
+      const raw = err instanceof Error ? err.message : String(err ?? "");
       // eslint-disable-next-line no-console
-      console.error("createCampaign failed", e);
-      toast.error(msg || "Could not create campaign");
+      console.error("createCampaign failed", { code, raw, err });
+      const msg =
+        code === "permission-denied"
+          ? "Permission denied by Firestore rules. Sign out and back in, then retry."
+          : code === "unavailable"
+            ? "Network issue reaching Firestore. Check your connection and retry."
+            : raw || "Could not create campaign";
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
