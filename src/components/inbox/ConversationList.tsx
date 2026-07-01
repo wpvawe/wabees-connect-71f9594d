@@ -88,6 +88,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [incomingFallbacks, setIncomingFallbacks] = useState<Record<string, string | null>>({});
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
   const [tagDialog, setTagDialog] = useState<{
     open: boolean;
@@ -147,11 +148,11 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
         rows = rows.filter((c) => c.unreadCount > 0);
         break;
       case "free":
-        rows = rows.filter((c) => isConvInFreeWindow(c));
+        rows = rows.filter((c) => isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbacks[c.contactPhone] ?? c.lastIncomingMessageAt }));
         break;
       case "free_unread":
         rows = rows.filter(
-          (c) => c.unreadCount > 0 && isConvInFreeWindow(c),
+          (c) => c.unreadCount > 0 && isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbacks[c.contactPhone] ?? c.lastIncomingMessageAt }),
         );
         break;
     }
@@ -162,7 +163,68 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       );
     }
     return rows;
-  }, [merged, q, filter, selectedTag]);
+  }, [merged, q, filter, selectedTag, incomingFallbacks]);
+
+  useEffect(() => {
+    if (!uid || !merged) return;
+    const missing = merged
+      .filter((c) => !c.lastIncomingMessageAt && incomingFallbacks[c.contactPhone] === undefined)
+      .map((c) => c.contactPhone)
+      .slice(0, 40);
+    if (missing.length === 0) return;
+    const db = fbDbOrNull();
+    if (!db) return;
+    let cancelled = false;
+    void (async () => {
+      const updates: Record<string, string | null> = {};
+      await Promise.all(
+        missing.map(async (phone) => {
+          const candidates = phoneQueryCandidates(phone);
+          let latest: string | null = null;
+          for (const candidate of candidates) {
+            try {
+              const snap = await getDocs(
+                query(
+                  collection(db, `users/${uid}/messages`),
+                  where("contactPhone", "==", candidate),
+                  where("direction", "==", "incoming"),
+                  orderBy("createdAt", "desc"),
+                  limit(1),
+                ),
+              );
+              const first = snap.docs[0]?.data() as Record<string, unknown> | undefined;
+              const iso = first ? toIso(first.createdAt) : null;
+              if (iso && (!latest || iso > latest)) latest = iso;
+            } catch {
+              try {
+                const snap = await getDocs(
+                  query(
+                    collection(db, `users/${uid}/messages`),
+                    where("contactPhone", "==", candidate),
+                    where("direction", "==", "incoming"),
+                    limit(25),
+                  ),
+                );
+                for (const d of snap.docs) {
+                  const iso = toIso((d.data() as Record<string, unknown>).createdAt);
+                  if (iso && (!latest || iso > latest)) latest = iso;
+                }
+              } catch {
+                /* keep legacy fallback */
+              }
+            }
+          }
+          updates[phone] = latest;
+        }),
+      );
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setIncomingFallbacks((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, merged, incomingFallbacks]);
 
   // Close context menu on outside click / ESC.
   useEffect(() => {
@@ -394,6 +456,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 c={c}
                 active={c.contactPhone === activePhone}
                 tagColors={tagColorMap(tags)}
+                incomingFallbackAt={incomingFallbacks[c.contactPhone] ?? null}
                 onContextMenu={(x, y) => setMenu({ phone: c.contactPhone, x, y })}
               />
             ))}
@@ -639,11 +702,13 @@ function ConvRow({
   c,
   active,
   tagColors,
+  incomingFallbackAt,
   onContextMenu,
 }: {
   c: Conversation;
   active: boolean;
   tagColors: Map<string, string>;
+  incomingFallbackAt: string | null;
   onContextMenu: (x: number, y: number) => void;
 }) {
   const fallback = useLastMessageFallback(
@@ -656,7 +721,7 @@ function ConvRow({
   const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
-  const freeChat = isConvInFreeWindow(c);
+  const freeChat = isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbackAt ?? c.lastIncomingMessageAt });
   return (
     <li>
       <Link

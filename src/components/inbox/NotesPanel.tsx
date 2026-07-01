@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faNoteSticky, faTrash, faXmark, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useConvNotes } from "@/hooks/useConvNotes";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
@@ -57,9 +57,9 @@ export function NotesPanel({
             <FontAwesomeIcon icon={faNoteSticky} className="h-4 w-4 text-primary" />
             Internal notes
           </SheetTitle>
-          <p className="text-[11px] text-muted-foreground">
+          <SheetDescription className="text-[11px]">
             Private to your team — never sent to WhatsApp.
-          </p>
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
