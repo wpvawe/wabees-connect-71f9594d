@@ -229,7 +229,14 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   // Close context menu on outside click / ESC.
   useEffect(() => {
     if (!menu) return;
-    const onDown = () => setMenu(null);
+    const onDown = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as Node | null;
+      // Ignore clicks inside the menu itself — React's synthetic
+      // stopPropagation does NOT stop native document listeners, so we must
+      // filter by DOM containment instead.
+      if (target && (target as Element).closest?.("[data-conv-context-menu]")) return;
+      setMenu(null);
+    };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
@@ -633,7 +640,9 @@ function ContextMenu({
     <div
       className="fixed z-50 min-w-[220px] max-w-[240px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
       style={{ top, left }}
+      data-conv-context-menu=""
       onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <button
         type="button"
