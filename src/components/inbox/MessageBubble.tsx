@@ -362,16 +362,16 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             </button>
           )}
           {m.mediaUrl && (
-            <a
-              href={m.mediaUrl}
-              download={m.fileName ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => setMenuOpen(false)}
+            <button
+              type="button"
+              onClick={() => {
+                void downloadAttachment(m.mediaUrl!, m.fileName, m.mimeType);
+                setMenuOpen(false);
+              }}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
               <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" /> Download
-            </a>
+            </button>
           )}
           {actions?.onDelete && (
             <button
