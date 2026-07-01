@@ -696,6 +696,23 @@ function MessageContent({
     case "order":
       return <TextBody value={m.body || "🛒 Order received"} />;
 
+    case "poll":
+    case "poll_response":
+      return (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold opacity-80">📊 Poll</p>
+          <TextBody value={cleanBody(m.body) || "Poll received"} />
+        </div>
+      );
+
+    case "event":
+      return (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold opacity-80">📅 Event</p>
+          <TextBody value={cleanBody(m.body) || "Event received"} />
+        </div>
+      );
+
     case "system":
     case "ephemeral":
     case "request_welcome":
