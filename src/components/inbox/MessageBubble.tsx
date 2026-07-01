@@ -472,7 +472,7 @@ function MessageContent({
       return (
         <>
           <Media />
-          <TextBody value={m.caption ?? "" ? m.caption! : cleanBody(m.body)} />
+          <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
 
@@ -480,7 +480,7 @@ function MessageContent({
       return (
         <>
           <Media />
-          <TextBody value={m.caption ?? "" ? m.caption! : cleanBody(m.body)} />
+          <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
 
