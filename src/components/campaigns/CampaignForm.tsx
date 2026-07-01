@@ -232,6 +232,12 @@ export function CampaignForm() {
             templateLanguage: template.languageCode,
             selectedTemplateId: template.id,
             templateVariables: template.variables,
+            templateHeader: template.header ?? null,
+            templateHeaderFormat:
+              template.headerFormat ?? (template.header ? ("TEXT" as const) : null),
+            templateHeaderMediaUrl: template.headerMediaUrl ?? null,
+            templateFooter: template.footer ?? null,
+            templateButtons: template.buttons ?? [],
             variableSource: varSource,
             staticVariableValues: pickKeys(staticVars, template.variables),
             contactFieldMap: pickKeys(contactFieldMap, template.variables),
@@ -586,7 +592,12 @@ export function CampaignForm() {
       <div className="lg:sticky lg:top-4 lg:self-start space-y-4">
         <WhatsAppPreview
           header={renderedHeader}
-          headerFormat={template?.header ? "TEXT" : null}
+          headerFormat={
+            template
+              ? (template.headerFormat ?? (template.header ? "TEXT" : null))
+              : null
+          }
+          headerMediaUrl={template?.headerMediaUrl ?? null}
           body={renderedBody}
           footer={mode === "template" ? (template?.footer ?? null) : null}
           buttons={mode === "template" ? (template?.buttons ?? []) : []}
