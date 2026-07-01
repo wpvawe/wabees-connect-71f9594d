@@ -1418,10 +1418,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         }
     }
 
+    $lastPreview = wabees_last_message_preview($type, $messageBody, $firestoreMsg['fileName'] ?? '', $mimeType ?? '');
+
     $convData = [
         'contactPhone' => $from,
         'contactName' => $contactName,
-        'lastMessage' => mb_substr($messageBody, 0, 100),
+        'lastMessage' => mb_substr($lastPreview, 0, 100),
         'lastMessageType' => $type,
         'lastMessageAt' => $nowIso,
         'lastIncomingMessageAt' => $nowIso,
