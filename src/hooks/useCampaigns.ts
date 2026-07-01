@@ -59,7 +59,14 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
               completedAt: toIso(x.completedAt),
             };
           })
-          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+          // Pending server timestamps arrive as null on the local snapshot
+          // for a moment; treat them as newest so a freshly created campaign
+          // appears at the top of the list immediately.
+          .sort((a, b) => {
+            const av = a.createdAt ?? "\uffff";
+            const bv = b.createdAt ?? "\uffff";
+            return bv.localeCompare(av);
+          });
         setData(rows);
       },
       (err) => setError(err.message),
