@@ -531,6 +531,45 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faPhone} className="h-3.5 w-3.5" />
                 Call {phone}
               </a>
+              <div className="my-1 h-px bg-border" />
+              <button
+                type="button"
+                onClick={() => {
+                  setNotesOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faNoteSticky} className="h-3.5 w-3.5" />
+                Internal notes
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faUserPlus} className="h-3.5 w-3.5" />
+                Assign to agent
+                {conv?.assignedAgentEmail && (
+                  <span className="ml-auto truncate text-[10px] text-muted-foreground">
+                    {conv.assignedAgentEmail}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScheduleOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                Schedule message
+              </button>
             </div>
           )}
         </div>
