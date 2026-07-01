@@ -8,12 +8,14 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useCampaign } from "@/hooks/useCampaigns";
 import { useCampaignLogs } from "@/hooks/useCampaignLogs";
+import { useContacts } from "@/hooks/useContacts";
 import { runCampaign, deleteCampaign } from "@/lib/firebase/campaigns";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export function CampaignDetail({ id }: { id: string }) {
   const { data, error } = useCampaign(id);
   const { data: logs } = useCampaignLogs(id);
+  const { data: contacts } = useContacts();
   const navigate = useNavigate();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
@@ -34,7 +36,32 @@ export function CampaignDetail({ id }: { id: string }) {
     if (!confirm(`Start sending to ${data.totalRecipients} recipients?`)) return;
     setRunning(true);
     try {
-      const r = await runCampaign(uid, selfUid, id, data.audiencePhones ?? [], data.messageBody);
+      const contactsByPhone: Record<string, Record<string, string>> = {};
+      for (const c of contacts ?? []) {
+        contactsByPhone[c.phone] = {
+          name: c.name,
+          phone: c.phone,
+          email: c.email ?? "",
+          company: c.company ?? "",
+        };
+      }
+      const r = await runCampaign(
+        uid,
+        selfUid,
+        id,
+        data.audiencePhones ?? [],
+        data.messageBody,
+        {
+          messageType: (data.messageType as "text" | "template") ?? "text",
+          templateName: data.templateName ?? null,
+          templateLanguage: data.templateLanguage ?? null,
+          templateVariables: data.templateVariables ?? [],
+          variableSource: data.variableSource ?? "static",
+          staticVariableValues: data.staticVariableValues ?? {},
+          contactFieldMap: data.contactFieldMap ?? {},
+          contactsByPhone,
+        },
+      );
       toast.success(`Sent ${r.sent}, failed ${r.failed}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Run failed");
