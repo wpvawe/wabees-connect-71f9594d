@@ -85,9 +85,9 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
       }
       const db = fbDb();
       const hasMedia = !!message.mediaUrl || !!message.mediaId;
-      const kind = hasMedia
+      const mediaKind = hasMedia
         ? (message.type as "image" | "video" | "audio" | "document" | "sticker")
-        : "text";
+        : null;
       const body = message.body || message.caption || "";
       const results = await Promise.allSettled(
         list.map(async (t) => {
@@ -96,7 +96,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
           const msgRef = await addDoc(collection(db, "users", uid, "messages"), {
             contactPhone: normalized,
             contactName: t.name || normalized,
-            type: hasMedia ? kind : "text",
+            type: mediaKind ?? "text",
             direction: "outgoing",
             status: "pending",
             body: hasMedia ? "" : body,
@@ -114,26 +114,26 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
             {
               contactPhone: normalized,
               contactName: t.name || normalized,
-              lastMessage: hasMedia ? (body || `[${kind}]`) : body,
-              lastMessageType: hasMedia ? kind : "text",
+              lastMessage: mediaKind ? (body || `[${mediaKind}]`) : body,
+              lastMessageType: mediaKind ?? "text",
               lastMessageAt: serverTimestamp(),
             },
             { merge: true },
           );
           const to = whatsappRecipientId(t.phone);
-          const res = hasMedia
+          const res = mediaKind
             ? await sendMediaMessage({
                 phone_number_id: creds.phone_number_id,
                 access_token: creds.access_token,
                 to,
-                type: kind === "sticker" ? "sticker" : kind,
+                type: mediaKind,
                 ...(message.mediaId
                   ? { media_id: message.mediaId }
                   : message.mediaUrl
                     ? { media_url: message.mediaUrl }
                     : {}),
-                ...(body && kind !== "audio" && kind !== "sticker" ? { caption: body } : {}),
-                ...(kind === "document" && message.fileName ? { filename: message.fileName } : {}),
+                ...(body && mediaKind !== "audio" && mediaKind !== "sticker" ? { caption: body } : {}),
+                ...(mediaKind === "document" && message.fileName ? { filename: message.fileName } : {}),
               })
             : await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
