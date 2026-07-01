@@ -110,7 +110,7 @@ export function CampaignForm() {
       toast.success("Campaign created");
       // Take the user back to the workspace so they can see the fresh row
       // land in the list (real-time snapshot) and open the detail panel.
-      navigate({ to: "/campaigns", search: { new: res.id } as never });
+      navigate({ to: "/campaigns/$id", params: { id: res.id } });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e ?? "Could not create");
       // eslint-disable-next-line no-console
