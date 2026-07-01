@@ -7,8 +7,6 @@ import {
   faMagnifyingGlass,
   faCheck,
   faXmark,
-  faBug,
-  faCopy,
   faWandMagicSparkles,
   faKeyboard,
   faCircleInfo,
@@ -36,20 +34,6 @@ const CONTACT_FIELDS = [
   { key: "company", label: "Company" },
 ];
 
-type DebugEntry = {
-  at: string;
-  ok: boolean;
-  path: string;
-  payload: Record<string, unknown>;
-  operation: "validation" | "setDoc";
-  code?: string;
-  name?: string;
-  message?: string;
-  stack?: string;
-  resultId?: string;
-  durationMs: number;
-};
-
 export function CampaignForm() {
   const navigate = useNavigate();
   const uid = useEffectiveUid();
@@ -71,8 +55,6 @@ export function CampaignForm() {
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
-  const [debug, setDebug] = useState<DebugEntry | null>(null);
-  const [debugOpen, setDebugOpen] = useState(false);
 
   const approvedTemplates = useMemo(
     () =>
@@ -201,25 +183,16 @@ export function CampaignForm() {
 
   async function save() {
     if (!uid) {
-      failValidation("No signed-in Firebase user/effective owner was available.", {
-        reason: "No effective UID",
-        selfUid,
-      });
       toast.error("Not signed in — refresh and try again");
       return;
     }
     if (!name.trim()) {
-      failValidation("Campaign name is empty; Firestore request was not sent.", { name });
       toast.error("Enter a campaign name");
       return;
     }
 
     if (mode === "template") {
       if (!template) {
-        failValidation("Select an approved template before creating the campaign.", {
-          selectedTemplateId,
-          approvedCount: approvedTemplates.length,
-        });
         toast.error("Pick a template");
         return;
       }
@@ -227,16 +200,11 @@ export function CampaignForm() {
       for (const v of template.variables) {
         if (varSource === "static") {
           if (!(staticVars[v] ?? "").trim()) {
-            failValidation(`Value for variable {{${v}}} is empty.`, {
-              variable: v,
-              staticVars,
-            });
             toast.error(`Fill value for {{${v}}}`);
             return;
           }
         } else {
           if (!contactFieldMap[v]) {
-            failValidation(`Map contact field for {{${v}}}.`, { variable: v, contactFieldMap });
             toast.error(`Map field for {{${v}}}`);
             return;
           }
@@ -244,9 +212,6 @@ export function CampaignForm() {
       }
     } else {
       if (!textMessage.trim()) {
-        failValidation("Message body is empty; Firestore request was not sent.", {
-          length: textMessage.length,
-        });
         toast.error("Write a message");
         return;
       }
@@ -254,13 +219,6 @@ export function CampaignForm() {
 
     const audience = audiencePreview;
     if (audience.length === 0) {
-      failValidation("No valid recipients; Firestore request was not sent.", {
-        selectedPhones: Array.from(selected),
-        manualPhonesRaw: manualPhones,
-        manualPhonesParsed: manualAudience,
-        contactsLoaded: contacts?.length ?? null,
-        contactsError,
-      });
       toast.error("Pick at least one recipient");
       return;
     }
@@ -290,59 +248,17 @@ export function CampaignForm() {
             audiencePhones: audience,
           };
 
-    let path = `users/${uid}/campaigns/{newDocId}`;
-    let debugPayload: Record<string, unknown> = input as unknown as Record<string, unknown>;
-    const startedAt = performance.now();
     try {
       const request = prepareCampaignCreate(uid, input);
-      path = request.path;
-      debugPayload = request.debugPayload;
       const res = await request.commit();
-      setDebug({
-        at: new Date().toISOString(),
-        ok: true,
-        path,
-        operation: "setDoc",
-        payload: debugPayload,
-        resultId: res.id,
-        durationMs: Math.round(performance.now() - startedAt),
-      });
       toast.success("Campaign created");
       navigate({ to: "/campaigns/$id", params: { id: res.id } });
     } catch (e) {
-      const err = e as { code?: string; message?: string; name?: string; stack?: string };
       const raw = e instanceof Error ? e.message : String(e ?? "");
-      setDebug({
-        at: new Date().toISOString(),
-        ok: false,
-        path,
-        operation: "setDoc",
-        payload: debugPayload,
-        code: err.code,
-        name: err.name,
-        message: raw,
-        stack: err.stack,
-        durationMs: Math.round(performance.now() - startedAt),
-      });
-      setDebugOpen(true);
       toast.error(raw || "Could not create campaign");
     } finally {
       setBusy(false);
     }
-  }
-
-  function failValidation(message: string, payload: Record<string, unknown>) {
-    setDebug({
-      at: new Date().toISOString(),
-      ok: false,
-      path: uid ? `users/${uid}/campaigns/{newDocId}` : "users/{unknown}/campaigns/{newDocId}",
-      operation: "validation",
-      payload,
-      code: "client-validation",
-      name: "ValidationError",
-      message,
-      durationMs: 0,
-    });
   }
 
   return (
@@ -667,16 +583,6 @@ export function CampaignForm() {
           </div>
         </SectionCard>
 
-        <DebugPanel
-          entry={debug}
-          open={debugOpen}
-          onToggle={() => setDebugOpen((v) => !v)}
-          onClear={() => setDebug(null)}
-          effectiveUid={uid}
-          selfUid={selfUid}
-          contactsCount={contacts?.length ?? null}
-          contactsError={contactsError}
-        />
       </div>
 
       {/* RIGHT COLUMN — Preview + summary */}
