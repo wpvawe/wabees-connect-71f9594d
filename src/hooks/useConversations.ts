@@ -100,6 +100,10 @@ export function useConversations(): { data: Conversation[] | null; error: string
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    // Auto-canonicalization write should fire once per phone per mount,
+    // not on every snapshot burst — otherwise we spam Firestore writes on
+    // initial load and every listener re-emit.
+    const canonicalized = new Set<string>();
     const unsub = onSnapshot(
       collection(db, `users/${uid}/conversations`),
       (snap) => {
@@ -145,6 +149,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
           const canonical = phoneDocId(phone);
           const hasStray = ids.some((id) => id !== canonical);
           if (!hasStray) continue;
+          if (canonicalized.has(phone)) continue;
+          canonicalized.add(phone);
           const merged = grouped.get(phone);
           if (!merged) continue;
           void (async () => {

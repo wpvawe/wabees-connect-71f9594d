@@ -8,12 +8,13 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { fbDbOrNull, fbDb } from "@/integrations/firebase/client";
+import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import {
   normalizePhone,
@@ -91,16 +92,19 @@ export function useScheduledDispatcher() {
       busy = true;
       try {
         const nowMs = Date.now();
-        // Pull the ordered pending list once per tick. Small enough for a
-        // full snapshot read; ordered so we send oldest-first.
+        // Pull the ordered pending list once per tick. We also pull
+        // "sending" rows so a tab that crashed mid-send can be recovered
+        // instead of the message getting stuck forever.
         const snapRef = query(
           collection(db!, `users/${uid}/scheduled_messages`),
-          where("status", "==", "pending"),
+          where("status", "in", ["pending", "sending"]),
+          orderBy("scheduledFor", "asc"),
         );
         const snap = await getDocs(snapRef);
         if (!alive) return;
         const creds = await loadWaCredentials(selfUid!).catch(() => null);
         if (!creds) return;
+        const STALE_SENDING_MS = 5 * 60 * 1000;
         for (const d of snap.docs) {
             const x = d.data() as Record<string, unknown>;
             const iso = toIso(x.scheduledFor);
@@ -109,12 +113,49 @@ export function useScheduledDispatcher() {
             const phone = str(x.contactPhone);
             const body = str(x.body);
             if (!phone || !body) continue;
-            // Claim it first so parallel tabs don't double-send.
+            const currentStatus = str(x.status, "pending");
+            // For rows already in "sending", only try to reclaim if the
+            // previous attempt is clearly abandoned (>5 min old).
+            if (currentStatus === "sending") {
+              const lastAtIso = toIso(x.updatedAt) ?? toIso(x.claimedAt);
+              if (lastAtIso && nowMs - new Date(lastAtIso).getTime() < STALE_SENDING_MS) {
+                continue;
+              }
+            }
+            // Atomic claim: transaction re-reads the row and only writes
+            // "sending" if status still matches what this tab expects.
+            // Prevents two open tabs from both sending the same message.
+            let claimed = false;
             try {
-              await updateDoc(d.ref, { status: "sending" });
+              await runTransaction(db!, async (tx) => {
+                const fresh = await tx.get(d.ref);
+                if (!fresh.exists()) return;
+                const freshData = fresh.data() as Record<string, unknown>;
+                const freshStatus = str(freshData.status, "pending");
+                const freshAtIso =
+                  toIso(freshData.updatedAt) ?? toIso(freshData.claimedAt);
+                if (freshStatus === "pending") {
+                  // ok
+                } else if (
+                  freshStatus === "sending" &&
+                  freshAtIso &&
+                  nowMs - new Date(freshAtIso).getTime() >= STALE_SENDING_MS
+                ) {
+                  // stale — safe to steal
+                } else {
+                  return; // another tab has it
+                }
+                tx.update(d.ref, {
+                  status: "sending",
+                  claimedAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+                claimed = true;
+              });
             } catch {
               continue;
             }
+            if (!claimed) continue;
             try {
               const res = await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
@@ -127,6 +168,7 @@ export function useScheduledDispatcher() {
                 await updateDoc(d.ref, {
                   status: "failed",
                   errorReason: res.message ?? "Send failed",
+                  updatedAt: serverTimestamp(),
                 });
                 continue;
               }
@@ -155,6 +197,7 @@ export function useScheduledDispatcher() {
               await updateDoc(d.ref, {
                 status: "sent",
                 sentMessageId: msgRef.id,
+                updatedAt: serverTimestamp(),
               });
               await updateDoc(doc(db!, `users/${uid}`), {
                 totalMessages: increment(1),
@@ -163,6 +206,7 @@ export function useScheduledDispatcher() {
               await updateDoc(d.ref, {
                 status: "failed",
                 errorReason: e instanceof Error ? e.message : "Send failed",
+                updatedAt: serverTimestamp(),
               }).catch(() => {});
             }
         }
