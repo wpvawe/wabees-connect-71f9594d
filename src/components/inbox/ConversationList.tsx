@@ -11,12 +11,27 @@ import {
   faClock,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import { fbDbOrNull } from "@/integrations/firebase/client";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { phoneQueryCandidates, str, toIso } from "@/lib/firebase/normalizers";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { cn } from "@/lib/utils";
+
+// Session-scoped cache so switching between conversations doesn't refetch
+// the same last-message preview repeatedly.
+const previewCache = new Map<string, { body: string; type: string; at: string | null } | null>();
 
 export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data, error } = useConversations();
@@ -108,8 +123,14 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
 }
 
 function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
-  const when = formatConvTime(c.lastMessageAt);
-  const preview = formatPreview(c.lastMessage, c.lastMessageType);
+  const fallback = useLastMessageFallback(
+    c.contactPhone,
+    !((c.lastMessage || "").trim()),
+  );
+  const bodyForPreview = (c.lastMessage || "").trim() || fallback?.body || "";
+  const typeForPreview = (c.lastMessage || "").trim() ? c.lastMessageType : fallback?.type ?? c.lastMessageType;
+  const when = formatConvTime(c.lastMessageAt || fallback?.at || null);
+  const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
   return (
@@ -175,6 +196,73 @@ function formatConvTime(iso: string | null | undefined): string {
   const days = differenceInDays(new Date(), d);
   if (days < 7) return format(d, "EEE");
   return format(d, "dd/MM/yy");
+}
+
+/**
+ * Legacy conversations (written before the webhook started persisting a
+ * descriptive `lastMessage`) show "No preview" in the list. Fetch the most
+ * recent message once per phone and derive a preview from it so the row
+ * always shows something meaningful.
+ */
+function useLastMessageFallback(
+  phone: string,
+  enabled: boolean,
+): { body: string; type: string; at: string | null } | null {
+  const uid = useEffectiveUid();
+  const [state, setState] = useState<{ body: string; type: string; at: string | null } | null>(
+    () => previewCache.get(phone) ?? null,
+  );
+
+  useEffect(() => {
+    if (!enabled || !uid) return;
+    if (previewCache.has(phone)) {
+      setState(previewCache.get(phone) ?? null);
+      return;
+    }
+    const db = fbDbOrNull();
+    if (!db) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const candidates = phoneQueryCandidates(phone);
+        const q = query(
+          collection(db, `users/${uid}/messages`),
+          candidates.length === 1
+            ? where("contactPhone", "==", candidates[0])
+            : where("contactPhone", "in", candidates),
+          orderBy("createdAt", "desc"),
+          limit(1),
+        );
+        const snap = await getDocs(q);
+        const doc = snap.docs[0];
+        if (!doc) {
+          previewCache.set(phone, null);
+          if (!cancelled) setState(null);
+          return;
+        }
+        const d = doc.data() as Record<string, unknown>;
+        const body =
+          str(d.body) ||
+          str(d.caption) ||
+          str(d.fileName) ||
+          "";
+        const type = str(d.type, "text");
+        const at = toIso(d.createdAt);
+        const value = { body, type, at };
+        previewCache.set(phone, value);
+        if (!cancelled) setState(value);
+      } catch {
+        // Firestore may reject the `in` query if candidates > 30 or the
+        // orderBy needs an index. Fail silent — row keeps "No preview".
+        if (!cancelled) setState(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, uid, phone]);
+
+  return state;
 }
 
 function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
