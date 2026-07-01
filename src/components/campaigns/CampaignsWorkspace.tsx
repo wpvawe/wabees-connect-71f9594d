@@ -163,12 +163,11 @@ export function CampaignsWorkspace() {
             <p className="text-sm font-semibold">
               {filtered.length} campaign{filtered.length === 1 ? "" : "s"}
             </p>
-            <Link to="/campaigns/new">
-              <WbButton size="sm">
-                <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
-                New
-              </WbButton>
-            </Link>
+            {data && data.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {stats.active} active
+              </span>
+            )}
           </div>
           {data === null ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
