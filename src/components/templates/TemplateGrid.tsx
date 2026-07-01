@@ -259,7 +259,8 @@ export function TemplateGrid() {
           <>
             <WhatsAppPreview
               header={previewHeader}
-              headerFormat={selected.header ? "TEXT" : null}
+              headerFormat={selected.headerFormat ?? (selected.header ? "TEXT" : null)}
+              headerMediaUrl={selected.headerMediaUrl ?? null}
               body={previewBody}
               footer={selected.footer || null}
               buttons={selected.buttons ?? []}
