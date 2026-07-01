@@ -666,6 +666,14 @@ function Thread({ phone }: { phone: string }) {
       {forwardMsg && (
         <ForwardDialog message={forwardMsg} onClose={() => setForwardMsg(null)} />
       )}
+      <NotesPanel phone={phone} open={notesOpen} onOpenChange={setNotesOpen} />
+      <AssignAgentDialog
+        phone={phone}
+        currentAgentId={conv?.assignedAgentId ?? null}
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+      />
+      <ScheduleDialog phone={phone} open={scheduleOpen} onOpenChange={setScheduleOpen} />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
