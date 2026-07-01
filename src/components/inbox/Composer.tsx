@@ -9,6 +9,7 @@ import {
   faImage,
   faFile,
   faCircleNotch,
+  faFaceSmile,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import {
@@ -65,6 +66,38 @@ export function Composer({
   // Outbound typing indicator: debounced, throttled to once per 20s per wamid.
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingSentRef = useRef<{ wamid: string; ts: number } | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const emojiWrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!emojiWrapRef.current) return;
+      if (!emojiWrapRef.current.contains(e.target as Node)) setEmojiOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [emojiOpen]);
+
+  function insertEmoji(emoji: string) {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setText((t) => t + emoji);
+      return;
+    }
+    const start = ta.selectionStart ?? text.length;
+    const end = ta.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    setText(next);
+    // Restore caret after React re-render.
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      const pos = start + emoji.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(pos, pos);
+    });
+  }
 
   useEffect(() => {
     return () => {
