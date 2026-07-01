@@ -8,11 +8,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { phoneDocId } from "@/lib/firebase/normalizers";
+import { ensureConversationDoc, resolveConversationDocId } from "@/lib/firebase/conversations";
 
 export type ConvNote = {
   id: string;
@@ -30,8 +32,9 @@ export async function addNote(
   author: { uid: string; email: string | null },
 ): Promise<string> {
   const db = fbDb();
+  const convId = await ensureConversationDoc(uid, phone);
   const ref = await addDoc(
-    collection(db, `users/${uid}/conversations/${phoneDocId(phone)}/notes`),
+    collection(db, `users/${uid}/conversations/${convId}/notes`),
     {
       body: body.trim(),
       authorUid: author.uid,
@@ -50,9 +53,10 @@ export async function updateNote(
   body: string,
 ): Promise<void> {
   const db = fbDb();
-  await updateDoc(
-    doc(db, `users/${uid}/conversations/${phoneDocId(phone)}/notes/${noteId}`),
-    { body: body.trim(), updatedAt: serverTimestamp() },
+  const convId = await resolveConversationDocId(uid, phone);
+  const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
+  await updateDoc(ref, { body: body.trim(), updatedAt: serverTimestamp() }).catch(() =>
+    setDoc(ref, { body: body.trim(), updatedAt: serverTimestamp() }, { merge: true }),
   );
 }
 
@@ -62,7 +66,10 @@ export async function deleteNote(
   noteId: string,
 ): Promise<void> {
   const db = fbDb();
-  await deleteDoc(
-    doc(db, `users/${uid}/conversations/${phoneDocId(phone)}/notes/${noteId}`),
-  );
+  const convId = await resolveConversationDocId(uid, phone);
+  const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
+  await deleteDoc(ref).catch(async () => {
+    const snap = await getDoc(ref).catch(() => null);
+    if (snap?.exists()) await setDoc(ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
+  });
 }

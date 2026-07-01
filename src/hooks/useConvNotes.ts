@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { phoneDocId, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
+import { phoneQueryCandidates, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 import type { ConvNote } from "@/lib/firebase/notes";
 
 export function useConvNotes(phone: string): {
@@ -17,29 +17,49 @@ export function useConvNotes(phone: string): {
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      query(
-        collection(db, `users/${uid}/conversations/${phoneDocId(phone)}/notes`),
-        orderBy("createdAt", "desc"),
-      ),
-      (snap) => {
-        setData(
-          snap.docs.map((d) => {
+    setData(null);
+    setError(null);
+    const candidates = phoneQueryCandidates(phone);
+    const byId = new Map<string, ConvNote>();
+    const loaded = new Set<string>();
+    const emit = () => {
+      if (loaded.size < candidates.length) return;
+      setData(
+        Array.from(byId.values())
+          .filter((n) => n.body)
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
+      );
+    };
+    const unsubs = candidates.map((convId) =>
+      onSnapshot(
+        query(collection(db, `users/${uid}/conversations/${convId}/notes`), orderBy("createdAt", "desc")),
+        (snap) => {
+          for (const key of Array.from(byId.keys())) {
+            if (key.startsWith(`${convId}/`)) byId.delete(key);
+          }
+          for (const d of snap.docs) {
             const x = d.data() as Record<string, unknown>;
-            return {
+            if (x.isDeleted === true) continue;
+            byId.set(`${convId}/${d.id}`, {
               id: d.id,
               body: str(x.body),
               authorUid: str(x.authorUid),
               authorEmail: strOrNull(x.authorEmail),
               createdAt: toIso(x.createdAt),
               updatedAt: toIso(x.updatedAt),
-            };
-          }),
-        );
-      },
-      (err) => setError(err.message),
+            });
+          }
+          loaded.add(convId);
+          emit();
+        },
+        (err) => {
+          loaded.add(convId);
+          setError(err.message);
+          emit();
+        },
+      ),
     );
-    return () => unsub();
+    return () => unsubs.forEach((unsub) => unsub());
   }, [uid, phone]);
 
   return { data, error };

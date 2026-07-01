@@ -5,6 +5,8 @@
  */
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -27,7 +29,7 @@ export const MAX_PINNED = 3;
  * may have used a non-canonical form (digits-only, or raw as-received) so we
  * probe every candidate; fall back to the canonical +E.164 id.
  */
-async function resolveConvDocId(uid: string, phone: string): Promise<string> {
+export async function resolveConversationDocId(uid: string, phone: string): Promise<string> {
   const db = fbDb();
   for (const c of phoneQueryCandidates(phone)) {
     const s = await getDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => null);
@@ -36,10 +38,24 @@ async function resolveConvDocId(uid: string, phone: string): Promise<string> {
   return phoneDocId(phone);
 }
 
+export async function ensureConversationDoc(uid: string, phone: string): Promise<string> {
+  const db = fbDb();
+  const id = await resolveConversationDocId(uid, phone);
+  await setDoc(
+    doc(db, `users/${uid}/conversations/${id}`),
+    {
+      contactPhone: phoneDocId(phone),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return id;
+}
+
 /** Toggle pinned state. Returns false when max pinned limit is already reached. */
 export async function togglePin(uid: string, phone: string): Promise<boolean> {
   const db = fbDb();
-  const id = await resolveConvDocId(uid, phone);
+  const id = await resolveConversationDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
   const snap = await getDoc(ref);
   const currentlyPinned = Boolean(snap.data()?.isPinned);
@@ -57,21 +73,16 @@ export async function togglePin(uid: string, phone: string): Promise<boolean> {
 
 export async function addTag(uid: string, phone: string, tag: string): Promise<void> {
   const db = fbDb();
-  const id = await resolveConvDocId(uid, phone);
+  const id = await ensureConversationDoc(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
-  const snap = await getDoc(ref);
-  const existing: string[] = Array.isArray(snap.data()?.tags) ? snap.data()!.tags : [];
-  if (existing.includes(tag)) return;
-  await setDoc(ref, { tags: [...existing, tag] }, { merge: true });
+  await setDoc(ref, { tags: arrayUnion(tag.trim()) }, { merge: true });
 }
 
 export async function removeTag(uid: string, phone: string, tag: string): Promise<void> {
   const db = fbDb();
-  const id = await resolveConvDocId(uid, phone);
+  const id = await resolveConversationDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
-  const snap = await getDoc(ref);
-  const existing: string[] = Array.isArray(snap.data()?.tags) ? snap.data()!.tags : [];
-  await setDoc(ref, { tags: existing.filter((t) => t !== tag) }, { merge: true });
+  await setDoc(ref, { tags: arrayRemove(tag) }, { merge: true });
 }
 
 /**
@@ -81,9 +92,19 @@ export async function removeTag(uid: string, phone: string, tag: string): Promis
  */
 export async function deleteConversation(uid: string, phone: string): Promise<void> {
   const db = fbDb();
+  let hardDeleted = false;
   // Delete every candidate conversation doc (normalized + raw variants).
   for (const c of phoneQueryCandidates(phone)) {
-    await deleteDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => {});
+    try {
+      await deleteDoc(doc(db, `users/${uid}/conversations/${c}`));
+      hardDeleted = true;
+    } catch {
+      await setDoc(
+        doc(db, `users/${uid}/conversations/${c}`),
+        { isDeleted: true, deletedAt: serverTimestamp() },
+        { merge: true },
+      ).catch(() => {});
+    }
   }
   // Delete matching messages in chunks (Firestore batches cap at 500).
   const candidates = phoneQueryCandidates(phone);
@@ -97,7 +118,10 @@ export async function deleteConversation(uid: string, phone: string): Promise<vo
   const CHUNK = 450;
   for (let i = 0; i < snap.docs.length; i += CHUNK) {
     const batch = writeBatch(db);
-    for (const d of snap.docs.slice(i, i + CHUNK)) batch.delete(d.ref);
+    for (const d of snap.docs.slice(i, i + CHUNK)) {
+      if (hardDeleted) batch.delete(d.ref);
+      else batch.set(d.ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
+    }
     await batch.commit().catch(() => {});
   }
 }
@@ -107,12 +131,48 @@ export type TagDef = { id: string; name: string; color: string; createdAt?: stri
 
 export async function createTag(uid: string, name: string, color: string): Promise<string> {
   const db = fbDb();
+  const cleanName = name.trim();
+  if (!cleanName) throw new Error("Tag name is required");
+  const duplicate = await getDocs(
+    query(collection(db, `users/${uid}/tags`), where("name", "==", cleanName)),
+  );
+  if (!duplicate.empty) return duplicate.docs[0].id;
   const ref = await addDoc(collection(db, `users/${uid}/tags`), {
-    name,
+    name: cleanName,
     color,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function updateTag(
+  uid: string,
+  tagId: string,
+  updates: { name: string; color: string },
+): Promise<void> {
+  const db = fbDb();
+  const ref = doc(db, `users/${uid}/tags/${tagId}`);
+  const snap = await getDoc(ref);
+  const oldName = snap.data()?.name as string | undefined;
+  const newName = updates.name.trim();
+  if (!newName) throw new Error("Tag name is required");
+  await setDoc(ref, { name: newName, color: updates.color, updatedAt: serverTimestamp() }, { merge: true });
+  if (!oldName || oldName === newName) return;
+  const tagged = await getDocs(
+    query(collection(db, `users/${uid}/conversations`), where("tags", "array-contains", oldName)),
+  ).catch(() => null);
+  if (!tagged) return;
+  const batch = writeBatch(db);
+  for (const d of tagged.docs) {
+    const tags: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
+    batch.set(
+      d.ref,
+      { tags: Array.from(new Set(tags.map((t) => (t === oldName ? newName : t)))) },
+      { merge: true },
+    );
+  }
+  await batch.commit();
 }
 
 export async function deleteTag(uid: string, tagId: string): Promise<void> {
@@ -130,6 +190,8 @@ export async function deleteTag(uid: string, tagId: string): Promise<void> {
   if (!snap) return;
   for (const d of snap.docs) {
     const t: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
-    await updateDoc(d.ref, { tags: t.filter((x) => x !== name) }).catch(() => {});
+    await updateDoc(d.ref, { tags: t.filter((x) => x !== name) }).catch(() =>
+      setDoc(d.ref, { tags: t.filter((x) => x !== name) }, { merge: true }).catch(() => {}),
+    );
   }
 }

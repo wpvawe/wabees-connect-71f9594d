@@ -13,6 +13,7 @@ import {
   faTrash,
   faXmark,
   faPlus,
+  faPen,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -36,6 +37,7 @@ import {
   deleteConversation,
   createTag,
   deleteTag,
+  updateTag,
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -63,8 +65,7 @@ function isReplyWindowOpen(iso: string | null | undefined): boolean {
 /**
  * A conversation counts as "free" when the customer has messaged within the
  * 24h window. Older webhook writes did not persist `lastIncomingMessageAt`,
- * so fall back to `lastMessageAt` when the conversation has unread messages
- * (unread ⇒ last activity was incoming).
+ * so fall back to `lastMessageAt` for legacy rows.
  */
 function isConvInFreeWindow(c: {
   lastIncomingMessageAt?: string | null;
@@ -72,8 +73,7 @@ function isConvInFreeWindow(c: {
   unreadCount: number;
 }): boolean {
   if (c.lastIncomingMessageAt) return isReplyWindowOpen(c.lastIncomingMessageAt);
-  if (c.unreadCount > 0) return isReplyWindowOpen(c.lastMessageAt);
-  return false;
+  return isReplyWindowOpen(c.lastMessageAt);
 }
 
 // Session-scoped cache so switching between conversations doesn't refetch
@@ -89,8 +89,20 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
-  const [tagDialog, setTagDialog] = useState<{ open: boolean; name: string; color: string }>({
+  const [tagDialog, setTagDialog] = useState<{
+    open: boolean;
+    mode: "create" | "edit";
+    id: string | null;
+    originalName: string | null;
+    applyPhone: string | null;
+    name: string;
+    color: string;
+  }>({
     open: false,
+    mode: "create",
+    id: null,
+    originalName: null,
+    applyPhone: null,
     name: "",
     color: "#6366f1",
   });
@@ -170,6 +182,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     try {
       const ok = await togglePin(uid, phone);
       if (!ok) toast.error("Maximum 3 conversations can be pinned");
+      else toast.success("Pin updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not pin");
     }
@@ -179,6 +192,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     if (!uid) return;
     try {
       await addTag(uid, phone, tagName);
+      toast.success("Tag added");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not add tag");
     }
@@ -188,6 +202,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     if (!uid) return;
     try {
       await removeTag(uid, phone, tagName);
+      toast.success("Tag removed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not remove tag");
     }
@@ -216,8 +231,28 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     }
   }
 
-  function handleCreateTag() {
-    setTagDialog({ open: true, name: "", color: "#6366f1" });
+  function handleCreateTag(applyPhone?: string) {
+    setTagDialog({
+      open: true,
+      mode: "create",
+      id: null,
+      originalName: null,
+      applyPhone: applyPhone ?? null,
+      name: "",
+      color: "#6366f1",
+    });
+  }
+
+  function handleEditTag(tag: { id: string; name: string; color: string }) {
+    setTagDialog({
+      open: true,
+      mode: "edit",
+      id: tag.id,
+      originalName: tag.name,
+      applyPhone: null,
+      name: tag.name,
+      color: tag.color || "#64748b",
+    });
   }
 
   async function submitCreateTag() {
@@ -228,11 +263,26 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       return;
     }
     try {
-      await createTag(uid, name, tagDialog.color || "#6366f1");
-      toast.success("Tag created");
-      setTagDialog({ open: false, name: "", color: "#6366f1" });
+      if (tagDialog.mode === "edit" && tagDialog.id) {
+        await updateTag(uid, tagDialog.id, { name, color: tagDialog.color || "#64748b" });
+        if (selectedTag === tagDialog.originalName) setSelectedTag(name);
+        toast.success("Tag updated");
+      } else {
+        await createTag(uid, name, tagDialog.color || "#6366f1");
+        if (tagDialog.applyPhone) await addTag(uid, tagDialog.applyPhone, name);
+        toast.success(tagDialog.applyPhone ? "Tag created and added" : "Tag created");
+      }
+      setTagDialog({
+        open: false,
+        mode: "create",
+        id: null,
+        originalName: null,
+        applyPhone: null,
+        name: "",
+        color: "#6366f1",
+      });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create tag");
+      toast.error(e instanceof Error ? e.message : "Could not save tag");
     }
   }
 
@@ -303,12 +353,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 setSelectedTag(selectedTag === t.name ? null : t.name);
                 setFilter("all");
               }}
-              onContextMenu={() => handleDeleteTag(t.id, t.name)}
+              onContextMenu={() => handleEditTag(t)}
             />
           ))}
           <button
             type="button"
-            onClick={handleCreateTag}
+            onClick={() => handleCreateTag()}
             title="Create tag"
             className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-dashed border-border text-muted-foreground hover:bg-muted"
           >
@@ -361,7 +411,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           onDelete={() => handleDelete(menu.phone)}
           onAddTag={(t) => handleAddTag(menu.phone, t)}
           onRemoveTag={(t) => handleRemoveTag(menu.phone, t)}
-          onCreateTag={handleCreateTag}
+          onCreateTag={() => handleCreateTag(menu.phone)}
         />
       )}
       <Dialog
@@ -370,9 +420,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Create tag</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FontAwesomeIcon icon={tagDialog.mode === "edit" ? faPen : faPlus} className="h-3.5 w-3.5" />
+              {tagDialog.mode === "edit" ? "Edit tag" : "Create tag"}
+            </DialogTitle>
             <DialogDescription>
-              Give the tag a name and pick a color. Right-click a tag chip later to delete it.
+              Give the tag a name and pick a color. Right-click a tag chip later to edit or delete it.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -407,11 +460,32 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => setTagDialog({ open: false, name: "", color: "#6366f1" })}
+              onClick={() =>
+                setTagDialog({
+                  open: false,
+                  mode: "create",
+                  id: null,
+                  originalName: null,
+                  applyPhone: null,
+                  name: "",
+                  color: "#6366f1",
+                })
+              }
             >
               Cancel
             </Button>
-            <Button onClick={submitCreateTag}>Create</Button>
+            {tagDialog.mode === "edit" && tagDialog.id && tagDialog.originalName && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  void handleDeleteTag(tagDialog.id!, tagDialog.originalName!);
+                  setTagDialog((s) => ({ ...s, open: false }));
+                }}
+              >
+                Delete
+              </Button>
+            )}
+            <Button onClick={submitCreateTag}>{tagDialog.mode === "edit" ? "Save" : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -483,15 +557,19 @@ function ContextMenu({
   onClose: () => void;
   onPin: () => void;
   onDelete: () => void;
-  onAddTag: (name: string) => void;
-  onRemoveTag: (name: string) => void;
+  onAddTag: (name: string) => void | Promise<void>;
+  onRemoveTag: (name: string) => void | Promise<void>;
   onCreateTag: () => void;
 }) {
   const active = new Set(conv?.tags ?? []);
+  const menuWidth = 240;
+  const menuHeight = 320;
+  const left = Math.min(x, Math.max(8, window.innerWidth - menuWidth - 8));
+  const top = Math.min(y, Math.max(8, window.innerHeight - menuHeight - 8));
   return (
     <div
-      className="fixed z-50 min-w-[220px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
-      style={{ top: y, left: x }}
+      className="fixed z-50 min-w-[220px] max-w-[240px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
+      style={{ top, left }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <button
@@ -516,8 +594,7 @@ function ContextMenu({
               key={t.id}
               type="button"
               onClick={() => {
-                if (active.has(t.name)) onRemoveTag(t.name);
-                else onAddTag(t.name);
+                void Promise.resolve(active.has(t.name) ? onRemoveTag(t.name) : onAddTag(t.name)).finally(onClose);
               }}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
@@ -579,7 +656,7 @@ function ConvRow({
   const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
-  const freeChat = isReplyWindowOpen(c.lastIncomingMessageAt);
+  const freeChat = isConvInFreeWindow(c);
   return (
     <li>
       <Link

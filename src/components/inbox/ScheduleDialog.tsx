@@ -39,6 +39,7 @@ export function ScheduleDialog({
   }, []);
   const [when, setWhen] = useState(defaultWhen);
   const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
 
   async function submit() {
     if (!uid) return;
@@ -65,6 +66,32 @@ export function ScheduleDialog({
       toast.error(e instanceof Error ? e.message : "Schedule failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function cancelRow(id: string) {
+    if (!uid) return;
+    setRowBusy(id);
+    try {
+      await cancelScheduledMessage(uid, id);
+      toast.success("Scheduled message cancelled");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  async function deleteRow(id: string) {
+    if (!uid) return;
+    setRowBusy(id);
+    try {
+      await deleteScheduledMessage(uid, id);
+      toast.success("Scheduled message removed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setRowBusy(null);
     }
   }
 
@@ -131,7 +158,8 @@ export function ScheduleDialog({
                     {s.status === "pending" && uid && (
                       <button
                         type="button"
-                        onClick={() => void cancelScheduledMessage(uid, s.id)}
+                        disabled={rowBusy === s.id}
+                        onClick={() => void cancelRow(s.id)}
                         title="Cancel"
                         className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted"
                       >
@@ -141,7 +169,8 @@ export function ScheduleDialog({
                     {uid && (
                       <button
                         type="button"
-                        onClick={() => void deleteScheduledMessage(uid, s.id)}
+                        disabled={rowBusy === s.id}
+                        onClick={() => void deleteRow(s.id)}
                         title="Remove"
                         className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >

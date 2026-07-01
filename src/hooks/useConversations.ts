@@ -28,6 +28,7 @@ export type Conversation = {
   tags?: string[];
   assignedAgentId?: string | null;
   assignedAgentEmail?: string | null;
+  isDeleted?: boolean;
 };
 
 export function useConversations(): { data: Conversation[] | null; error: string | null } {
@@ -70,7 +71,9 @@ export function useConversations(): { data: Conversation[] | null; error: string
             tags: listOfStrings(x.tags),
             assignedAgentId: strOrNull(x.assignedAgentId),
             assignedAgentEmail: strOrNull(x.assignedAgentEmail),
+            isDeleted: x.isDeleted === true,
           };
+          if (row.isDeleted) continue;
           const existing = grouped.get(phone);
           if (!existing) grouped.set(phone, row);
           else {
@@ -86,6 +89,7 @@ export function useConversations(): { data: Conversation[] | null; error: string
               profileImageUrl: existing.profileImageUrl ?? row.profileImageUrl,
               isPinned: existing.isPinned || row.isPinned,
               isBlocked: existing.isBlocked || row.isBlocked,
+              isDeleted: existing.isDeleted || row.isDeleted,
               lastMessageAt:
                 row.lastMessageAt &&
                 (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
@@ -132,6 +136,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
                   activeChatterEmail: merged.activeChatterEmail ?? null,
                   isBlocked: merged.isBlocked ?? false,
                   tags: merged.tags ?? [],
+                  assignedAgentId: merged.assignedAgentId ?? null,
+                  assignedAgentEmail: merged.assignedAgentEmail ?? null,
                 },
                 { merge: true },
               );
