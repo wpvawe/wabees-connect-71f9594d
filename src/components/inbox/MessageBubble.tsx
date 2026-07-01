@@ -506,11 +506,17 @@ function MessageContent({
   mine: boolean;
   actions?: MessageActions;
 }) {
+  // Track per-message media failure locally so a broken proxy URL doesn't
+  // silently show as a blank/broken bubble — we surface a download link
+  // instead. Also used for <video>.
+  const [mediaFailed, setMediaFailed] = useState(false);
   // Inline media renderer used by image/video/audio/document/sticker.
   const Media = () =>
     m.mediaUrl ? (
       <div className="mb-1 overflow-hidden rounded-md">
-        {m.mimeType?.startsWith("image/") || m.type === "sticker" || m.type === "image" ? (
+        {mediaFailed ? (
+          <MediaFallback m={m} mine={mine} />
+        ) : m.mimeType?.startsWith("image/") || m.type === "sticker" || m.type === "image" ? (
           <button
             type="button"
             onClick={() => actions?.onOpenMedia?.(m)}
@@ -525,6 +531,7 @@ function MessageContent({
                 m.type === "sticker" ? "max-h-32" : "max-h-64",
               )}
               loading="lazy"
+              onError={() => setMediaFailed(true)}
             />
           </button>
         ) : m.mimeType?.startsWith("audio/") || m.type === "audio" ? (
@@ -534,10 +541,17 @@ function MessageContent({
             url={m.mediaUrl}
             mime={m.mimeType}
             onOpen={() => actions?.onOpenMedia?.(m)}
+            onError={() => setMediaFailed(true)}
           />
         ) : (
           <DocumentCard m={m} mine={mine} />
         )}
+      </div>
+    ) : m.mediaId ? (
+      // mediaId present but no URL — extremely rare after the useMessages
+      // synthesis fix, but keep a lightweight loading state as a safety net.
+      <div className="mb-1 flex h-24 w-64 max-w-full items-center justify-center rounded-md bg-muted/40 text-xs italic opacity-70">
+        Loading media…
       </div>
     ) : null;
 
