@@ -35,12 +35,14 @@ import {
   removeTag,
   deleteConversation,
   createTag,
+  deleteTag,
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -56,6 +58,22 @@ function isReplyWindowOpen(iso: string | null | undefined): boolean {
   if (!iso) return false;
   const t = new Date(iso).getTime();
   return Date.now() - t < REPLY_WINDOW_MS;
+}
+
+/**
+ * A conversation counts as "free" when the customer has messaged within the
+ * 24h window. Older webhook writes did not persist `lastIncomingMessageAt`,
+ * so fall back to `lastMessageAt` when the conversation has unread messages
+ * (unread ⇒ last activity was incoming).
+ */
+function isConvInFreeWindow(c: {
+  lastIncomingMessageAt?: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}): boolean {
+  if (c.lastIncomingMessageAt) return isReplyWindowOpen(c.lastIncomingMessageAt);
+  if (c.unreadCount > 0) return isReplyWindowOpen(c.lastMessageAt);
+  return false;
 }
 
 // Session-scoped cache so switching between conversations doesn't refetch
@@ -117,11 +135,11 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
         rows = rows.filter((c) => c.unreadCount > 0);
         break;
       case "free":
-        rows = rows.filter((c) => isReplyWindowOpen(c.lastIncomingMessageAt));
+        rows = rows.filter((c) => isConvInFreeWindow(c));
         break;
       case "free_unread":
         rows = rows.filter(
-          (c) => c.unreadCount > 0 && isReplyWindowOpen(c.lastIncomingMessageAt),
+          (c) => c.unreadCount > 0 && isConvInFreeWindow(c),
         );
         break;
     }
@@ -183,6 +201,18 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       toast.success("Conversation deleted");
     } catch {
       toast.error("Could not delete");
+    }
+  }
+
+  async function handleDeleteTag(tagId: string, tagName: string) {
+    if (!uid) return;
+    if (!confirm(`Delete tag "${tagName}"? It will be removed from all conversations.`)) return;
+    try {
+      await deleteTag(uid, tagId);
+      if (selectedTag === tagName) setSelectedTag(null);
+      toast.success("Tag deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete tag");
     }
   }
 
@@ -273,6 +303,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 setSelectedTag(selectedTag === t.name ? null : t.name);
                 setFilter("all");
               }}
+              onContextMenu={() => handleDeleteTag(t.id, t.name)}
             />
           ))}
           <button
@@ -340,6 +371,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Create tag</DialogTitle>
+            <DialogDescription>
+              Give the tag a name and pick a color. Right-click a tag chip later to delete it.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -391,17 +425,27 @@ function FilterChip({
   color,
   active,
   onClick,
+  onContextMenu,
 }: {
   icon: import("@fortawesome/fontawesome-svg-core").IconDefinition;
   label: string;
   color: string;
   active: boolean;
   onClick: () => void;
+  onContextMenu?: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onContextMenu={
+        onContextMenu
+          ? (e) => {
+              e.preventDefault();
+              onContextMenu();
+            }
+          : undefined
+      }
       className={cn(
         "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
         active ? "text-white" : "border-border bg-background text-foreground hover:bg-muted",

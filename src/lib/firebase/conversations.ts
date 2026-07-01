@@ -11,6 +11,7 @@ import {
   getDoc,
   getDocs,
   query,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -21,10 +22,24 @@ import { phoneQueryCandidates, phoneDocId } from "@/lib/firebase/normalizers";
 
 export const MAX_PINNED = 3;
 
+/**
+ * Find the actual doc ID that holds this conversation. Older webhook writes
+ * may have used a non-canonical form (digits-only, or raw as-received) so we
+ * probe every candidate; fall back to the canonical +E.164 id.
+ */
+async function resolveConvDocId(uid: string, phone: string): Promise<string> {
+  const db = fbDb();
+  for (const c of phoneQueryCandidates(phone)) {
+    const s = await getDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => null);
+    if (s && s.exists()) return c;
+  }
+  return phoneDocId(phone);
+}
+
 /** Toggle pinned state. Returns false when max pinned limit is already reached. */
 export async function togglePin(uid: string, phone: string): Promise<boolean> {
   const db = fbDb();
-  const id = phoneDocId(phone);
+  const id = await resolveConvDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
   const snap = await getDoc(ref);
   const currentlyPinned = Boolean(snap.data()?.isPinned);
@@ -33,30 +48,30 @@ export async function togglePin(uid: string, phone: string): Promise<boolean> {
       query(collection(db, `users/${uid}/conversations`), where("isPinned", "==", true)),
     );
     if (pinned.size >= MAX_PINNED) return false;
-    await updateDoc(ref, { isPinned: true, pinOrder: Date.now() });
+    await setDoc(ref, { isPinned: true, pinOrder: Date.now() }, { merge: true });
   } else {
-    await updateDoc(ref, { isPinned: false, pinOrder: 0 });
+    await setDoc(ref, { isPinned: false, pinOrder: 0 }, { merge: true });
   }
   return true;
 }
 
 export async function addTag(uid: string, phone: string, tag: string): Promise<void> {
   const db = fbDb();
-  const id = phoneDocId(phone);
+  const id = await resolveConvDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
   const snap = await getDoc(ref);
   const existing: string[] = Array.isArray(snap.data()?.tags) ? snap.data()!.tags : [];
   if (existing.includes(tag)) return;
-  await updateDoc(ref, { tags: [...existing, tag] });
+  await setDoc(ref, { tags: [...existing, tag] }, { merge: true });
 }
 
 export async function removeTag(uid: string, phone: string, tag: string): Promise<void> {
   const db = fbDb();
-  const id = phoneDocId(phone);
+  const id = await resolveConvDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${id}`);
   const snap = await getDoc(ref);
   const existing: string[] = Array.isArray(snap.data()?.tags) ? snap.data()!.tags : [];
-  await updateDoc(ref, { tags: existing.filter((t) => t !== tag) });
+  await setDoc(ref, { tags: existing.filter((t) => t !== tag) }, { merge: true });
 }
 
 /**

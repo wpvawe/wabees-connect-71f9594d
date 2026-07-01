@@ -617,17 +617,14 @@ function MessageContent({
               href={href!}
               target="_blank"
               rel="noreferrer"
-              className="mb-2 block overflow-hidden rounded-md"
+              className="mb-2 block overflow-hidden rounded-md border border-border/40"
               aria-label="Open map"
             >
-              <img
-                src={`https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=320x160&markers=${lat},${lng},red-pushpin`}
-                alt="Map"
+              <iframe
+                title="Location map"
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.005},${lat - 0.003},${lng + 0.005},${lat + 0.003}&layer=mapnik&marker=${lat},${lng}`}
+                className="pointer-events-none h-40 w-full"
                 loading="lazy"
-                className="h-40 w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
               />
             </a>
           )}
