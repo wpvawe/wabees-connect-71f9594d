@@ -29,7 +29,9 @@ import { Route as AuthenticatedBotsRouteImport } from './routes/_authenticated/b
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiBotRouteImport } from './routes/_authenticated/ai-bot'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
+import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates.index'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
+import { Route as AuthenticatedTemplatesNewRouteImport } from './routes/_authenticated/templates.new'
 import { Route as AuthenticatedInboxPhoneRouteImport } from './routes/_authenticated/inbox.$phone'
 import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authenticated/campaigns.new'
 import { Route as AuthenticatedCampaignsIdRouteImport } from './routes/_authenticated/campaigns.$id'
@@ -135,11 +137,23 @@ const AuthenticatedAgentsRoute = AuthenticatedAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTemplatesIndexRoute =
+  AuthenticatedTemplatesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedTemplatesRoute,
+  } as any)
 const AuthenticatedCampaignsIndexRoute =
   AuthenticatedCampaignsIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedCampaignsRoute,
+  } as any)
+const AuthenticatedTemplatesNewRoute =
+  AuthenticatedTemplatesNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedTemplatesRoute,
   } as any)
 const AuthenticatedInboxPhoneRoute = AuthenticatedInboxPhoneRouteImport.update({
   id: '/$phone',
@@ -176,13 +190,15 @@ export interface FileRoutesByFullPath {
   '/plans': typeof AuthenticatedPlansRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/support': typeof AuthenticatedSupportRoute
-  '/templates': typeof AuthenticatedTemplatesRoute
+  '/templates': typeof AuthenticatedTemplatesRouteWithChildren
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
+  '/templates/': typeof AuthenticatedTemplatesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -200,13 +216,14 @@ export interface FileRoutesByTo {
   '/plans': typeof AuthenticatedPlansRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/support': typeof AuthenticatedSupportRoute
-  '/templates': typeof AuthenticatedTemplatesRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/campaigns': typeof AuthenticatedCampaignsIndexRoute
+  '/templates': typeof AuthenticatedTemplatesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -227,13 +244,15 @@ export interface FileRoutesById {
   '/_authenticated/plans': typeof AuthenticatedPlansRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/support': typeof AuthenticatedSupportRoute
-  '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
+  '/_authenticated/templates': typeof AuthenticatedTemplatesRouteWithChildren
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/_authenticated/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/_authenticated/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
+  '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -260,7 +279,9 @@ export interface FileRouteTypes {
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/inbox/$phone'
+    | '/templates/new'
     | '/campaigns/'
+    | '/templates/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -278,13 +299,14 @@ export interface FileRouteTypes {
     | '/plans'
     | '/settings'
     | '/support'
-    | '/templates'
     | '/auth/forgot'
     | '/auth/reset-password'
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/inbox/$phone'
+    | '/templates/new'
     | '/campaigns'
+    | '/templates'
   id:
     | '__root__'
     | '/'
@@ -310,7 +332,9 @@ export interface FileRouteTypes {
     | '/_authenticated/campaigns/$id'
     | '/_authenticated/campaigns/new'
     | '/_authenticated/inbox/$phone'
+    | '/_authenticated/templates/new'
     | '/_authenticated/campaigns/'
+    | '/_authenticated/templates/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -461,12 +485,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/templates/': {
+      id: '/_authenticated/templates/'
+      path: '/'
+      fullPath: '/templates/'
+      preLoaderRoute: typeof AuthenticatedTemplatesIndexRouteImport
+      parentRoute: typeof AuthenticatedTemplatesRoute
+    }
     '/_authenticated/campaigns/': {
       id: '/_authenticated/campaigns/'
       path: '/'
       fullPath: '/campaigns/'
       preLoaderRoute: typeof AuthenticatedCampaignsIndexRouteImport
       parentRoute: typeof AuthenticatedCampaignsRoute
+    }
+    '/_authenticated/templates/new': {
+      id: '/_authenticated/templates/new'
+      path: '/new'
+      fullPath: '/templates/new'
+      preLoaderRoute: typeof AuthenticatedTemplatesNewRouteImport
+      parentRoute: typeof AuthenticatedTemplatesRoute
     }
     '/_authenticated/inbox/$phone': {
       id: '/_authenticated/inbox/$phone'
@@ -521,6 +559,22 @@ const AuthenticatedInboxRouteChildren: AuthenticatedInboxRouteChildren = {
 const AuthenticatedInboxRouteWithChildren =
   AuthenticatedInboxRoute._addFileChildren(AuthenticatedInboxRouteChildren)
 
+interface AuthenticatedTemplatesRouteChildren {
+  AuthenticatedTemplatesNewRoute: typeof AuthenticatedTemplatesNewRoute
+  AuthenticatedTemplatesIndexRoute: typeof AuthenticatedTemplatesIndexRoute
+}
+
+const AuthenticatedTemplatesRouteChildren: AuthenticatedTemplatesRouteChildren =
+  {
+    AuthenticatedTemplatesNewRoute: AuthenticatedTemplatesNewRoute,
+    AuthenticatedTemplatesIndexRoute: AuthenticatedTemplatesIndexRoute,
+  }
+
+const AuthenticatedTemplatesRouteWithChildren =
+  AuthenticatedTemplatesRoute._addFileChildren(
+    AuthenticatedTemplatesRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAgentsRoute: typeof AuthenticatedAgentsRoute
   AuthenticatedAiBotRoute: typeof AuthenticatedAiBotRoute
@@ -536,7 +590,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlansRoute: typeof AuthenticatedPlansRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSupportRoute: typeof AuthenticatedSupportRoute
-  AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
+  AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRouteWithChildren
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -554,7 +608,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPlansRoute: AuthenticatedPlansRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSupportRoute: AuthenticatedSupportRoute,
-  AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
+  AuthenticatedTemplatesRoute: AuthenticatedTemplatesRouteWithChildren,
 }
 
 const AuthenticatedRouteRouteWithChildren =
