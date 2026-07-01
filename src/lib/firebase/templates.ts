@@ -3,10 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
-  query,
   serverTimestamp,
-  where,
   writeBatch,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
