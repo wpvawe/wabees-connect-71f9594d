@@ -471,6 +471,26 @@ export function Composer({
           <textarea
             ref={textareaRef}
             value={text}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (const it of Array.from(items)) {
+                if (it.kind === "file") {
+                  const f = it.getAsFile();
+                  if (!f) continue;
+                  e.preventDefault();
+                  const kind: "image" | "video" | "document" = f.type.startsWith(
+                    "image/",
+                  )
+                    ? "image"
+                    : f.type.startsWith("video/")
+                      ? "video"
+                      : "document";
+                  void sendFile(f, kind);
+                  return;
+                }
+              }
+            }}
             onChange={(e) => {
               setText(e.target.value);
               // Best-effort outbound typing indicator. Requires a known
