@@ -17,6 +17,8 @@ export type Profile = {
   totalCampaigns: number;
 };
 
+export type ProfileWithFlags = Profile & { aiBotEnabled: boolean };
+
 export function useProfile(scope: "self" | "effective" = "self"): {
   data: Profile | null;
   loading: boolean;
