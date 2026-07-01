@@ -1052,7 +1052,34 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             break;
 
         case 'contacts':
-            $messageBody = '📇 Contact shared';
+            $contactsList = $message['contacts'] ?? [];
+            $firstName = '';
+            if (!empty($contactsList)) {
+                $firstName = $contactsList[0]['name']['formatted_name']
+                    ?? $contactsList[0]['formatted_name']
+                    ?? '';
+            }
+            $count = count($contactsList);
+            if ($count > 1) {
+                $messageBody = "📇 " . $firstName . " and " . ($count - 1) . " more";
+            } elseif ($firstName) {
+                $messageBody = "📇 " . $firstName;
+            } else {
+                $messageBody = '📇 Contact';
+            }
+            break;
+
+        case 'poll':
+        case 'poll_response':
+            $pollName = $message['poll']['name']
+                ?? $message['interactive']['poll']['name']
+                ?? 'Poll';
+            $messageBody = "📊 " . $pollName;
+            break;
+
+        case 'event':
+            $eventName = $message['event']['name'] ?? 'Event';
+            $messageBody = "📅 " . $eventName;
             break;
 
         case 'button':
@@ -1201,6 +1228,27 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         if ($type === 'document' && !empty($message[$type]['filename'])) {
             $firestoreMsg['fileName'] = $message[$type]['filename'];
         }
+    }
+    // Persist structured payloads so the bubble can render rich cards
+    // (name/phone/email for contacts, coords/name/address for location, etc.)
+    if ($type === 'contacts' && !empty($message['contacts'])) {
+        $firestoreMsg['contacts'] = $message['contacts'];
+    }
+    if ($type === 'location') {
+        $loc = $message['location'] ?? [];
+        $firestoreMsg['location'] = [
+            'latitude'  => isset($loc['latitude'])  ? (float) $loc['latitude']  : null,
+            'longitude' => isset($loc['longitude']) ? (float) $loc['longitude'] : null,
+            'name'      => $loc['name']    ?? '',
+            'address'   => $loc['address'] ?? '',
+            'url'       => $loc['url']     ?? '',
+        ];
+        $firestoreMsg['latitude']  = isset($loc['latitude'])  ? (float) $loc['latitude']  : null;
+        $firestoreMsg['longitude'] = isset($loc['longitude']) ? (float) $loc['longitude'] : null;
+    }
+    if ($type === 'interactive' && !empty($interactiveType)) {
+        $firestoreMsg['interactiveType'] = $interactiveType;
+        if (!empty($ctaUrl)) $firestoreMsg['ctaUrl'] = $ctaUrl;
     }
     if ($buttonReplyId) {
         $firestoreMsg['buttonReplyId'] = $buttonReplyId;
