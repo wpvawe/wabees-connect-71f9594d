@@ -76,6 +76,7 @@ export function TemplateComposer() {
 
   const [body, setBody] = useState("");
   const [bodySamples, setBodySamples] = useState<Record<string, string>>({});
+  const [namedVar, setNamedVar] = useState("");
 
   const [footer, setFooter] = useState("");
 
@@ -121,6 +122,20 @@ export function TemplateComposer() {
 
   function insertVarInBody() {
     setBody((b) => `${b}${nextVarToken(b)}`);
+  }
+
+  function insertNamedVarInBody() {
+    const raw = namedVar.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    if (!raw) {
+      toast.error("Enter a variable name (letters, numbers, underscores).");
+      return;
+    }
+    if (/^\d/.test(raw)) {
+      toast.error("Named variables must start with a letter.");
+      return;
+    }
+    setBody((b) => `${b}{{${raw}}}`);
+    setNamedVar("");
   }
 
   function validate(): string | null {
@@ -369,10 +384,28 @@ export function TemplateComposer() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Message (≤ 1024 chars)</label>
-                <WbButton size="sm" variant="ghost" type="button" onClick={insertVarInBody}>
-                  <FontAwesomeIcon icon={faWandMagicSparkles} className="h-3 w-3" />
-                  Add variable
-                </WbButton>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    value={namedVar}
+                    onChange={(e) => setNamedVar(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        insertNamedVarInBody();
+                      }
+                    }}
+                    placeholder="name"
+                    className="h-8 w-24 rounded-md border border-input bg-card px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <WbButton size="sm" variant="ghost" type="button" onClick={insertNamedVarInBody}>
+                    <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
+                    Named
+                  </WbButton>
+                  <WbButton size="sm" variant="ghost" type="button" onClick={insertVarInBody}>
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="h-3 w-3" />
+                    Numbered
+                  </WbButton>
+                </div>
               </div>
               <textarea
                 value={body}
