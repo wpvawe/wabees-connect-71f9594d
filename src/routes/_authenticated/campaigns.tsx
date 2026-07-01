@@ -4,7 +4,7 @@ import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbFirebaseGate } from "@/components/wb/WbFirebaseGate";
 import { WbButton } from "@/components/wb/WbButton";
-import { CampaignTable } from "@/components/campaigns/CampaignTable";
+import { CampaignsWorkspace } from "@/components/campaigns/CampaignsWorkspace";
 
 export const Route = createFileRoute("/_authenticated/campaigns")({
   head: () => ({ meta: [{ title: "Campaigns — Wabees" }] }),
@@ -28,7 +28,7 @@ function CampaignsPage() {
       />
       <WbFirebaseGate>
         <div className="px-4 py-6 sm:px-6">
-          <CampaignTable />
+          <CampaignsWorkspace />
         </div>
       </WbFirebaseGate>
     </>

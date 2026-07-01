@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   increment,
   serverTimestamp,
   setDoc,
@@ -40,6 +41,56 @@ export async function deleteCampaign(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
 }
 
+export async function pauseCampaign(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), { status: "paused" });
+}
+
+export async function resumeCampaign(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), { status: "running" });
+}
+
+export async function cancelCampaign(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), {
+    status: "completed",
+    completedAt: serverTimestamp(),
+  });
+}
+
+export async function restartCampaign(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), {
+    status: "draft",
+    sentCount: 0,
+    failedCount: 0,
+    deliveredCount: 0,
+    readCount: 0,
+    startedAt: null,
+    completedAt: null,
+  });
+}
+
+export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
+  const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
+  if (!src.exists()) throw new Error("Campaign not found");
+  const data = src.data() as Record<string, unknown>;
+  const ref = await addDoc(collection(fbDb(), "users", uid, "campaigns"), {
+    name: `${(data.name as string) ?? "Untitled"} (copy)`,
+    description: (data.description as string) ?? "",
+    status: "draft",
+    messageType: (data.messageType as string) ?? "text",
+    messageBody: (data.messageBody as string) ?? "",
+    audiencePhones: (data.audiencePhones as string[]) ?? [],
+    audienceTags: [],
+    audienceGroups: [],
+    totalRecipients: ((data.audiencePhones as string[]) ?? []).length,
+    sentCount: 0,
+    deliveredCount: 0,
+    readCount: 0,
+    failedCount: 0,
+    createdAt: serverTimestamp(),
+  });
+  return { id: ref.id };
+}
+
 /**
  * Send to every audience phone via the PHP backend, writing a log row per
  * attempt (field name `timestamp` to match the Flutter app's
@@ -62,6 +113,25 @@ export async function runCampaign(
   let sent = 0;
   let failed = 0;
   for (let i = 0; i < audience.length; i++) {
+    // Poll Firestore status every 5 messages to support pause/cancel from UI.
+    if (i % 5 === 0) {
+      const snap = await getDoc(campaignRef);
+      const status = (snap.data()?.status as string) ?? "running";
+      if (status === "paused") {
+        // Wait until resumed or cancelled.
+        while (true) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const s2 = await getDoc(campaignRef);
+          const st = (s2.data()?.status as string) ?? "running";
+          if (st === "running") break;
+          if (st === "completed" || st === "failed" || st === "draft") {
+            return { sent, failed };
+          }
+        }
+      } else if (status === "completed" || status === "failed" || status === "draft") {
+        return { sent, failed };
+      }
+    }
     const phone = audience[i];
     const to = phone.replace(/[^0-9]/g, "");
     let res;
