@@ -56,6 +56,8 @@ export function CampaignDetail({ id }: { id: string }) {
           templateName: data.templateName ?? null,
           templateLanguage: data.templateLanguage ?? null,
           templateVariables: data.templateVariables ?? [],
+          templateHeaderFormat: data.templateHeaderFormat ?? null,
+          templateHeaderMediaUrl: data.templateHeaderMediaUrl ?? null,
           variableSource: data.variableSource ?? "static",
           staticVariableValues: data.staticVariableValues ?? {},
           contactFieldMap: data.contactFieldMap ?? {},

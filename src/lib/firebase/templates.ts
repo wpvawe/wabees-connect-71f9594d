@@ -31,20 +31,33 @@ type MetaTemplate = {
 function extractParts(components: MetaTemplate["components"]): {
   body: string;
   header: string | null;
+  headerFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+  headerMediaUrl: string | null;
   footer: string | null;
   buttons: Array<Record<string, unknown>>;
 } {
   let body = "";
   let header: string | null = null;
+  let headerFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null = null;
+  let headerMediaUrl: string | null = null;
   let footer: string | null = null;
   let buttons: Array<Record<string, unknown>> = [];
   for (const c of components ?? []) {
     if (c.type === "BODY" && c.text) body = c.text;
-    else if (c.type === "HEADER" && c.format === "TEXT" && c.text) header = c.text;
-    else if (c.type === "FOOTER" && c.text) footer = c.text;
+    else if (c.type === "HEADER") {
+      const fmt = (c.format ?? "TEXT").toUpperCase();
+      if (fmt === "TEXT") {
+        headerFormat = "TEXT";
+        header = c.text ?? null;
+      } else if (fmt === "IMAGE" || fmt === "VIDEO" || fmt === "DOCUMENT") {
+        headerFormat = fmt;
+        const ex = (c as unknown as { example?: { header_handle?: string[] } }).example;
+        headerMediaUrl = Array.isArray(ex?.header_handle) ? (ex!.header_handle![0] ?? null) : null;
+      }
+    } else if (c.type === "FOOTER" && c.text) footer = c.text;
     else if (c.type === "BUTTONS" && Array.isArray(c.buttons)) buttons = c.buttons;
   }
-  return { body, header, footer, buttons };
+  return { body, header, headerFormat, headerMediaUrl, footer, buttons };
 }
 
 function extractVariables(body: string): string[] {
@@ -90,7 +103,7 @@ export async function syncTemplatesFromMeta(
   const batch = writeBatch(db);
   for (const t of list) {
     if (!t.name) continue;
-    const { body, header, footer, buttons } = extractParts(t.components);
+    const { body, header, headerFormat, headerMediaUrl, footer, buttons } = extractParts(t.components);
     const qualityScore =
       typeof t.quality_score === "string" ? t.quality_score : t.quality_score?.score;
     const payload = {
@@ -100,9 +113,12 @@ export async function syncTemplatesFromMeta(
       languageCode: t.language ?? "en_US",
       body,
       header,
+      headerFormat,
+      headerMediaUrl,
       footer,
       buttons,
       variables: extractVariables(body),
+      headerVariables: extractVariables(header ?? ""),
       variableSamples: {},
       variableTypes: {},
       status: (t.status ?? "PENDING").toUpperCase(),

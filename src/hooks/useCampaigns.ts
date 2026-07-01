@@ -15,6 +15,11 @@ export type Campaign = {
   templateLanguage?: string | null;
   selectedTemplateId?: string | null;
   templateVariables?: string[];
+  templateHeader?: string | null;
+  templateHeaderFormat?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+  templateHeaderMediaUrl?: string | null;
+  templateFooter?: string | null;
+  templateButtons?: Array<Record<string, unknown>>;
   variableSource?: "static" | "contact";
   staticVariableValues?: Record<string, string>;
   contactFieldMap?: Record<string, string>;
@@ -56,6 +61,18 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
               templateLanguage: (x.templateLanguage as string | null) ?? null,
               selectedTemplateId: (x.selectedTemplateId as string | null) ?? null,
               templateVariables: (x.templateVariables as string[] | undefined) ?? [],
+              templateHeader: (x.templateHeader as string | null) ?? null,
+              templateHeaderFormat:
+                (x.templateHeaderFormat as
+                  | "TEXT"
+                  | "IMAGE"
+                  | "VIDEO"
+                  | "DOCUMENT"
+                  | null) ?? null,
+              templateHeaderMediaUrl: (x.templateHeaderMediaUrl as string | null) ?? null,
+              templateFooter: (x.templateFooter as string | null) ?? null,
+              templateButtons:
+                (x.templateButtons as Array<Record<string, unknown>> | undefined) ?? [],
               variableSource: (((x.variableSource as string) ?? "static") === "contact"
                 ? "contact"
                 : "static") as "static" | "contact",

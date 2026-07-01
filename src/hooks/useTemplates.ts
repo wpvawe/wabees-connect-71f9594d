@@ -11,6 +11,9 @@ export type Template = {
   languageCode: string;
   body: string;
   header?: string | null;
+  headerFormat?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+  headerMediaUrl?: string | null;
+  headerVariables?: string[];
   footer?: string | null;
   buttons: Array<Record<string, unknown>>;
   status: string;
@@ -44,6 +47,15 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
               languageCode: (x.languageCode as string) ?? "en_US",
               body: (x.body as string) ?? "",
               header: (x.header as string | null) ?? null,
+              headerFormat:
+                ((x.headerFormat as string | null) ?? (x.header ? "TEXT" : null)) as
+                  | "TEXT"
+                  | "IMAGE"
+                  | "VIDEO"
+                  | "DOCUMENT"
+                  | null,
+              headerMediaUrl: (x.headerMediaUrl as string | null) ?? null,
+              headerVariables: (x.headerVariables as string[] | undefined) ?? [],
               footer: (x.footer as string | null) ?? null,
               buttons: Array.isArray(x.buttons)
                 ? (x.buttons as Array<Record<string, unknown>>)
