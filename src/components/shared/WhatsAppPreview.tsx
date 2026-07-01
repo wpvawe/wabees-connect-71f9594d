@@ -5,11 +5,17 @@ import {
   faCheckDouble,
   faReply,
   faArrowUpRightFromSquare,
+  faImage,
+  faFileLines,
+  faVideo,
 } from "@fortawesome/free-solid-svg-icons";
+
+export type HeaderFormat = "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
 
 export function WhatsAppPreview({
   header,
   headerFormat,
+  headerMediaUrl,
   body,
   footer,
   buttons,
@@ -17,7 +23,8 @@ export function WhatsAppPreview({
   minHeight = 360,
 }: {
   header: string | null;
-  headerFormat: "TEXT" | null;
+  headerFormat: HeaderFormat;
+  headerMediaUrl?: string | null;
   body: string;
   footer: string | null;
   buttons: Array<Record<string, unknown>>;
@@ -50,8 +57,17 @@ export function WhatsAppPreview({
         }}
       >
         <div className="ml-auto max-w-[85%] rounded-lg rounded-tr-sm bg-[#dcf8c6] p-2 shadow-sm">
-          {header && headerFormat === "TEXT" && (
+          {headerFormat === "TEXT" && header && (
             <p className="mb-1 text-[13px] font-semibold text-[#111b21]">{header}</p>
+          )}
+          {headerFormat === "IMAGE" && (
+            <MediaHeaderBox icon={faImage} label="Image" url={headerMediaUrl} />
+          )}
+          {headerFormat === "VIDEO" && (
+            <MediaHeaderBox icon={faVideo} label="Video" url={headerMediaUrl} />
+          )}
+          {headerFormat === "DOCUMENT" && (
+            <MediaHeaderBox icon={faFileLines} label="Document" url={headerMediaUrl} />
           )}
           <p className="whitespace-pre-wrap text-[13px] leading-snug text-[#111b21]">
             {formatWhatsApp(body || "Message preview will appear here…")}
@@ -88,6 +104,36 @@ export function WhatsAppPreview({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function MediaHeaderBox({
+  icon,
+  label,
+  url,
+}: {
+  icon: typeof faImage;
+  label: string;
+  url?: string | null;
+}) {
+  if (label === "Image" && url) {
+    return (
+      <img
+        src={url}
+        alt="header"
+        className="mb-2 h-32 w-full rounded-md object-cover"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
+      />
+    );
+  }
+  return (
+    <div className="mb-2 flex h-24 w-full items-center justify-center gap-2 rounded-md bg-black/10 text-[11px] text-[#667781]">
+      <FontAwesomeIcon icon={icon} className="h-4 w-4" />
+      {label}
+      {url ? " attached" : " placeholder"}
     </div>
   );
 }

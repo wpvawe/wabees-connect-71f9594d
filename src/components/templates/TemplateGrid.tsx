@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
@@ -10,6 +11,8 @@ import {
   faCircleXmark,
   faTrash,
   faPaperPlane,
+  faPlus,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
@@ -23,13 +26,6 @@ import { fbDb } from "@/integrations/firebase/client";
 import { extractWamid, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { WbInput } from "@/components/wb/WbInput";
 import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 import { cn } from "@/lib/utils";
@@ -40,8 +36,11 @@ export function TemplateGrid() {
   const selfUid = useFirebaseUid();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [sendingTpl, setSendingTpl] = useState<Template | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showSend, setShowSend] = useState(false);
+  const [vars, setVars] = useState<Record<string, string>>({});
+  const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
 
   async function onSync() {
     if (!uid || !selfUid) return;
@@ -76,6 +75,28 @@ export function TemplateGrid() {
     [data, selectedId],
   );
 
+  // Reset the send composer when template changes.
+  useEffect(() => {
+    setVars({});
+    setPhone("");
+    setShowSend(false);
+  }, [selectedId]);
+
+  // Live-render body/header using the variable inputs so the preview updates
+  // as the user types (mirroring WhatsApp Meta's realtime behavior).
+  const previewBody = useMemo(() => {
+    if (!selected) return "";
+    return selected.body.replace(/\{\{\s*([\w\d]+)\s*\}\}/g, (_, k) =>
+      vars[k] && vars[k].trim() ? vars[k] : `{{${k}}}`,
+    );
+  }, [selected, vars]);
+  const previewHeader = useMemo(() => {
+    if (!selected?.header) return null;
+    return selected.header.replace(/\{\{\s*([\w\d]+)\s*\}\}/g, (_, k) =>
+      vars[k] && vars[k].trim() ? vars[k] : `{{${k}}}`,
+    );
+  }, [selected, vars]);
+
   async function removeTemplate(t: Template) {
     if (!uid) return;
     if (
@@ -89,6 +110,91 @@ export function TemplateGrid() {
       toast.success("Template removed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+  async function sendTest() {
+    if (!selected || !selfUid) return;
+    if (!phone.trim()) {
+      toast.error("Enter a recipient phone number");
+      return;
+    }
+    setSending(true);
+    try {
+      const creds = await loadWaCredentials(selfUid);
+      if (!creds) throw new Error("Connect WhatsApp first");
+      const components: Array<Record<string, unknown>> =
+        selected.variables.length > 0
+          ? [
+              {
+                type: "body",
+                parameters: selected.variables.map((v) => ({
+                  type: "text",
+                  text: vars[v] ?? "",
+                })),
+              },
+            ]
+          : [];
+      const res = await sendTemplateMessage({
+        phone_number_id: creds.phone_number_id,
+        access_token: creds.access_token,
+        to: whatsappRecipientId(phone),
+        template_name: selected.name,
+        language_code: selected.languageCode || "en_US",
+        components,
+      });
+      if (!res.success) throw new Error(res.message ?? "Send failed");
+      if (uid) {
+        try {
+          const db = fbDb();
+          const normalized = normalizePhone(phone);
+          const convId = phoneDocId(phone);
+          let knownName = normalized;
+          try {
+            const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
+            const existing = snap.data()?.contactName;
+            if (typeof existing === "string" && existing && existing !== normalized) {
+              knownName = existing;
+            }
+          } catch {
+            /* fall back */
+          }
+          const wamid = extractWamid(res.raw);
+          await addDoc(collection(db, "users", uid, "messages"), {
+            contactPhone: normalized,
+            contactName: knownName,
+            type: "template",
+            direction: "outgoing",
+            status: "sent",
+            body: previewBody,
+            templateName: selected.name,
+            templateLanguage: selected.languageCode || "en_US",
+            whatsappMessageId: wamid,
+            sentVia: "template",
+            createdAt: serverTimestamp(),
+          });
+          await setDoc(
+            doc(db, "users", uid, "conversations", convId),
+            {
+              contactPhone: normalized,
+              contactName: knownName,
+              lastMessage: previewBody.slice(0, 100),
+              lastMessageType: "template",
+              lastMessageAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        } catch {
+          /* non-fatal */
+        }
+      }
+      toast.success("Template sent");
+      setShowSend(false);
+      setPhone("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -113,6 +219,12 @@ export function TemplateGrid() {
             <FontAwesomeIcon icon={faRotate} className="h-3.5 w-3.5" />
             Sync from Meta
           </WbButton>
+          <Link to="/templates/new">
+            <WbButton>
+              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
+              New template
+            </WbButton>
+          </Link>
         </div>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
@@ -146,9 +258,9 @@ export function TemplateGrid() {
         {selected ? (
           <>
             <WhatsAppPreview
-              header={selected.header || null}
+              header={previewHeader}
               headerFormat={selected.header ? "TEXT" : null}
-              body={selected.body}
+              body={previewBody}
               footer={selected.footer || null}
               buttons={selected.buttons ?? []}
               title={selected.name}
@@ -180,9 +292,9 @@ export function TemplateGrid() {
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 {selected.status.toUpperCase() === "APPROVED" && (
-                  <WbButton size="sm" onClick={() => setSendingTpl(selected)}>
-                    <FontAwesomeIcon icon={faPaperPlane} className="h-3 w-3" />
-                    Send test
+                  <WbButton size="sm" onClick={() => setShowSend((s) => !s)}>
+                    <FontAwesomeIcon icon={showSend ? faXmark : faPaperPlane} className="h-3 w-3" />
+                    {showSend ? "Close send" : "Send test"}
                   </WbButton>
                 )}
                 <WbButton
@@ -195,6 +307,46 @@ export function TemplateGrid() {
                 </WbButton>
               </div>
             </div>
+
+            {showSend && selected.status.toUpperCase() === "APPROVED" && (
+              <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-soft">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  Send test message
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Fill values below — the preview above updates in real time, then send.
+                </p>
+                <div className="mt-3 space-y-2">
+                  <WbInput
+                    label="Recipient phone (with country code)"
+                    placeholder="+92300…"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  {selected.variables.map((v) => (
+                    <WbInput
+                      key={v}
+                      label={`{{${v}}}`}
+                      value={vars[v] ?? ""}
+                      onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))}
+                    />
+                  ))}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <WbButton
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setShowSend(false)}
+                    >
+                      Cancel
+                    </WbButton>
+                    <WbButton size="sm" onClick={() => void sendTest()} loading={sending}>
+                      <FontAwesomeIcon icon={faPaperPlane} className="h-3 w-3" />
+                      Send
+                    </WbButton>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
@@ -202,13 +354,6 @@ export function TemplateGrid() {
           </div>
         )}
       </div>
-
-      <SendTemplateDialog
-        template={sendingTpl}
-        onClose={() => setSendingTpl(null)}
-        credentialUid={selfUid}
-        ownerUid={uid}
-      />
     </div>
   );
 }
@@ -281,154 +426,5 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function SendTemplateDialog({
-  template,
-  onClose,
-  credentialUid,
-  ownerUid,
-}: {
-  template: Template | null;
-  onClose: () => void;
-  credentialUid: string | null;
-  ownerUid: string | null;
-}) {
-  const [phone, setPhone] = useState("");
-  const [vars, setVars] = useState<Record<string, string>>({});
-  const [sending, setSending] = useState(false);
-
-  function reset() {
-    setPhone("");
-    setVars({});
-    onClose();
-  }
-
-  async function send() {
-    if (!template || !credentialUid) return;
-    if (!phone.trim()) {
-      toast.error("Enter recipient phone number");
-      return;
-    }
-    setSending(true);
-    try {
-      const creds = await loadWaCredentials(credentialUid);
-      if (!creds) throw new Error("Connect WhatsApp first");
-      const components: Array<Record<string, unknown>> =
-        template.variables.length > 0
-          ? [
-              {
-                type: "body",
-                parameters: template.variables.map((v) => ({
-                  type: "text",
-                  text: vars[v] ?? "",
-                })),
-              },
-            ]
-          : [];
-      const res = await sendTemplateMessage({
-        phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
-        to: whatsappRecipientId(phone),
-        template_name: template.name,
-        language_code: template.languageCode || "en_US",
-        components,
-      });
-      if (!res.success) throw new Error(res.message ?? "Send failed");
-      // Mirror the sent template into the conversation so it shows up
-      // immediately in /inbox/{phone} and the conversation list bumps to top.
-      if (ownerUid) {
-        try {
-          const db = fbDb();
-          const normalized = normalizePhone(phone);
-          const convId = phoneDocId(phone);
-          // Preserve known contactName from the existing conversation doc.
-          let knownName = normalized;
-          try {
-            const snap = await getDoc(doc(db, "users", ownerUid, "conversations", convId));
-            const existing = snap.data()?.contactName;
-            if (typeof existing === "string" && existing && existing !== normalized) {
-              knownName = existing;
-            }
-          } catch {
-            /* fall back to phone */
-          }
-          // Render body with substituted variables for the conversation preview.
-          const rendered = template.variables.reduce<string>(
-            (acc, v) => acc.replaceAll(`{{${v}}}`, vars[v] ?? ""),
-            template.body || `[Template: ${template.name}]`,
-          );
-          const wamid = extractWamid(res.raw);
-          await addDoc(collection(db, "users", ownerUid, "messages"), {
-            contactPhone: normalized,
-            contactName: knownName,
-            type: "template",
-            direction: "outgoing",
-            status: "sent",
-            body: rendered,
-            templateName: template.name,
-            templateLanguage: template.languageCode || "en_US",
-            whatsappMessageId: wamid,
-            sentVia: "template",
-            createdAt: serverTimestamp(),
-          });
-          await setDoc(
-            doc(db, "users", ownerUid, "conversations", convId),
-            {
-              contactPhone: normalized,
-              contactName: knownName,
-              lastMessage: rendered.slice(0, 100),
-              lastMessageType: "template",
-              lastMessageAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
-        } catch {
-          /* non-fatal — Meta already accepted the template */
-        }
-      }
-      toast.success("Template sent");
-      reset();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Send failed");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <Dialog open={!!template} onOpenChange={(open) => !open && reset()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Send template</DialogTitle>
-          <DialogDescription>{template?.name}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <WbInput
-            label="Recipient phone (with country code)"
-            placeholder="+92300…"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-          {template?.variables.map((v) => (
-            <WbInput
-              key={v}
-              label={`{{${v}}}`}
-              value={vars[v] ?? ""}
-              onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))}
-            />
-          ))}
-          <div className="flex justify-end gap-2 pt-2">
-            <WbButton variant="secondary" onClick={reset}>
-              Cancel
-            </WbButton>
-            <WbButton onClick={send} loading={sending}>
-              Send
-            </WbButton>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

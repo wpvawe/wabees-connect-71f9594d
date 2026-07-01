@@ -324,6 +324,33 @@ export function fetchMetaTemplates(args: { business_account_id: string; access_t
   return postJson("get-templates.php", args);
 }
 
+/**
+ * Create a new WhatsApp message template on Meta. Mirrors
+ * `backend/api/create-template.php` on wabees.live: the PHP proxy forwards
+ * the payload to `POST /{waba-id}/message_templates` and returns Meta's
+ * response (either an `id`+`status` on success or `error.message` on failure).
+ *
+ * Components follow the Meta shape:
+ *   [{ type: "HEADER", format: "TEXT"|"IMAGE"|..., text?, example? },
+ *    { type: "BODY",   text, example? },
+ *    { type: "FOOTER", text },
+ *    { type: "BUTTONS", buttons: [...] }]
+ */
+export function createMetaTemplate(args: {
+  business_account_id: string;
+  access_token: string;
+  name: string;
+  category: "MARKETING" | "UTILITY" | "AUTHENTICATION";
+  language: string;
+  components: Array<Record<string, unknown>>;
+  allow_category_change?: boolean;
+}) {
+  return postJson<{ id?: string; status?: string; category?: string }>(
+    "create-template.php",
+    args,
+  );
+}
+
 export type MessageLink = {
   id: string;
   code: string;
