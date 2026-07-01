@@ -13,12 +13,18 @@ import {
   faCloudArrowUp,
   faMagnifyingGlass,
   faXmark,
+  faNoteSticky,
+  faUserPlus,
+  faClock,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
 import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightbox";
 import { ForwardDialog } from "@/components/inbox/ForwardDialog";
+import { NotesPanel } from "@/components/inbox/NotesPanel";
+import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
+import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -63,6 +69,9 @@ function Thread({ phone }: { phone: string }) {
   const [newSinceScroll, setNewSinceScroll] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
