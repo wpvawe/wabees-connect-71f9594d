@@ -182,6 +182,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     try {
       const ok = await togglePin(uid, phone);
       if (!ok) toast.error("Maximum 3 conversations can be pinned");
+      else toast.success("Pin updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not pin");
     }
@@ -191,6 +192,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     if (!uid) return;
     try {
       await addTag(uid, phone, tagName);
+      toast.success("Tag added");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not add tag");
     }
@@ -200,6 +202,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     if (!uid) return;
     try {
       await removeTag(uid, phone, tagName);
+      toast.success("Tag removed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not remove tag");
     }
@@ -554,8 +557,8 @@ function ContextMenu({
   onClose: () => void;
   onPin: () => void;
   onDelete: () => void;
-  onAddTag: (name: string) => void;
-  onRemoveTag: (name: string) => void;
+  onAddTag: (name: string) => void | Promise<void>;
+  onRemoveTag: (name: string) => void | Promise<void>;
   onCreateTag: () => void;
 }) {
   const active = new Set(conv?.tags ?? []);
@@ -587,8 +590,7 @@ function ContextMenu({
               key={t.id}
               type="button"
               onClick={() => {
-                if (active.has(t.name)) onRemoveTag(t.name);
-                else onAddTag(t.name);
+                void Promise.resolve(active.has(t.name) ? onRemoveTag(t.name) : onAddTag(t.name)).finally(onClose);
               }}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
