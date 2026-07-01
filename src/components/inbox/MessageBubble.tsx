@@ -31,6 +31,7 @@ import {
   faFileLines,
   faFile,
   faPlay,
+  faUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
