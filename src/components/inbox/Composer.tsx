@@ -6,12 +6,13 @@ import {
   faMicrophone,
   faStop,
   faXmark,
-  faImage,
-  faFile,
   faCircleNotch,
   faFaceSmile,
+  faBolt,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
+import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
+import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
 import {
   addDoc,
   collection,
@@ -59,8 +60,6 @@ export function Composer({
     cancel: () => void;
   } | null>(null);
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   // Outbound typing indicator: debounced, throttled to once per 20s per wamid.
@@ -69,6 +68,8 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiWrapRef = useRef<HTMLDivElement | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [interactiveOpen, setInteractiveOpen] = useState(false);
 
   useEffect(() => {
     if (!emojiOpen) return;
@@ -116,7 +117,7 @@ export function Composer({
       const detail = (e as CustomEvent<{ files: File[] }>).detail;
       if (!detail?.files?.length) return;
       for (const f of detail.files) {
-        const kind: "image" | "video" | "document" | "audio" = f.type.startsWith(
+        const kind: AttachKind = f.type.startsWith(
           "image/",
         )
           ? "image"
@@ -222,7 +223,11 @@ export function Composer({
     }
   }
 
-  async function sendFile(file: File, kind: "image" | "video" | "document" | "audio") {
+  async function sendFile(
+    file: File,
+    kind: "image" | "video" | "document" | "audio",
+    captionOverride?: string,
+  ) {
     if (!uid || !selfUid) return;
     setUploading(true);
     const normalizedPhone = normalizePhone(phone);
@@ -269,7 +274,12 @@ export function Composer({
       // Flutter app (which renders from `mediaUrl`) can display outgoing media.
       const mediaUrl =
         up.data?.url ?? (mediaId ? mediaProxyUrl(mediaId, uid) : null);
-      const caption = kind === "audio" ? "" : text.trim();
+      const caption =
+        kind === "audio"
+          ? ""
+          : typeof captionOverride === "string"
+            ? captionOverride.trim()
+            : text.trim();
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
         contactName: knownName,
@@ -473,11 +483,25 @@ export function Composer({
         </div>
       ) : (
         <div className="flex items-end gap-2 p-3">
-          <AttachMenu
+          <button
+            type="button"
             disabled={disabled}
-            onPickImage={() => imageInputRef.current?.click()}
-            onPickFile={() => fileInputRef.current?.click()}
-          />
+            onClick={() => setAttachOpen(true)}
+            aria-label="Attach"
+            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setInteractiveOpen(true)}
+            aria-label="Interactive"
+            title="Send location / buttons / list"
+            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <FontAwesomeIcon icon={faBolt} className="h-4 w-4" />
+          </button>
           <div className="relative" ref={emojiWrapRef}>
             <button
               type="button"
@@ -583,30 +607,21 @@ export function Composer({
           )}
         </div>
       )}
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*,video/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (!f) return;
-          const kind = f.type.startsWith("video/") ? "video" : "image";
-          void sendFile(f, kind);
-        }}
+      <AttachmentSheet
+        open={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onPick={(file, kind, caption) => void sendFile(file, kind, caption)}
       />
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (!f) return;
-          void sendFile(f, "document");
-        }}
-      />
+      {uid && selfUid && (
+        <InteractiveDialog
+          open={interactiveOpen}
+          onClose={() => setInteractiveOpen(false)}
+          phone={phone}
+          uid={uid}
+          selfUid={selfUid}
+          contextMessageId={whatsappContextMessageId(replyTo)}
+        />
+      )}
     </div>
   );
 }
@@ -644,58 +659,6 @@ function replyPreview(m: Message): string {
     order: "🛒 Order",
   };
   return tagMap[(m.type || "").toLowerCase()] ?? `[${m.type || "message"}]`;
-}
-
-function AttachMenu({
-  disabled,
-  onPickImage,
-  onPickFile,
-}: {
-  disabled: boolean;
-  onPickImage: () => void;
-  onPickFile: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Attach"
-        className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
-      >
-        <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
-      </button>
-      {open && (
-        <div
-          className="absolute bottom-12 left-0 z-10 min-w-[160px] rounded-lg border border-border bg-card p-1 text-sm shadow-md"
-          onMouseLeave={() => setOpen(false)}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onPickImage();
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-          >
-            <FontAwesomeIcon icon={faImage} className="h-3.5 w-3.5" /> Photo / Video
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onPickFile();
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-          >
-            <FontAwesomeIcon icon={faFile} className="h-3.5 w-3.5" /> Document
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function formatSec(s: number): string {

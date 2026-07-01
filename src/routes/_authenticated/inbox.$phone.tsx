@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
@@ -11,6 +11,8 @@ import {
   faCopy,
   faUpRightFromSquare,
   faCloudArrowUp,
+  faMagnifyingGlass,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -23,7 +25,14 @@ import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/fi
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
-import { sendReactionMessage, markMessageRead, deleteWhatsAppMessage } from "@/lib/wabees/api";
+import {
+  sendReactionMessage,
+  markMessageRead,
+  deleteWhatsAppMessage,
+  sendTextMessage,
+  sendMediaMessage,
+  extractWamid,
+} from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
@@ -52,6 +61,8 @@ function Thread({ phone }: { phone: string }) {
   const [headerMenu, setHeaderMenu] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -274,13 +285,92 @@ function Thread({ phone }: { phone: string }) {
     [uid, selfUid],
   );
 
+  const onResend = useCallback(
+    async (m: Message) => {
+      if (!uid || !selfUid) return;
+      const creds = await loadWaCredentials(selfUid).catch(() => null);
+      if (!creds) {
+        toast.error("Connect WhatsApp first");
+        return;
+      }
+      try {
+        await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+          status: "pending",
+          errorReason: null,
+        });
+        const to = whatsappRecipientId(phone);
+        let res;
+        if (m.type === "text") {
+          res = await sendTextMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: creds.access_token,
+            to,
+            message: m.body,
+            context_message_id: m.replyToWamid ?? null,
+          });
+        } else if (
+          m.type === "image" ||
+          m.type === "video" ||
+          m.type === "document" ||
+          m.type === "audio" ||
+          m.type === "sticker"
+        ) {
+          res = await sendMediaMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: creds.access_token,
+            to,
+            type: m.type,
+            ...(m.mediaId ? { media_id: m.mediaId } : m.mediaUrl ? { media_url: m.mediaUrl } : {}),
+            ...(m.caption ? { caption: m.caption } : {}),
+            ...(m.fileName ? { filename: m.fileName } : {}),
+            context_message_id: m.replyToWamid ?? null,
+          });
+        } else {
+          toast.error("Cannot resend this message type");
+          return;
+        }
+        const wamid = extractWamid(res.raw);
+        if (!res.success) {
+          await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+            status: "failed",
+            errorReason: res.message ?? "Send failed",
+          });
+          toast.error(res.message ?? "Send failed");
+          return;
+        }
+        await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+          status: "sent",
+          whatsappMessageId: wamid,
+        });
+        toast.success("Resent");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Resend failed");
+      }
+    },
+    [uid, selfUid, phone],
+  );
+
   const actions: MessageActions = {
     onReply: setReplyTo,
     onReact,
     onDelete,
     onForward: setForwardMsg,
     onOpenMedia: (m) => setLightboxId(m.id),
+    onResend,
   };
+
+  // Filter thread by in-chat search.
+  const visibleData = useMemo(() => {
+    if (!data) return data;
+    const s = searchQuery.trim().toLowerCase();
+    if (!s) return data;
+    return data.filter((m) => {
+      const body = (m.body || "").toLowerCase();
+      const cap = (m.caption || "").toLowerCase();
+      const fn = (m.fileName || "").toLowerCase();
+      return body.includes(s) || cap.includes(s) || fn.includes(s);
+    });
+  }, [data, searchQuery]);
 
   const lightboxItems: LightboxItem[] = (data ?? [])
     .filter(
@@ -373,6 +463,17 @@ function Thread({ phone }: { phone: string }) {
           <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
           <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSearchOpen((v) => !v);
+            if (searchOpen) setSearchQuery("");
+          }}
+          title="Search in chat"
+          className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+        >
+          <FontAwesomeIcon icon={faMagnifyingGlass} className="h-4 w-4" />
+        </button>
         <a
           href={`tel:${phone}`}
           title="Call"
@@ -425,22 +526,61 @@ function Thread({ phone }: { phone: string }) {
           )}
         </div>
       </header>
+      {searchOpen && (
+        <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
+          <div className="relative flex-1">
+            <FontAwesomeIcon
+              icon={faMagnifyingGlass}
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                }
+              }}
+              placeholder="Search messages…"
+              className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
+            />
+          </div>
+          {searchQuery && (
+            <span className="text-[11px] text-muted-foreground">
+              {(visibleData?.length ?? 0)} match{(visibleData?.length ?? 0) === 1 ? "" : "es"}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchQuery("");
+            }}
+            className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+            aria-label="Close search"
+          >
+            <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div
         ref={scrollerRef}
         className="relative flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background"
       >
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {data === null ? (
+        {visibleData === null ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
             <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
             Loading…
           </div>
-        ) : data.length === 0 ? (
+        ) : visibleData.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No messages yet. Say hi 👋
+            {searchQuery ? "No matching messages" : "No messages yet. Say hi 👋"}
           </p>
         ) : (
-          renderWithDayDividers(data, actions)
+          renderWithDayDividers(visibleData, actions)
         )}
         <div ref={bottomRef} />
       </div>

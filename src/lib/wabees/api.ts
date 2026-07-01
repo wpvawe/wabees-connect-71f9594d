@@ -207,6 +207,79 @@ export function sendReactionMessage(args: {
   return postJson("send-message.php", { ...args, type: "reaction" });
 }
 
+/** Send a location pin. */
+export function sendLocationMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+  context_message_id?: string | null;
+}) {
+  return postJson("send-message.php", { ...args, type: "location" });
+}
+
+/** Up to 3 quick-reply buttons. WhatsApp shows them beneath the body text. */
+export function sendReplyButtonsMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  body_text: string;
+  header_text?: string;
+  footer_text?: string;
+  buttons: Array<{ id: string; title: string }>;
+  context_message_id?: string | null;
+}) {
+  return postJson("send-message.php", {
+    ...args,
+    type: "interactive",
+    interactive_type: "button",
+  });
+}
+
+/** A single call-to-action URL button. */
+export function sendCtaUrlMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  body_text: string;
+  display_text: string;
+  url: string;
+  header_text?: string;
+  footer_text?: string;
+  context_message_id?: string | null;
+}) {
+  return postJson("send-message.php", {
+    ...args,
+    type: "interactive",
+    interactive_type: "cta_url",
+  });
+}
+
+/** List message with tappable rows grouped into sections. */
+export function sendListMessage(args: {
+  phone_number_id: string;
+  access_token: string;
+  to: string;
+  body_text: string;
+  button_text: string;
+  header_text?: string;
+  footer_text?: string;
+  sections: Array<{
+    title: string;
+    rows: Array<{ id: string; title: string; description?: string }>;
+  }>;
+  context_message_id?: string | null;
+}) {
+  return postJson("send-message.php", {
+    ...args,
+    type: "interactive",
+    interactive_type: "list",
+  });
+}
+
 /**
  * Mark an inbound WhatsApp message as read so the sender sees blue ticks.
  * Mirrors backend/api/mark-read.php on wabees.live.
