@@ -13,6 +13,7 @@ import {
   faTrash,
   faXmark,
   faPlus,
+  faPen,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -36,6 +37,7 @@ import {
   deleteConversation,
   createTag,
   deleteTag,
+  updateTag,
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -89,8 +91,20 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
-  const [tagDialog, setTagDialog] = useState<{ open: boolean; name: string; color: string }>({
+  const [tagDialog, setTagDialog] = useState<{
+    open: boolean;
+    mode: "create" | "edit";
+    id: string | null;
+    originalName: string | null;
+    applyPhone: string | null;
+    name: string;
+    color: string;
+  }>({
     open: false,
+    mode: "create",
+    id: null,
+    originalName: null,
+    applyPhone: null,
     name: "",
     color: "#6366f1",
   });
@@ -216,8 +230,28 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     }
   }
 
-  function handleCreateTag() {
-    setTagDialog({ open: true, name: "", color: "#6366f1" });
+  function handleCreateTag(applyPhone?: string) {
+    setTagDialog({
+      open: true,
+      mode: "create",
+      id: null,
+      originalName: null,
+      applyPhone: applyPhone ?? null,
+      name: "",
+      color: "#6366f1",
+    });
+  }
+
+  function handleEditTag(tag: { id: string; name: string; color: string }) {
+    setTagDialog({
+      open: true,
+      mode: "edit",
+      id: tag.id,
+      originalName: tag.name,
+      applyPhone: null,
+      name: tag.name,
+      color: tag.color || "#64748b",
+    });
   }
 
   async function submitCreateTag() {
@@ -228,11 +262,26 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       return;
     }
     try {
-      await createTag(uid, name, tagDialog.color || "#6366f1");
-      toast.success("Tag created");
-      setTagDialog({ open: false, name: "", color: "#6366f1" });
+      if (tagDialog.mode === "edit" && tagDialog.id) {
+        await updateTag(uid, tagDialog.id, { name, color: tagDialog.color || "#64748b" });
+        if (selectedTag === tagDialog.originalName) setSelectedTag(name);
+        toast.success("Tag updated");
+      } else {
+        await createTag(uid, name, tagDialog.color || "#6366f1");
+        if (tagDialog.applyPhone) await addTag(uid, tagDialog.applyPhone, name);
+        toast.success(tagDialog.applyPhone ? "Tag created and added" : "Tag created");
+      }
+      setTagDialog({
+        open: false,
+        mode: "create",
+        id: null,
+        originalName: null,
+        applyPhone: null,
+        name: "",
+        color: "#6366f1",
+      });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create tag");
+      toast.error(e instanceof Error ? e.message : "Could not save tag");
     }
   }
 
