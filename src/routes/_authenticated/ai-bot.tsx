@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useAiBotConfig, EMPTY_AI_CONFIG, type AiBotConfig } from "@/hooks/useAiBotConfig";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { useProfile } from "@/hooks/useProfile";
 import { fbDb } from "@/integrations/firebase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,7 @@ function AiBotPage() {
   const uid = useEffectiveUid();
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
+  const { data: profile, loading: profileLoading } = useProfile("effective");
   const { data, error, exists } = useAiBotConfig();
   const [form, setForm] = useState<AiBotConfig | null>(null);
   const [faqs, setFaqs] = useState<Faq[]>([]);
@@ -109,6 +111,26 @@ function AiBotPage() {
     setFaqs(parseFaq(data.faq));
     setDirty(false);
     lastSyncedRef.current = JSON.stringify(data);
+  }
+
+  // Admin-controlled feature flag. When disabled, show an informational
+  // gate instead of the config form so the same state matches the app.
+  if (!profileLoading && profile && !profile.aiBotEnabled) {
+    return (
+      <>
+        <TopBar title="AI Bot" subtitle="Configure your AI auto-reply assistant" />
+        <div className="mx-auto max-w-lg px-4 py-16 text-center">
+          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-muted text-muted-foreground">
+            <FontAwesomeIcon icon={faBrain} className="h-7 w-7" />
+          </span>
+          <h2 className="mt-4 text-lg font-semibold text-foreground">AI Bot not enabled</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The AI assistant feature is disabled for your account. Please contact your
+            administrator to enable it.
+          </p>
+        </div>
+      </>
+    );
   }
 
   if (error)
