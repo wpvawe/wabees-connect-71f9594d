@@ -111,7 +111,7 @@ function webhook_log($msg)
     }
 }
 
-function clear_fcm_token_from_caches($userId, $phoneNumberId = '')
+function clear_fcm_token_from_caches($userId, $phoneNumberId = '', $badToken = '')
 {
     if (function_exists('apcu_delete')) {
         apcu_delete("wabees_token_$userId");
@@ -131,6 +131,52 @@ function clear_fcm_token_from_caches($userId, $phoneNumberId = '')
                 @file_put_contents($mapFile, json_encode($map));
             }
         }
+    }
+    // Also invalidate the cached agents doc list so a fresh fetch picks up
+    // the nulled fcmToken next time (10 min TTL otherwise blocks pushes).
+    $agentsCache = __DIR__ . "/../cache/fs/users_{$userId}_agents.json";
+    if (file_exists($agentsCache))
+        @unlink($agentsCache);
+    // Null the actual bad token in Firestore so the next cache refresh
+    // does not re-populate the same dead token. Without this, notifications
+    // stay broken until the user manually re-grants push permission.
+    if (!empty($badToken))
+        nullify_bad_fcm_token($userId, $badToken);
+}
+
+/**
+ * Find the doc that currently holds $badToken (owner doc first, then
+ * agents) and PATCH its fcmToken field to null. Best-effort; never throws.
+ */
+function nullify_bad_fcm_token($ownerUid, $badToken)
+{
+    if (empty($ownerUid) || empty($badToken))
+        return;
+    try {
+        $ownerDoc = firestore_get("users/$ownerUid");
+        if (($ownerDoc['code'] ?? 0) === 200) {
+            $tok = $ownerDoc['data']['fields']['fcmToken']['stringValue'] ?? null;
+            if ($tok === $badToken) {
+                firestore_update("users/$ownerUid", ['fcmToken' => null], ['fcmToken']);
+                webhook_log("FCM_CLEANUP: nulled owner=$ownerUid bad_token=" . substr($badToken, 0, 20) . '...');
+                return;
+            }
+        }
+        $agents = firestore_get("users/$ownerUid/agents");
+        if (($agents['code'] ?? 0) === 200) {
+            foreach ($agents['data']['documents'] ?? [] as $doc) {
+                $tok = $doc['fields']['fcmToken']['stringValue'] ?? null;
+                if ($tok === $badToken) {
+                    $name = $doc['name'] ?? '';
+                    if (preg_match('#/agents/([^/]+)$#', $name, $m)) {
+                        firestore_update("users/$ownerUid/agents/{$m[1]}", ['fcmToken' => null], ['fcmToken']);
+                        webhook_log("FCM_CLEANUP: nulled agent={$m[1]} owner=$ownerUid bad_token=" . substr($badToken, 0, 20) . '...');
+                    }
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        webhook_log('FCM_CLEANUP_ERR: ' . $e->getMessage());
     }
 }
 
@@ -184,7 +230,7 @@ function send_message_fcm_notification($token, $contactName, $messageBody, $from
     curl_close($ch);
     webhook_log("FCM_MESSAGE: code=$code token=" . substr($token, 0, 20) . "... body=" . substr($response ?: $error, 0, 200));
     if ($code >= 400 && fcm_response_is_bad_token($response ?: '')) {
-        clear_fcm_token_from_caches($userId, $phoneNumberId);
+        clear_fcm_token_from_caches($userId, $phoneNumberId, $token);
     }
     return $code;
 }
@@ -1630,7 +1676,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             webhook_log("FCM_MESSAGE: code=$code token=" . substr($token, 0, 20) . "... body=" . substr($response ?: '', 0, 200));
             if ($code >= 400 && fcm_response_is_bad_token($response ?: '')) {
-                clear_fcm_token_from_caches($userId, $phoneNumberId);
+                clear_fcm_token_from_caches($userId, $phoneNumberId, $token);
             }
             curl_multi_remove_handle($mh, $curl);
             curl_close($curl);
