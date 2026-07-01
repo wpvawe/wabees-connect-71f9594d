@@ -504,7 +504,7 @@ function VoiceNote({ url, mime }: { url: string; mime?: string | null }) {
         aria-label={playing ? "Pause voice message" : "Play voice message"}
         className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105"
       >
-        <FontAwesomeIcon icon={playing ? faStop : faPlay} className="h-3 w-3 pl-[1px]" />
+        <FontAwesomeIcon icon={playing ? faPause : faPlay} className="h-3 w-3 pl-[1px]" />
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div
