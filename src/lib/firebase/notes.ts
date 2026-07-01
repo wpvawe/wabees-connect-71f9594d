@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { ensureConversationDoc, resolveConversationDocId } from "@/lib/firebase/conversations";
+import { phoneQueryCandidates } from "@/lib/firebase/normalizers";
 
 export type ConvNote = {
   id: string;
@@ -55,8 +56,17 @@ export async function updateNote(
   const db = fbDb();
   const convId = await resolveConversationDocId(uid, phone);
   const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
-  await updateDoc(ref, { body: body.trim(), updatedAt: serverTimestamp() }).catch(() =>
-    setDoc(ref, { body: body.trim(), updatedAt: serverTimestamp() }, { merge: true }),
+  const payload = { body: body.trim(), updatedAt: serverTimestamp() };
+  try {
+    await updateDoc(ref, payload);
+    return;
+  } catch {
+    /* note may live under a legacy phone doc; update every matching candidate below */
+  }
+  await Promise.all(
+    phoneQueryCandidates(phone).map((candidate) =>
+      updateDoc(doc(db, `users/${uid}/conversations/${candidate}/notes/${noteId}`), payload).catch(() => {}),
+    ),
   );
 }
 
@@ -66,10 +76,16 @@ export async function deleteNote(
   noteId: string,
 ): Promise<void> {
   const db = fbDb();
-  const convId = await resolveConversationDocId(uid, phone);
-  const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
-  await deleteDoc(ref).catch(async () => {
-    const snap = await getDoc(ref).catch(() => null);
-    if (snap?.exists()) await setDoc(ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
-  });
+  const candidates = phoneQueryCandidates(phone);
+  const resolved = await resolveConversationDocId(uid, phone).catch(() => null);
+  const ids = Array.from(new Set([resolved, ...candidates].filter(Boolean) as string[]));
+  await Promise.all(
+    ids.map(async (convId) => {
+      const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
+      await deleteDoc(ref).catch(async () => {
+        const snap = await getDoc(ref).catch(() => null);
+        if (snap?.exists()) await setDoc(ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
+      });
+    }),
+  );
 }

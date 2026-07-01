@@ -36,7 +36,9 @@ export function normalizePhone(phone: string): string {
 export function phoneQueryCandidates(phone: string): string[] {
   const normalized = normalizePhone(phone);
   const digits = normalized.replace(/[^0-9]/g, "");
-  return Array.from(new Set([phone, normalized, digits].filter(Boolean))).slice(0, 10);
+  const localPk = digits.startsWith("92") && digits.length === 12 ? `0${digits.slice(2)}` : "";
+  const barePk = digits.startsWith("92") && digits.length === 12 ? digits.slice(2) : "";
+  return Array.from(new Set([phone, normalized, digits, localPk, barePk].filter(Boolean))).slice(0, 10);
 }
 
 /**

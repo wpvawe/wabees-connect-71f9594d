@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, deleteDoc, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import {
@@ -30,6 +30,66 @@ export type Conversation = {
   assignedAgentEmail?: string | null;
   isDeleted?: boolean;
 };
+
+function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (a && b) return a >= b ? a : b;
+  return a ?? b ?? null;
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
+function mergeConversation(a: Conversation, b: Conversation): Conversation {
+  const bIsNewer = Boolean(b.lastMessageAt && (!a.lastMessageAt || b.lastMessageAt >= a.lastMessageAt));
+  const contactName =
+    a.contactName && a.contactName.length >= b.contactName.length ? a.contactName : b.contactName;
+  return {
+    ...a,
+    contactPhone: a.contactPhone || b.contactPhone,
+    contactName,
+    lastMessage: bIsNewer ? b.lastMessage : a.lastMessage || b.lastMessage,
+    lastMessageType: bIsNewer ? b.lastMessageType : a.lastMessageType || b.lastMessageType,
+    lastMessageAt: fresherIso(a.lastMessageAt, b.lastMessageAt),
+    unreadCount: Math.max(a.unreadCount, b.unreadCount),
+    profileImageUrl: firstNonEmpty(a.profileImageUrl, b.profileImageUrl),
+    lastIncomingMessageAt: fresherIso(a.lastIncomingMessageAt, b.lastIncomingMessageAt),
+    isPinned: Boolean(a.isPinned || b.isPinned),
+    pinOrder: Math.max(a.pinOrder ?? 0, b.pinOrder ?? 0),
+    activeChatterId: firstNonEmpty(a.activeChatterId, b.activeChatterId),
+    activeChatterEmail: firstNonEmpty(a.activeChatterEmail, b.activeChatterEmail),
+    isBlocked: Boolean(a.isBlocked || b.isBlocked),
+    tags: Array.from(new Set([...(a.tags ?? []), ...(b.tags ?? [])])),
+    assignedAgentId: firstNonEmpty(a.assignedAgentId, b.assignedAgentId),
+    assignedAgentEmail: firstNonEmpty(a.assignedAgentEmail, b.assignedAgentEmail),
+    isDeleted: Boolean(a.isDeleted || b.isDeleted),
+  };
+}
+
+function compactConversationWrite(c: Conversation): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    contactPhone: c.contactPhone,
+    contactName: c.contactName,
+    lastMessage: c.lastMessage,
+    lastMessageType: c.lastMessageType,
+    unreadCount: c.unreadCount,
+    isPinned: c.isPinned ?? false,
+    pinOrder: c.pinOrder ?? 0,
+    isBlocked: c.isBlocked ?? false,
+    tags: c.tags ?? [],
+  };
+  if (c.lastMessageAt) out.lastMessageAt = c.lastMessageAt;
+  if (c.profileImageUrl) out.profileImageUrl = c.profileImageUrl;
+  if (c.lastIncomingMessageAt) out.lastIncomingMessageAt = c.lastIncomingMessageAt;
+  if (c.activeChatterId) out.activeChatterId = c.activeChatterId;
+  if (c.activeChatterEmail) out.activeChatterEmail = c.activeChatterEmail;
+  if (c.assignedAgentId) out.assignedAgentId = c.assignedAgentId;
+  if (c.assignedAgentEmail) out.assignedAgentEmail = c.assignedAgentEmail;
+  return out;
+}
 
 export function useConversations(): { data: Conversation[] | null; error: string | null } {
   const uid = useEffectiveUid();
@@ -76,37 +136,7 @@ export function useConversations(): { data: Conversation[] | null; error: string
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
           if (!existing) grouped.set(phone, row);
-          else {
-            grouped.set(phone, {
-              ...existing,
-              ...row,
-              contactName:
-                existing.contactName.length >= row.contactName.length
-                  ? existing.contactName
-                  : row.contactName,
-              unreadCount: Math.max(existing.unreadCount, row.unreadCount),
-              tags: Array.from(new Set([...(existing.tags ?? []), ...(row.tags ?? [])])),
-              profileImageUrl: existing.profileImageUrl ?? row.profileImageUrl,
-              isPinned: existing.isPinned || row.isPinned,
-              isBlocked: existing.isBlocked || row.isBlocked,
-              isDeleted: existing.isDeleted || row.isDeleted,
-              lastMessageAt:
-                row.lastMessageAt &&
-                (!existing.lastMessageAt || row.lastMessageAt > existing.lastMessageAt)
-                  ? row.lastMessageAt
-                  : existing.lastMessageAt,
-              lastMessage:
-                row.lastMessageAt &&
-                (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
-                  ? row.lastMessage
-                  : existing.lastMessage,
-              lastMessageType:
-                row.lastMessageAt &&
-                (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
-                  ? row.lastMessageType
-                  : existing.lastMessageType,
-            });
-          }
+          else grouped.set(phone, mergeConversation(existing, row));
         }
         // Best-effort canonicalization: keep/create the Flutter/PHP `+E.164`
         // doc ID and delete older stray copies after merging their fields.
@@ -121,31 +151,9 @@ export function useConversations(): { data: Conversation[] | null; error: string
             try {
               await setDoc(
                 doc(db, `users/${uid}/conversations/${canonical}`),
-                {
-                  contactPhone: merged.contactPhone,
-                  contactName: merged.contactName,
-                  lastMessage: merged.lastMessage,
-                  lastMessageType: merged.lastMessageType,
-                  lastMessageAt: merged.lastMessageAt,
-                  unreadCount: merged.unreadCount,
-                  profileImageUrl: merged.profileImageUrl ?? null,
-                  lastIncomingMessageAt: merged.lastIncomingMessageAt ?? null,
-                  isPinned: merged.isPinned ?? false,
-                  pinOrder: merged.pinOrder ?? 0,
-                  activeChatterId: merged.activeChatterId ?? null,
-                  activeChatterEmail: merged.activeChatterEmail ?? null,
-                  isBlocked: merged.isBlocked ?? false,
-                  tags: merged.tags ?? [],
-                  assignedAgentId: merged.assignedAgentId ?? null,
-                  assignedAgentEmail: merged.assignedAgentEmail ?? null,
-                },
+                compactConversationWrite(merged),
                 { merge: true },
               );
-              for (const id of ids) {
-                if (id !== canonical) {
-                  await deleteDoc(doc(db, `users/${uid}/conversations/${id}`)).catch(() => {});
-                }
-              }
             } catch {
               /* permissions or race — ignore, UI already deduped */
             }

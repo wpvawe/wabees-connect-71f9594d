@@ -5,7 +5,8 @@
  */
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { phoneDocId } from "@/lib/firebase/normalizers";
+import { normalizePhone } from "@/lib/firebase/normalizers";
+import { resolveConversationDocIds } from "@/lib/firebase/conversations";
 
 export async function assignConversation(
   uid: string,
@@ -14,16 +15,21 @@ export async function assignConversation(
   actor: { uid: string; email: string | null },
 ): Promise<void> {
   const db = fbDb();
-  await setDoc(
-    doc(db, `users/${uid}/conversations/${phoneDocId(phone)}`),
-    {
-      contactPhone: phoneDocId(phone),
-      assignedAgentId: agent?.id ?? null,
-      assignedAgentEmail: agent?.email ?? null,
-      assignedAt: agent ? serverTimestamp() : null,
-      assignedByUid: actor.uid,
-      assignedByEmail: actor.email,
-    },
-    { merge: true },
+  const ids = await resolveConversationDocIds(uid, phone);
+  await Promise.all(
+    ids.map((id) =>
+      setDoc(
+        doc(db, `users/${uid}/conversations/${id}`),
+        {
+          contactPhone: normalizePhone(phone),
+          assignedAgentId: agent?.id ?? null,
+          assignedAgentEmail: agent?.email ?? null,
+          assignedAt: agent ? serverTimestamp() : null,
+          assignedByUid: actor.uid,
+          assignedByEmail: actor.email,
+        },
+        { merge: true },
+      ),
+    ),
   );
 }

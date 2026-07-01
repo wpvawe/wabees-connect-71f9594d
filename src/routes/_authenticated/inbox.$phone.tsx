@@ -30,7 +30,7 @@ import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
-import { phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import {
   sendReactionMessage,
   markMessageRead,
@@ -413,8 +413,9 @@ function Thread({ phone }: { phone: string }) {
     }
     return phone;
   })();
-  const contact = (contacts ?? []).find((c) => c.phone === phone);
-  const conv = (conversations ?? []).find((c) => c.contactPhone === phone);
+  const normalizedPhone = normalizePhone(phone);
+  const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
+  const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
   const displayName = contact?.name || (name !== phone ? name : "");
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";

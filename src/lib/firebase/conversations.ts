@@ -20,7 +20,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { phoneQueryCandidates, phoneDocId } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneQueryCandidates, phoneDocId } from "@/lib/firebase/normalizers";
 
 export const MAX_PINNED = 3;
 
@@ -38,9 +38,39 @@ export async function resolveConversationDocId(uid: string, phone: string): Prom
   return phoneDocId(phone);
 }
 
+export async function resolveConversationDocIds(uid: string, phone: string): Promise<string[]> {
+  const db = fbDb();
+  const found: string[] = [];
+  for (const c of phoneQueryCandidates(phone)) {
+    const s = await getDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => null);
+    if (s?.exists()) found.push(c);
+  }
+  const canonical = phoneDocId(phone);
+  if (!found.includes(canonical)) found.push(canonical);
+  return found;
+}
+
+async function setConversationVariants(
+  uid: string,
+  phone: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const db = fbDb();
+  const ids = await resolveConversationDocIds(uid, phone);
+  await Promise.all(
+    ids.map((id) =>
+      setDoc(
+        doc(db, `users/${uid}/conversations/${id}`),
+        { contactPhone: normalizePhone(phone), ...data, updatedAt: serverTimestamp() },
+        { merge: true },
+      ),
+    ),
+  );
+}
+
 export async function ensureConversationDoc(uid: string, phone: string): Promise<string> {
   const db = fbDb();
-  const id = await resolveConversationDocId(uid, phone);
+  const id = phoneDocId(phone);
   await setDoc(
     doc(db, `users/${uid}/conversations/${id}`),
     {
@@ -55,34 +85,32 @@ export async function ensureConversationDoc(uid: string, phone: string): Promise
 /** Toggle pinned state. Returns false when max pinned limit is already reached. */
 export async function togglePin(uid: string, phone: string): Promise<boolean> {
   const db = fbDb();
-  const id = await resolveConversationDocId(uid, phone);
-  const ref = doc(db, `users/${uid}/conversations/${id}`);
-  const snap = await getDoc(ref);
-  const currentlyPinned = Boolean(snap.data()?.isPinned);
+  const ids = await resolveConversationDocIds(uid, phone);
+  const snaps = await Promise.all(
+    ids.map((id) => getDoc(doc(db, `users/${uid}/conversations/${id}`)).catch(() => null)),
+  );
+  const currentlyPinned = snaps.some((snap) => Boolean(snap?.data()?.isPinned));
   if (!currentlyPinned) {
     const pinned = await getDocs(
       query(collection(db, `users/${uid}/conversations`), where("isPinned", "==", true)),
     );
-    if (pinned.size >= MAX_PINNED) return false;
-    await setDoc(ref, { isPinned: true, pinOrder: Date.now() }, { merge: true });
+    const uniquePinned = new Set(
+      pinned.docs.map((d) => normalizePhone((d.data().contactPhone as string | undefined) || d.id)),
+    );
+    if (!uniquePinned.has(normalizePhone(phone)) && uniquePinned.size >= MAX_PINNED) return false;
+    await setConversationVariants(uid, phone, { isPinned: true, pinOrder: Date.now() });
   } else {
-    await setDoc(ref, { isPinned: false, pinOrder: 0 }, { merge: true });
+    await setConversationVariants(uid, phone, { isPinned: false, pinOrder: 0 });
   }
   return true;
 }
 
 export async function addTag(uid: string, phone: string, tag: string): Promise<void> {
-  const db = fbDb();
-  const id = await ensureConversationDoc(uid, phone);
-  const ref = doc(db, `users/${uid}/conversations/${id}`);
-  await setDoc(ref, { tags: arrayUnion(tag.trim()) }, { merge: true });
+  await setConversationVariants(uid, phone, { tags: arrayUnion(tag.trim()) });
 }
 
 export async function removeTag(uid: string, phone: string, tag: string): Promise<void> {
-  const db = fbDb();
-  const id = await resolveConversationDocId(uid, phone);
-  const ref = doc(db, `users/${uid}/conversations/${id}`);
-  await setDoc(ref, { tags: arrayRemove(tag) }, { merge: true });
+  await setConversationVariants(uid, phone, { tags: arrayRemove(tag) });
 }
 
 /**
