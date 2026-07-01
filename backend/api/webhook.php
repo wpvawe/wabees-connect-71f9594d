@@ -16,6 +16,15 @@
 // ⚠️ CHANGE THIS to match the token you enter in Meta Developer Console
 define('VERIFY_TOKEN', 'wabees_webhook_verify_2024');
 
+// Fast-ack Meta immediately using fastcgi_finish_request, then process the
+// message (Firestore write + FCM + bot + AI reply) in the background. This
+// prevents Meta from queueing the next incoming message behind the previous
+// one's AI reply — which was the #1 cause of "7-10s late receive".
+// Requires LiteSpeed/PHP-FPM (Hostinger already provides it) + ignore_user_abort.
+if (!defined('ENABLE_FAST_WEBHOOK_ACK')) {
+    define('ENABLE_FAST_WEBHOOK_ACK', true);
+}
+
 // ============ GET = WEBHOOK VERIFICATION ============
 // IMPORTANT: This MUST be before any require/include to avoid crashes
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -3514,8 +3523,8 @@ function _call_deepseek_api($messages)
             break;
 
         if ($attempt < 2) {
-            webhook_log("AI_BOT: DeepSeek retry in 1s err=$curlErr");
-            usleep(1000000); // 1 second wait before retry
+            webhook_log("AI_BOT: DeepSeek retry in 200ms err=$curlErr");
+            usleep(200000); // 200ms — shaves ~800ms off the reply latency on transient failures
         } else {
             webhook_log("AI_BOT: DeepSeek FAILED after 2 attempts err=$curlErr resp=" . mb_substr($response ?? '', 0, 300));
             return '';
