@@ -181,7 +181,20 @@ function formatConvTime(iso: string | null | undefined): string {
 
 function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
   const t = (type || "").toLowerCase();
-  const text = (body || "").trim();
+  let text = (body || "").trim();
+  // Strip webhook placeholder bodies so the list doesn't say "📷 [image]"
+  // or show legacy "Message type unknown" text next to a real type icon.
+  const low = text.toLowerCase();
+  if (
+    /^\[[a-z_ ]+\]$/i.test(low) ||
+    low === "message type unknown" ||
+    low === "message not supported" ||
+    low === "message not supported in whatsapp business" ||
+    low === "contact shared" ||
+    low === "📇 contact shared"
+  ) {
+    text = "";
+  }
   const tagMap: Record<string, string> = {
     image: "📷 Photo",
     sticker: "💟 Sticker",
@@ -196,7 +209,9 @@ function formatPreview(body: string | null | undefined, type: string | null | un
     template: "📋 Template",
     order: "🛒 Order",
     system: "ℹ️ System",
-    unsupported: "⚠️ Unsupported",
+    unsupported: "⚠️ Unsupported message",
+    poll: "📊 Poll",
+    event: "📅 Event",
   };
   const tag = tagMap[t];
   if (tag && !text) return tag;
