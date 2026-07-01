@@ -198,6 +198,73 @@ function formatConvTime(iso: string | null | undefined): string {
   return format(d, "dd/MM/yy");
 }
 
+/**
+ * Legacy conversations (written before the webhook started persisting a
+ * descriptive `lastMessage`) show "No preview" in the list. Fetch the most
+ * recent message once per phone and derive a preview from it so the row
+ * always shows something meaningful.
+ */
+function useLastMessageFallback(
+  phone: string,
+  enabled: boolean,
+): { body: string; type: string; at: string | null } | null {
+  const uid = useEffectiveUid();
+  const [state, setState] = useState<{ body: string; type: string; at: string | null } | null>(
+    () => previewCache.get(phone) ?? null,
+  );
+
+  useEffect(() => {
+    if (!enabled || !uid) return;
+    if (previewCache.has(phone)) {
+      setState(previewCache.get(phone) ?? null);
+      return;
+    }
+    const db = fbDbOrNull();
+    if (!db) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const candidates = phoneQueryCandidates(phone);
+        const q = query(
+          collection(db, `users/${uid}/messages`),
+          candidates.length === 1
+            ? where("contactPhone", "==", candidates[0])
+            : where("contactPhone", "in", candidates),
+          orderBy("createdAt", "desc"),
+          limit(1),
+        );
+        const snap = await getDocs(q);
+        const doc = snap.docs[0];
+        if (!doc) {
+          previewCache.set(phone, null);
+          if (!cancelled) setState(null);
+          return;
+        }
+        const d = doc.data() as Record<string, unknown>;
+        const body =
+          str(d.body) ||
+          str(d.caption) ||
+          str(d.fileName) ||
+          "";
+        const type = str(d.type, "text");
+        const at = toIso(d.createdAt);
+        const value = { body, type, at };
+        previewCache.set(phone, value);
+        if (!cancelled) setState(value);
+      } catch {
+        // Firestore may reject the `in` query if candidates > 30 or the
+        // orderBy needs an index. Fail silent — row keeps "No preview".
+        if (!cancelled) setState(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, uid, phone]);
+
+  return state;
+}
+
 function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
   const t = (type || "").toLowerCase();
   let text = (body || "").trim();
