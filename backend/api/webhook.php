@@ -1291,8 +1291,14 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     if ($mediaId) {
         $firestoreMsg['mediaId'] = $mediaId;
         $firestoreMsg['mimeType'] = $mimeType;
-        if ($type === 'document' && !empty($message[$type]['filename'])) {
-            $firestoreMsg['fileName'] = $message[$type]['filename'];
+        if ($type === 'document') {
+            $fileName = trim((string) ($docFileName ?? ($message[$type]['filename'] ?? '')));
+            if ($fileName === '') {
+                $fileName = 'document.' . wabees_extension_for_mime($mimeType);
+            } elseif (!preg_match('/\.[A-Za-z0-9]{1,8}$/', $fileName) || preg_match('/\.bin$/i', $fileName)) {
+                $fileName = preg_replace('/\.bin$/i', '', $fileName) . '.' . wabees_extension_for_mime($mimeType);
+            }
+            $firestoreMsg['fileName'] = $fileName;
         }
     }
     // Persist structured payloads so the bubble can render rich cards
