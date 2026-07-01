@@ -613,11 +613,16 @@ export function Composer({
 
 function whatsappContextMessageId(message?: Message | null): string | null {
   if (!message) return null;
+  // Only use the message's OWN wamid — never `replyToWamid` (that's the
+  // grandparent) or a stripped doc id. Otherwise Meta silently drops
+  // context and the reply lands on WhatsApp as a plain message with no
+  // quoted preview.
   const raw =
     message.whatsappMessageId ??
-    message.replyToWamid ??
     (message.id.startsWith("msg_") ? message.id.slice(4) : null);
-  return raw?.replace(/^msg_/, "") ?? null;
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 // Build a non-empty reply preview so replying to a photo / voice / document
