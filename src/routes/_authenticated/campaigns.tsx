@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
@@ -12,6 +12,11 @@ export const Route = createFileRoute("/_authenticated/campaigns")({
 });
 
 function CampaignsPage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isChildRoute = pathname !== "/campaigns" && pathname !== "/campaigns/";
+
+  if (isChildRoute) return <Outlet />;
+
   return (
     <>
       <TopBar
