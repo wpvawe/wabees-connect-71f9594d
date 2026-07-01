@@ -399,7 +399,7 @@ function AiBotPage() {
                           placeholder="e.g. What are your prices?"
                       value={f.q}
                       onChange={(e) =>
-                        setFaqs((arr) =>
+                        updateFaqs((arr) =>
                           arr.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)),
                         )
                       }
@@ -409,7 +409,7 @@ function AiBotPage() {
                       <Textarea
                         value={f.a}
                         onChange={(v) =>
-                          setFaqs((arr) => arr.map((x, j) => (j === i ? { ...x, a: v } : x)))
+                          updateFaqs((arr) => arr.map((x, j) => (j === i ? { ...x, a: v } : x)))
                         }
                         disabled={!isOwner}
                             rows={3}
