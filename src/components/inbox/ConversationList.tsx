@@ -27,14 +27,19 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const byPhone = useMemo(() => {
     const m = new Map<string, Contact>();
     for (const c of contacts ?? []) {
-      if (c.phone) m.set(c.phone, c);
+      if (!c.phone) continue;
+      const digits = c.phone.replace(/[^0-9]/g, "");
+      m.set(c.phone, c);
+      m.set(digits, c);
+      m.set(`+${digits}`, c);
     }
     return m;
   }, [contacts]);
   const merged = useMemo(() => {
     if (!data) return data;
     return data.map((conv) => {
-      const ct = byPhone.get(conv.contactPhone);
+      const convDigits = conv.contactPhone.replace(/[^0-9]/g, "");
+      const ct = byPhone.get(conv.contactPhone) ?? byPhone.get(convDigits) ?? byPhone.get(`+${convDigits}`);
       if (!ct) return conv;
       const looksLikePhone =
         !conv.contactName ||
@@ -43,7 +48,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       return {
         ...conv,
         contactName: looksLikePhone && ct.name ? ct.name : conv.contactName,
-        profileImageUrl: conv.profileImageUrl ?? ct.profileImageUrl ?? null,
+        profileImageUrl: ct.profileImageUrl || conv.profileImageUrl || null,
       };
     });
   }, [data, byPhone]);
@@ -139,15 +144,8 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
               {when}
             </span>
           </div>
-          <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-            {displayName ? (
-              <>
-                <span className="opacity-70">{c.contactPhone} · </span>
-                <span className="truncate">{preview}</span>
-              </>
-            ) : (
-              <span className="truncate">{preview}</span>
-            )}
+          <p className="truncate text-xs text-muted-foreground">
+            {preview}
           </p>
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
@@ -182,9 +180,13 @@ function formatConvTime(iso: string | null | undefined): string {
 function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
   const t = (type || "").toLowerCase();
   let text = (body || "").trim();
+  const normalized = text
+    .toLowerCase()
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s:·-]+/u, "")
+    .trim();
   // Strip webhook placeholder bodies so the list doesn't say "📷 [image]"
   // or show legacy "Message type unknown" text next to a real type icon.
-  const low = text.toLowerCase();
+  const low = normalized || text.toLowerCase();
   if (
     /^\[[a-z_ ]+\]$/i.test(low) ||
     low === "message type unknown" ||
@@ -216,5 +218,5 @@ function formatPreview(body: string | null | undefined, type: string | null | un
   const tag = tagMap[t];
   if (tag && !text) return tag;
   if (tag && text) return `${tag.split(" ")[0]} ${text}`;
-  return text || "—";
+  return text || "No preview";
 }
