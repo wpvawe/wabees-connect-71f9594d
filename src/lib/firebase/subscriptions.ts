@@ -4,6 +4,17 @@ import type { Plan } from "@/hooks/usePlans";
 
 export async function requestSubscription(uid: string, plan: Plan): Promise<void> {
   const db = fbDb();
+  // Guard: block duplicate requests while a previous one is still pending.
+  const pendingRef = doc(db, "pending_subscriptions", uid);
+  const pendingSnap = await getDoc(pendingRef).catch(() => null);
+  if (pendingSnap?.exists()) {
+    const p = pendingSnap.data() as Record<string, unknown>;
+    if (String(p.status ?? "") === "pending") {
+      throw new Error(
+        `You already have a pending request for "${String(p.planName ?? "a plan")}". Wait for admin approval.`,
+      );
+    }
+  }
   const userSnap = await getDoc(doc(db, "users", uid)).catch(() => null);
   const user = userSnap?.exists() ? (userSnap.data() as Record<string, unknown>) : {};
   const currentSnap = await getDoc(doc(db, "users", uid, "subscription", "current")).catch(
@@ -11,7 +22,7 @@ export async function requestSubscription(uid: string, plan: Plan): Promise<void
   );
   const current = currentSnap?.exists() ? (currentSnap.data() as Record<string, unknown>) : {};
   await setDoc(
-    doc(db, "pending_subscriptions", uid),
+    pendingRef,
     {
       planId: plan.id,
       planName: plan.name,
