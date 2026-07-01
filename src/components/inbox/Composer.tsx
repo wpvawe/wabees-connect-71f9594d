@@ -452,7 +452,24 @@ export function Composer({
             onPickImage={() => imageInputRef.current?.click()}
             onPickFile={() => fileInputRef.current?.click()}
           />
+          <div className="relative" ref={emojiWrapRef}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setEmojiOpen((v) => !v)}
+              aria-label="Emoji"
+              className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
+            </button>
+            {emojiOpen && (
+              <div className="absolute bottom-12 left-0 z-30">
+                <EmojiPickerLazy onSelect={(e) => insertEmoji(e)} />
+              </div>
+            )}
+          </div>
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
