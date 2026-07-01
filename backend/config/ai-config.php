@@ -27,5 +27,14 @@ if (!defined('AI_BOT_MAX_PER_CONVERSATION')) {
 }
 
 if (!defined('AI_BOT_MAX_HISTORY')) {
-    define('AI_BOT_MAX_HISTORY', 12);
+    // Reduced 12 → 6 to shrink DeepSeek prompt size.
+    // Smaller prompt = faster first-token latency (~1-2s saved per reply).
+    define('AI_BOT_MAX_HISTORY', 6);
+}
+
+// Cap DeepSeek output size. WhatsApp replies are short (Rule 5 says 2-4 lines).
+// 220 tokens ≈ 150 words ≈ 4 short lines. Generation time scales linearly with
+// output tokens — cutting 500 → 220 shaves ~3-5s off the reply.
+if (!defined('AI_BOT_MAX_TOKENS')) {
+    define('AI_BOT_MAX_TOKENS', 220);
 }
