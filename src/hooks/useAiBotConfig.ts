@@ -40,23 +40,32 @@ export const EMPTY_AI_CONFIG: AiBotConfig = {
   afterHoursMessage: "",
 };
 
-export function useAiBotConfig(): { data: AiBotConfig | null; error: string | null } {
+export function useAiBotConfig(): {
+  data: AiBotConfig | null;
+  error: string | null;
+  exists: boolean;
+  uid: string | null;
+} {
   const uid = useEffectiveUid();
   const [data, setData] = useState<AiBotConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState<boolean>(false);
 
   useEffect(() => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    setError(null);
     const unsub = onSnapshot(
       doc(db, `users/${uid}/bot_config/settings`),
       (snap) => {
         if (!snap.exists()) {
+          setExists(false);
           setData({ ...EMPTY_AI_CONFIG });
           return;
         }
         const x = snap.data() as Record<string, unknown>;
+        setExists(true);
         setData({
           enabled: Boolean(x.enabled),
           businessName: str(x.businessName),
@@ -76,12 +85,11 @@ export function useAiBotConfig(): { data: AiBotConfig | null; error: string | nu
         });
       },
       (err) => {
-        // Firestore rules may block agents (non-owner) from reading the owner's
-        // bot_config subcollection, or the collection may not yet be granted.
-        // Treat permission errors as "no config yet" so the UI still renders
-        // (writes stay gated by the owner check in the page itself).
         const code = (err as { code?: string }).code ?? "";
         if (code === "permission-denied") {
+          // Agents cannot read owner's bot_config (rules restrict to owner).
+          // Render an empty read-only form instead of blocking the page.
+          setExists(false);
           setData({ ...EMPTY_AI_CONFIG });
           setError(null);
           return;
@@ -92,5 +100,5 @@ export function useAiBotConfig(): { data: AiBotConfig | null; error: string | nu
     return () => unsub();
   }, [uid]);
 
-  return { data, error };
+  return { data, error, exists, uid };
 }
