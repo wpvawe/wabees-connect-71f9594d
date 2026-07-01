@@ -31,6 +31,7 @@ import {
   faFileLines,
   faFile,
   faPlay,
+  faUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ const linkifyOpts = {
   target: "_blank",
   rel: "noopener noreferrer",
   className: "underline underline-offset-2",
+  defaultProtocol: "https",
 };
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -80,6 +82,99 @@ function isPlaceholderBody(v: string | null | undefined): boolean {
 }
 function cleanBody(v: string | null | undefined): string {
   return isPlaceholderBody(v) ? "" : (v ?? "");
+}
+
+function firstUrl(value: string): string | null {
+  const match = value.match(/(?:https?:\/\/|www\.)[^\s<>()]+|\b[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>()]*)?/i);
+  if (!match) return null;
+  return match[0].startsWith("http") ? match[0] : `https://${match[0]}`;
+}
+
+function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function detectOtpCode(body: string | null | undefined, templateName?: string | null): string | null {
+  const text = (body ?? "").trim();
+  if (!text) return null;
+  const keywordHit = /\b(otp|one[-\s]?time|verification|verify|code|passcode|pin|security|login|auth|password)\b|رمز|کوڈ|کود/i.test(
+    `${templateName ?? ""} ${text}`,
+  );
+  const compact = text.replace(/[\s-]+/g, "");
+  if (/^\d{4,8}$/.test(compact)) return compact;
+  if (!keywordHit) return null;
+  return text.match(/\b(\d{4,8})\b/)?.[1] ?? null;
+}
+
+function extensionForMime(mime?: string | null): string {
+  const m = (mime ?? "").toLowerCase().split(";")[0].trim();
+  const map: Record<string, string> = {
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/rtf": "rtf",
+    "text/rtf": "rtf",
+    "text/plain": "txt",
+    "text/csv": "csv",
+    "application/zip": "zip",
+    "application/x-rar-compressed": "rar",
+    "application/x-7z-compressed": "7z",
+    "application/vnd.android.package-archive": "apk",
+    "application/octet-stream": "bin",
+  };
+  if (map[m]) return map[m];
+  if (m.startsWith("image/")) return m.slice(6).replace("jpeg", "jpg");
+  if (m.startsWith("video/")) return m.slice(6);
+  if (m.startsWith("audio/")) return m.slice(6).replace("mpeg", "mp3");
+  return "bin";
+}
+
+function safeFileName(name?: string | null, mime?: string | null, fallback = "document"): string {
+  const base = (name || fallback).trim().replace(/[\\/:*?"<>|]+/g, "_");
+  if (/\.[A-Za-z0-9]{1,8}$/.test(base) && !/\.bin$/i.test(base)) return base;
+  const ext = extensionForMime(mime);
+  if (ext === "bin" && /\.bin$/i.test(base)) return base;
+  return `${base.replace(/\.bin$/i, "")}.${ext}`;
+}
+
+function downloadUrl(url: string, fileName?: string | null, mime?: string | null): string {
+  try {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("download", "1");
+    if (fileName) u.searchParams.set("filename", safeFileName(fileName, mime));
+    if (mime) u.searchParams.set("mime", mime);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+async function downloadAttachment(url: string, fileName?: string | null, mime?: string | null) {
+  const finalName = safeFileName(fileName, mime, "attachment");
+  const href = downloadUrl(url, finalName, mime);
+  try {
+    const res = await fetch(href, { mode: "cors" });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = finalName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+  } catch {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
 }
 
 export type MessageActions = {
@@ -268,16 +363,16 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             </button>
           )}
           {m.mediaUrl && (
-            <a
-              href={m.mediaUrl}
-              download={m.fileName ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => setMenuOpen(false)}
+            <button
+              type="button"
+              onClick={() => {
+                void downloadAttachment(m.mediaUrl!, m.fileName, m.mimeType);
+                setMenuOpen(false);
+              }}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
               <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" /> Download
-            </a>
+            </button>
           )}
           {actions?.onDelete && (
             <button
@@ -428,14 +523,18 @@ function MessageContent({
 
   const TextBody = ({ value }: { value: string }) =>
     value ? (
-      <p className="whitespace-pre-wrap break-words">
-        <Linkify options={linkifyOpts}>{value}</Linkify>
-      </p>
+      <>
+        <p className="whitespace-pre-wrap break-words">
+          <Linkify options={linkifyOpts}>{value}</Linkify>
+        </p>
+        <LinkPreview text={value} mine={mine} />
+      </>
     ) : null;
 
   // Authentication / OTP detection — show large copyable code.
-  if (m.otpCode || (m.templateName && /otp|auth|verif/i.test(m.templateName))) {
-    const code = m.otpCode ?? (m.body.match(/\b(\d{4,8})\b/)?.[1] ?? "");
+  const detectedOtp = m.otpCode ?? detectOtpCode(m.body, m.templateName);
+  if (detectedOtp || (m.templateName && /otp|auth|verif/i.test(m.templateName))) {
+    const code = detectedOtp ?? "";
     return (
       <div>
         <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold opacity-80">
@@ -597,6 +696,23 @@ function MessageContent({
     case "order":
       return <TextBody value={m.body || "🛒 Order received"} />;
 
+    case "poll":
+    case "poll_response":
+      return (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold opacity-80">📊 Poll</p>
+          <TextBody value={cleanBody(m.body) || "Poll received"} />
+        </div>
+      );
+
+    case "event":
+      return (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold opacity-80">📅 Event</p>
+          <TextBody value={cleanBody(m.body) || "Event received"} />
+        </div>
+      );
+
     case "system":
     case "ephemeral":
     case "request_welcome":
@@ -607,7 +723,7 @@ function MessageContent({
       return (
         <p className="flex items-center gap-1.5 text-xs italic opacity-80">
           <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
-          {cleanBody(m.body) || "This message type isn't supported on the web yet — open it on your phone."}
+          {cleanBody(m.body) || "WhatsApp message"}
         </p>
       );
 
@@ -663,6 +779,28 @@ function VideoThumb({
   );
 }
 
+function LinkPreview({ text, mine }: { text: string; mine: boolean }) {
+  const url = firstUrl(text);
+  if (!url) return null;
+  const label = hostLabel(url);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "mt-2 flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-xs no-underline transition-colors",
+        mine
+          ? "border-white/20 bg-white/15 text-primary-foreground hover:bg-white/25"
+          : "border-border bg-muted/60 text-card-foreground hover:bg-muted",
+      )}
+    >
+      <FontAwesomeIcon icon={faUpRightFromSquare} className="h-3 w-3 shrink-0 opacity-70" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </a>
+  );
+}
+
 function docIconFor(mime?: string | null, name?: string | null) {
   const s = `${mime ?? ""} ${name ?? ""}`.toLowerCase();
   if (s.includes("pdf")) return { icon: faFilePdf, color: "text-red-500" };
@@ -686,6 +824,7 @@ function docIconFor(mime?: string | null, name?: string | null) {
 function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
   if (!m.mediaUrl) return null;
   const meta = docIconFor(m.mimeType, m.fileName);
+  const fileName = safeFileName(m.fileName, m.mimeType, "document");
   return (
     <div
       className={cn(
@@ -702,17 +841,15 @@ function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
         <FontAwesomeIcon icon={meta.icon} className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium">{m.fileName ?? "Attachment"}</p>
+        <p className="truncate text-xs font-medium">{fileName}</p>
         <p className="text-[10px] opacity-70">
           {typeof m.fileSize === "number" && m.fileSize > 0 ? formatBytes(m.fileSize) : ""}
           {m.mimeType ? ` · ${m.mimeType.split("/").pop()?.toUpperCase()}` : ""}
         </p>
       </div>
-      <a
-        href={m.mediaUrl}
-        target="_blank"
-        rel="noreferrer"
-        download={m.fileName ?? undefined}
+      <button
+        type="button"
+        onClick={() => void downloadAttachment(m.mediaUrl!, fileName, m.mimeType)}
         aria-label="Download"
         className={cn(
           "grid h-8 w-8 place-items-center rounded-full",
@@ -720,7 +857,7 @@ function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
         )}
       >
         <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
-      </a>
+      </button>
     </div>
   );
 }
