@@ -41,6 +41,7 @@ const linkifyOpts = {
   target: "_blank",
   rel: "noopener noreferrer",
   className: "underline underline-offset-2",
+  defaultProtocol: "https",
 };
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -80,6 +81,99 @@ function isPlaceholderBody(v: string | null | undefined): boolean {
 }
 function cleanBody(v: string | null | undefined): string {
   return isPlaceholderBody(v) ? "" : (v ?? "");
+}
+
+function firstUrl(value: string): string | null {
+  const match = value.match(/(?:https?:\/\/|www\.)[^\s<>()]+|\b[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>()]*)?/i);
+  if (!match) return null;
+  return match[0].startsWith("http") ? match[0] : `https://${match[0]}`;
+}
+
+function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function detectOtpCode(body: string | null | undefined, templateName?: string | null): string | null {
+  const text = (body ?? "").trim();
+  if (!text) return null;
+  const keywordHit = /\b(otp|one[-\s]?time|verification|verify|code|passcode|pin|security|login|auth|password)\b|رمز|کوڈ|کود/i.test(
+    `${templateName ?? ""} ${text}`,
+  );
+  const compact = text.replace(/[\s-]+/g, "");
+  if (/^\d{4,8}$/.test(compact)) return compact;
+  if (!keywordHit) return null;
+  return text.match(/\b(\d{4,8})\b/)?.[1] ?? null;
+}
+
+function extensionForMime(mime?: string | null): string {
+  const m = (mime ?? "").toLowerCase().split(";")[0].trim();
+  const map: Record<string, string> = {
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/rtf": "rtf",
+    "text/rtf": "rtf",
+    "text/plain": "txt",
+    "text/csv": "csv",
+    "application/zip": "zip",
+    "application/x-rar-compressed": "rar",
+    "application/x-7z-compressed": "7z",
+    "application/vnd.android.package-archive": "apk",
+    "application/octet-stream": "bin",
+  };
+  if (map[m]) return map[m];
+  if (m.startsWith("image/")) return m.slice(6).replace("jpeg", "jpg");
+  if (m.startsWith("video/")) return m.slice(6);
+  if (m.startsWith("audio/")) return m.slice(6).replace("mpeg", "mp3");
+  return "bin";
+}
+
+function safeFileName(name?: string | null, mime?: string | null, fallback = "document"): string {
+  const base = (name || fallback).trim().replace(/[\\/:*?"<>|]+/g, "_");
+  if (/\.[A-Za-z0-9]{1,8}$/.test(base) && !/\.bin$/i.test(base)) return base;
+  const ext = extensionForMime(mime);
+  if (ext === "bin" && /\.bin$/i.test(base)) return base;
+  return `${base.replace(/\.bin$/i, "")}.${ext}`;
+}
+
+function downloadUrl(url: string, fileName?: string | null, mime?: string | null): string {
+  try {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("download", "1");
+    if (fileName) u.searchParams.set("filename", safeFileName(fileName, mime));
+    if (mime) u.searchParams.set("mime", mime);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+async function downloadAttachment(url: string, fileName?: string | null, mime?: string | null) {
+  const finalName = safeFileName(fileName, mime, "attachment");
+  const href = downloadUrl(url, finalName, mime);
+  try {
+    const res = await fetch(href, { mode: "cors" });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = finalName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+  } catch {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
 }
 
 export type MessageActions = {
