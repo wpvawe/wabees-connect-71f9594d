@@ -562,10 +562,14 @@ function ContextMenu({
   onCreateTag: () => void;
 }) {
   const active = new Set(conv?.tags ?? []);
+  const menuWidth = 240;
+  const menuHeight = 320;
+  const left = Math.min(x, Math.max(8, window.innerWidth - menuWidth - 8));
+  const top = Math.min(y, Math.max(8, window.innerHeight - menuHeight - 8));
   return (
     <div
-      className="fixed z-50 min-w-[220px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
-      style={{ top: y, left: x }}
+      className="fixed z-50 min-w-[220px] max-w-[240px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
+      style={{ top, left }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <button
