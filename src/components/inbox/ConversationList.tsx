@@ -65,8 +65,7 @@ function isReplyWindowOpen(iso: string | null | undefined): boolean {
 /**
  * A conversation counts as "free" when the customer has messaged within the
  * 24h window. Older webhook writes did not persist `lastIncomingMessageAt`,
- * so fall back to `lastMessageAt` when the conversation has unread messages
- * (unread ⇒ last activity was incoming).
+ * so fall back to `lastMessageAt` for legacy rows.
  */
 function isConvInFreeWindow(c: {
   lastIncomingMessageAt?: string | null;
@@ -74,8 +73,7 @@ function isConvInFreeWindow(c: {
   unreadCount: number;
 }): boolean {
   if (c.lastIncomingMessageAt) return isReplyWindowOpen(c.lastIncomingMessageAt);
-  if (c.unreadCount > 0) return isReplyWindowOpen(c.lastMessageAt);
-  return false;
+  return isReplyWindowOpen(c.lastMessageAt);
 }
 
 // Session-scoped cache so switching between conversations doesn't refetch
@@ -652,7 +650,7 @@ function ConvRow({
   const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
-  const freeChat = isReplyWindowOpen(c.lastIncomingMessageAt);
+  const freeChat = isConvInFreeWindow(c);
   return (
     <li>
       <Link
