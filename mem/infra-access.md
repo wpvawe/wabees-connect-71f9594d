@@ -19,7 +19,7 @@ Three surfaces to keep in sync:
 nix shell nixpkgs#openssh nixpkgs#sshpass -c sshpass -p "$HOSTINGER_SSH_PASSWORD" ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST '<cmd>'
 
 Web root: domains/wabees.live/public_html (index.php landing, api/, config/, download/, logs/).
-api.wabees.live serves from /api in same public_html.
+api.wabees.live serves PHP at ROOT (no /api prefix) — correct URL is https://api.wabees.live/send-message.php, NOT /api/send-message.php. nginx maps the api subdomain to the api/ folder as root.
 
 ## FTP fallback
 ftp.wabees.live / u664356407.ftppwabeeslive / Ht@143*#$ — FTP root = web root, do NOT prefix public_html/.
