@@ -723,7 +723,7 @@ function MessageContent({
       return (
         <p className="flex items-center gap-1.5 text-xs italic opacity-80">
           <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
-          {cleanBody(m.body) || "This message type isn't supported on the web yet — open it on your phone."}
+          {cleanBody(m.body) || "WhatsApp message"}
         </p>
       );
 
