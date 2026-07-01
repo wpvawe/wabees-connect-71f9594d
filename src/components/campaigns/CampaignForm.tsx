@@ -10,10 +10,6 @@ import {
   faWandMagicSparkles,
   faKeyboard,
   faCircleInfo,
-  faReply,
-  faArrowUpRightFromSquare,
-  faPhone,
-  faCheckDouble,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
@@ -23,6 +19,7 @@ import { prepareCampaignCreate } from "@/lib/firebase/campaigns";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 import { cn } from "@/lib/utils";
+import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 
 type Mode = "template" | "text";
 type VarSource = "static" | "contact";
