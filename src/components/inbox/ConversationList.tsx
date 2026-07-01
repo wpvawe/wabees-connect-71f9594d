@@ -231,10 +231,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     if (!menu) return;
     const onDown = (e: MouseEvent | PointerEvent) => {
       const target = e.target as Node | null;
-      // Ignore clicks inside the menu itself — React's synthetic
-      // stopPropagation does NOT stop native document listeners, so we must
-      // filter by DOM containment instead.
-      if (target && (target as Element).closest?.("[data-conv-context-menu]")) return;
+      const menuEl = document.querySelector("[data-conv-context-menu]");
+      // Ignore clicks inside the menu itself. Event targets can be Text/SVG
+      // nodes (not just HTMLElements), so use DOM containment instead of
+      // Element.closest; otherwise pointerdown can unmount the menu before the
+      // button click fires.
+      if (target && menuEl?.contains(target)) return;
       setMenu(null);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
@@ -636,6 +638,17 @@ function ContextMenu({
   const menuHeight = 320;
   const left = Math.min(x, Math.max(8, window.innerWidth - menuWidth - 8));
   const top = Math.min(y, Math.max(8, window.innerHeight - menuHeight - 8));
+  const runAction = (
+    e: import("react").PointerEvent<HTMLButtonElement>,
+    action: () => void | Promise<void>,
+    closeAfter = true,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void Promise.resolve(action()).finally(() => {
+      if (closeAfter) onClose();
+    });
+  };
   return (
     <div
       className="fixed z-50 min-w-[220px] max-w-[240px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
@@ -646,10 +659,8 @@ function ContextMenu({
     >
       <button
         type="button"
-        onClick={() => {
-          onPin();
-          onClose();
-        }}
+        onPointerDown={(e) => runAction(e, onPin)}
+        onClick={(e) => e.preventDefault()}
         className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
       >
         <FontAwesomeIcon icon={faThumbtack} className="h-3.5 w-3.5" />
@@ -665,9 +676,10 @@ function ContextMenu({
             <button
               key={t.id}
               type="button"
-              onClick={() => {
-                void Promise.resolve(active.has(t.name) ? onRemoveTag(t.name) : onAddTag(t.name)).finally(onClose);
-              }}
+              onPointerDown={(e) =>
+                runAction(e, () => (active.has(t.name) ? onRemoveTag(t.name) : onAddTag(t.name)))
+              }
+              onClick={(e) => e.preventDefault()}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
               <span
@@ -684,10 +696,8 @@ function ContextMenu({
       </div>
       <button
         type="button"
-        onClick={() => {
-          onCreateTag();
-          onClose();
-        }}
+        onPointerDown={(e) => runAction(e, onCreateTag)}
+        onClick={(e) => e.preventDefault()}
         className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-primary hover:bg-primary/10"
       >
         <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> New tag
@@ -695,10 +705,8 @@ function ContextMenu({
       <div className="my-1 border-t border-border" />
       <button
         type="button"
-        onClick={() => {
-          onDelete();
-          onClose();
-        }}
+        onPointerDown={(e) => runAction(e, onDelete)}
+        onClick={(e) => e.preventDefault()}
         className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-destructive hover:bg-destructive/10"
       >
         <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" /> Delete conversation
