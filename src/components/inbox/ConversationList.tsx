@@ -410,7 +410,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           onDelete={() => handleDelete(menu.phone)}
           onAddTag={(t) => handleAddTag(menu.phone, t)}
           onRemoveTag={(t) => handleRemoveTag(menu.phone, t)}
-          onCreateTag={handleCreateTag}
+          onCreateTag={() => handleCreateTag(menu.phone)}
         />
       )}
       <Dialog
