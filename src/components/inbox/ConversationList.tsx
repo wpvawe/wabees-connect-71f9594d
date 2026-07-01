@@ -216,7 +216,12 @@ function formatPreview(body: string | null | undefined, type: string | null | un
     event: "📅 Event",
   };
   const tag = tagMap[t];
+  if (tag && text) {
+    const tagIcon = tag.split(" ")[0];
+    const tagLabel = tag.slice(tagIcon.length).trim().toLowerCase();
+    if (low === tagLabel || text.startsWith(tagIcon)) return text;
+    return `${tagIcon} ${text}`;
+  }
   if (tag && !text) return tag;
-  if (tag && text) return `${tag.split(" ")[0]} ${text}`;
   return text || "No preview";
 }
