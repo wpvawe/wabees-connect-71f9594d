@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { mediaProxyUrl } from "@/lib/wabees/api";
 import {
   normalizePhone,
   phoneQueryCandidates,
@@ -103,6 +104,18 @@ export function useMessages(phone: string | undefined): {
             const otpFromBody = /\b(\d{4,8})\b/.exec(body);
             const looksLikeOtp =
               /\b(otp|verification|code|pin)\b/i.test(body) && otpFromBody;
+            const rawMediaUrl = strOrNull(x.mediaUrl);
+            const rawMediaId = strOrNull(x.mediaId);
+            // Bug fix: incoming webhook writes `mediaId` first and stamps
+            // `mediaUrl` in a follow-up commit ~200ms later. When the
+            // follow-up commit fails (Firestore contact query 5xx, Meta
+            // token expiry, function timeout), the message is left with a
+            // mediaId but no mediaUrl — the bubble then renders blank
+            // forever. Synthesize the same proxy URL the backend would
+            // stamp so the media is always displayable when mediaId exists.
+            const mediaUrl =
+              rawMediaUrl ??
+              (rawMediaId && uid ? mediaProxyUrl(rawMediaId, uid) : null);
             return {
               id: d.id,
               contactPhone: normalizePhone(contactPhone),
@@ -113,8 +126,8 @@ export function useMessages(phone: string | undefined): {
                 | "outgoing",
               status: str(x.status, "sent"),
               body,
-              mediaUrl: strOrNull(x.mediaUrl),
-              mediaId: strOrNull(x.mediaId),
+              mediaUrl,
+              mediaId: rawMediaId,
               mimeType: strOrNull(x.mimeType),
               caption: strOrNull(x.caption),
               fileName: strOrNull(x.fileName),
