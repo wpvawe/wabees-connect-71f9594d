@@ -58,7 +58,9 @@ export function WhatsAppPreview({
       >
         <div className="ml-auto max-w-[85%] rounded-lg rounded-tr-sm bg-[#dcf8c6] p-2 shadow-sm">
           {headerFormat === "TEXT" && header && (
-            <p className="mb-1 text-[13px] font-semibold text-[#111b21]">{header}</p>
+            <p className="mb-1.5 text-[14px] font-semibold leading-[1.35] text-[#111b21]">
+              {header}
+            </p>
           )}
           {headerFormat === "IMAGE" && (
             <MediaHeaderBox icon={faImage} label="Image" url={headerMediaUrl} />
@@ -69,18 +71,20 @@ export function WhatsAppPreview({
           {headerFormat === "DOCUMENT" && (
             <MediaHeaderBox icon={faFileLines} label="Document" url={headerMediaUrl} />
           )}
-          <p className="whitespace-pre-wrap text-[13px] leading-snug text-[#111b21]">
+          <p className="whitespace-pre-wrap text-[14px] leading-[1.45] text-[#111b21]">
             {formatWhatsApp(body || "Message preview will appear here…")}
           </p>
-          {footer && <p className="mt-1 text-[11px] text-[#667781]">{footer}</p>}
-          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-[#667781]">
+          {footer && (
+            <p className="mt-1.5 text-[12px] leading-[1.35] text-[#667781]">{footer}</p>
+          )}
+          <div className="mt-1.5 flex items-center justify-end gap-1 text-[10px] text-[#667781]">
             <span>
               {hh}:{mm}
             </span>
             <FontAwesomeIcon icon={faCheckDouble} className="h-2.5 w-2.5 text-[#53bdeb]" />
           </div>
           {buttons && buttons.length > 0 && (
-            <div className="-mx-2 -mb-2 mt-2 divide-y divide-black/5 border-t border-black/5">
+            <div className="-mx-2 -mb-2 mt-2 divide-y divide-black/10 border-t border-black/10">
               {buttons.map((b, i) => {
                 const type = ((b.type as string) ?? "").toUpperCase();
                 const text = (b.text as string) ?? "Button";
@@ -93,7 +97,7 @@ export function WhatsAppPreview({
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-[#00a5f4]"
+                    className="flex items-center justify-center gap-1.5 px-2 py-2 text-[13px] font-medium leading-none text-[#00a5f4]"
                   >
                     <FontAwesomeIcon icon={icon} className="h-3 w-3" />
                     {text}
