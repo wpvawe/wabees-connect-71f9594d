@@ -27,15 +27,23 @@ export async function upsertContact(
   const ref = isUpdate
     ? doc(db, "users", uid, "contacts", input.id!)
     : doc(collection(db, "users", uid, "contacts"));
+  // On update, only write fields the caller actually provided. Previously
+  // `email: input.email ?? null` (etc.) would nuke existing values whenever a
+  // form only edited "name" — the merge still overwrote email/company/notes
+  // with null. On create we keep defaulting to null so the doc shape is stable.
   const payload: Record<string, unknown> = {
     name: input.name,
     phone: normalizePhone(input.phone),
-    email: input.email ?? null,
-    company: input.company ?? null,
-    notes: input.notes ?? null,
-    tags: input.tags ?? [],
-    group: input.group ?? null,
   };
+  const setIf = (key: string, val: unknown, defaultOnCreate: unknown = null) => {
+    if (val !== undefined) payload[key] = val;
+    else if (!isUpdate) payload[key] = defaultOnCreate;
+  };
+  setIf("email", input.email);
+  setIf("company", input.company);
+  setIf("notes", input.notes);
+  setIf("tags", input.tags, []);
+  setIf("group", input.group);
   if (!isUpdate) {
     payload.totalMessages = 0;
     payload.createdAt = serverTimestamp();
