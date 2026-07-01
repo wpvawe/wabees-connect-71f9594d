@@ -103,6 +103,14 @@ function AiBotPage() {
     }
   }
 
+  function discard() {
+    if (!data) return;
+    setForm(data);
+    setFaqs(parseFaq(data.faq));
+    setDirty(false);
+    lastSyncedRef.current = JSON.stringify(data);
+  }
+
   if (error)
     return (
       <>
@@ -128,9 +136,21 @@ function AiBotPage() {
         subtitle="Configure your AI auto-reply assistant"
         right={
           isOwner ? (
-            <WbButton onClick={save} loading={saving}>
-              <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" /> Save changes
-            </WbButton>
+            <div className="flex items-center gap-2">
+              {dirty && (
+                <span className="hidden rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 sm:inline dark:text-amber-400">
+                  Unsaved
+                </span>
+              )}
+              {dirty && (
+                <WbButton variant="secondary" size="sm" onClick={discard} disabled={saving}>
+                  Discard
+                </WbButton>
+              )}
+              <WbButton onClick={save} loading={saving} disabled={!dirty && exists}>
+                <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" /> Save changes
+              </WbButton>
+            </div>
           ) : undefined
         }
       />
