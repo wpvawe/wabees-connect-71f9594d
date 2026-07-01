@@ -807,6 +807,7 @@ function docIconFor(mime?: string | null, name?: string | null) {
 function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
   if (!m.mediaUrl) return null;
   const meta = docIconFor(m.mimeType, m.fileName);
+  const fileName = safeFileName(m.fileName, m.mimeType, "document");
   return (
     <div
       className={cn(
@@ -823,17 +824,15 @@ function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
         <FontAwesomeIcon icon={meta.icon} className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium">{m.fileName ?? "Attachment"}</p>
+        <p className="truncate text-xs font-medium">{fileName}</p>
         <p className="text-[10px] opacity-70">
           {typeof m.fileSize === "number" && m.fileSize > 0 ? formatBytes(m.fileSize) : ""}
           {m.mimeType ? ` · ${m.mimeType.split("/").pop()?.toUpperCase()}` : ""}
         </p>
       </div>
-      <a
-        href={m.mediaUrl}
-        target="_blank"
-        rel="noreferrer"
-        download={m.fileName ?? undefined}
+      <button
+        type="button"
+        onClick={() => void downloadAttachment(m.mediaUrl!, fileName, m.mimeType)}
         aria-label="Download"
         className={cn(
           "grid h-8 w-8 place-items-center rounded-full",
@@ -841,7 +840,7 @@ function DocumentCard({ m, mine }: { m: Message; mine: boolean }) {
         )}
       >
         <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
-      </a>
+      </button>
     </div>
   );
 }
