@@ -92,9 +92,7 @@ export function NotesPanel({
                 </div>
                 <p className="mt-2 text-[10px] text-muted-foreground">
                   {n.authorEmail || n.authorUid} ·{" "}
-                  {n.createdAt
-                    ? `${formatDistanceToNow(new Date(n.createdAt))} ago`
-                    : "just now"}
+                  {formatNoteTime(n.createdAt)}
                 </p>
               </div>
             ))
@@ -130,4 +128,11 @@ export function NotesPanel({
       </SheetContent>
     </Sheet>
   );
+}
+
+function formatNoteTime(value: string | null): string {
+  if (!value) return "just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "just now";
+  return `${formatDistanceToNow(date)} ago`;
 }
