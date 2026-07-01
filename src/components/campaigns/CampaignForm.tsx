@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -10,10 +11,6 @@ import {
   faWandMagicSparkles,
   faKeyboard,
   faCircleInfo,
-  faReply,
-  faArrowUpRightFromSquare,
-  faPhone,
-  faCheckDouble,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
@@ -23,6 +20,7 @@ import { prepareCampaignCreate } from "@/lib/firebase/campaigns";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 import { cn } from "@/lib/utils";
+import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 
 type Mode = "template" | "text";
 type VarSource = "static" | "contact";
@@ -850,120 +848,5 @@ function SummaryRow({
       </span>
     </li>
   );
-}
-
-/* --------------------------- WhatsApp preview --------------------------- */
-
-function WhatsAppPreview({
-  header,
-  headerFormat,
-  body,
-  footer,
-  buttons,
-}: {
-  header: string | null;
-  headerFormat: "TEXT" | null;
-  body: string;
-  footer: string | null;
-  buttons: Array<Record<string, unknown>>;
-}) {
-  const now = new Date();
-  const hh = now.getHours().toString().padStart(2, "0");
-  const mm = now.getMinutes().toString().padStart(2, "0");
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
-      {/* Chat header */}
-      <div className="flex items-center gap-2 bg-[#075e54] px-4 py-3 text-white">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-sm font-semibold">
-          W
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">WhatsApp preview</p>
-          <p className="truncate text-[10px] opacity-80">online</p>
-        </div>
-        <FontAwesomeIcon icon={faPhone} className="h-3.5 w-3.5 opacity-90" />
-      </div>
-
-      {/* Chat area */}
-      <div
-        className="min-h-[360px] px-3 py-4"
-        style={{
-          backgroundColor: "#e5ddd5",
-          backgroundImage:
-            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M0 20 L20 0 L40 20 L20 40 Z' fill='%23d9d1c7' fill-opacity='0.35'/></svg>\")",
-        }}
-      >
-        <div className="ml-auto max-w-[85%] rounded-lg rounded-tr-sm bg-[#dcf8c6] p-2 shadow-sm">
-          {header && headerFormat === "TEXT" && (
-            <p className="mb-1 text-[13px] font-semibold text-[#111b21]">{header}</p>
-          )}
-          <p className="whitespace-pre-wrap text-[13px] leading-snug text-[#111b21]">
-            {formatWhatsApp(body || "Message preview will appear here…")}
-          </p>
-          {footer && (
-            <p className="mt-1 text-[11px] text-[#667781]">{footer}</p>
-          )}
-          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-[#667781]">
-            <span>
-              {hh}:{mm}
-            </span>
-            <FontAwesomeIcon icon={faCheckDouble} className="h-2.5 w-2.5 text-[#53bdeb]" />
-          </div>
-
-          {/* inline buttons (quick replies) */}
-          {buttons && buttons.length > 0 && (
-            <div className="-mx-2 -mb-2 mt-2 divide-y divide-black/5 border-t border-black/5">
-              {buttons.map((b, i) => {
-                const type = ((b.type as string) ?? "").toUpperCase();
-                const text = (b.text as string) ?? "Button";
-                const icon =
-                  type === "URL"
-                    ? faArrowUpRightFromSquare
-                    : type === "PHONE_NUMBER"
-                      ? faPhone
-                      : faReply;
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-[#00a5f4]"
-                  >
-                    <FontAwesomeIcon icon={icon} className="h-3 w-3" />
-                    {text}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Very light WhatsApp formatting: *bold*, _italic_, ~strike~, `mono` */
-function formatWhatsApp(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const re = /(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|`[^`\n]+`)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let key = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const tok = m[0];
-    const inner = tok.slice(1, -1);
-    if (tok.startsWith("*")) parts.push(<strong key={key++}>{inner}</strong>);
-    else if (tok.startsWith("_")) parts.push(<em key={key++}>{inner}</em>);
-    else if (tok.startsWith("~"))
-      parts.push(
-        <span key={key++} style={{ textDecoration: "line-through" }}>
-          {inner}
-        </span>,
-      );
-    else parts.push(<code key={key++}>{inner}</code>);
-    last = m.index + tok.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
 }
 
