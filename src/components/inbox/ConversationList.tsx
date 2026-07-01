@@ -639,7 +639,7 @@ function ContextMenu({
   const left = Math.min(x, Math.max(8, window.innerWidth - menuWidth - 8));
   const top = Math.min(y, Math.max(8, window.innerHeight - menuHeight - 8));
   const runAction = (
-    e: React.PointerEvent<HTMLButtonElement>,
+    e: import("react").PointerEvent<HTMLButtonElement>,
     action: () => void | Promise<void>,
     closeAfter = true,
   ) => {
