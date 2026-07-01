@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
@@ -57,20 +57,35 @@ function AiBotPage() {
   const uid = useEffectiveUid();
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
-  const { data, error } = useAiBotConfig();
+  const { data, error, exists } = useAiBotConfig();
   const [form, setForm] = useState<AiBotConfig | null>(null);
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  // Track the last remote snapshot we synced so we only apply real changes.
+  const lastSyncedRef = useRef<string>("");
 
+  // Re-sync form whenever remote config changes AND the user has no unsaved
+  // edits. This mirrors the Flutter app's StreamProvider behavior so edits
+  // made on the phone show up immediately on the web (and vice-versa).
   useEffect(() => {
-    if (data && !form) {
-      setForm(data);
-      setFaqs(parseFaq(data.faq));
-    }
-  }, [data, form]);
+    if (!data) return;
+    const signature = JSON.stringify(data);
+    if (signature === lastSyncedRef.current) return;
+    if (dirty) return; // don't clobber unsaved edits
+    lastSyncedRef.current = signature;
+    setForm(data);
+    setFaqs(parseFaq(data.faq));
+  }, [data, dirty]);
 
   function set<K extends keyof AiBotConfig>(k: K, v: AiBotConfig[K]) {
+    setDirty(true);
     setForm((f) => ({ ...(f ?? EMPTY_AI_CONFIG), [k]: v }));
+  }
+
+  function updateFaqs(next: Faq[] | ((prev: Faq[]) => Faq[])) {
+    setDirty(true);
+    setFaqs((prev) => (typeof next === "function" ? (next as (p: Faq[]) => Faq[])(prev) : next));
   }
 
   async function save() {
@@ -79,12 +94,21 @@ function AiBotPage() {
     try {
       const payload = { ...form, faq: JSON.stringify(faqs), updatedAt: serverTimestamp() };
       await setDoc(doc(fbDb(), "users", uid, "bot_config", "settings"), payload, { merge: true });
+      setDirty(false);
       toast.success("Saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
+  }
+
+  function discard() {
+    if (!data) return;
+    setForm(data);
+    setFaqs(parseFaq(data.faq));
+    setDirty(false);
+    lastSyncedRef.current = JSON.stringify(data);
   }
 
   if (error)
@@ -112,9 +136,21 @@ function AiBotPage() {
         subtitle="Configure your AI auto-reply assistant"
         right={
           isOwner ? (
-            <WbButton onClick={save} loading={saving}>
-              <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" /> Save changes
-            </WbButton>
+            <div className="flex items-center gap-2">
+              {dirty && (
+                <span className="hidden rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 sm:inline dark:text-amber-400">
+                  Unsaved
+                </span>
+              )}
+              {dirty && (
+                <WbButton variant="secondary" size="sm" onClick={discard} disabled={saving}>
+                  Discard
+                </WbButton>
+              )}
+              <WbButton onClick={save} loading={saving} disabled={!dirty && exists}>
+                <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" /> Save changes
+              </WbButton>
+            </div>
           ) : undefined
         }
       />
@@ -340,7 +376,7 @@ function AiBotPage() {
                     <WbButton
                       size="sm"
                       variant="secondary"
-                      onClick={() => setFaqs((a) => [...a, { q: "", a: "" }])}
+                      onClick={() => updateFaqs((a) => [...a, { q: "", a: "" }])}
                     >
                       <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add FAQ
                     </WbButton>
@@ -370,7 +406,7 @@ function AiBotPage() {
                       {isOwner && (
                         <button
                           type="button"
-                          onClick={() => setFaqs((arr) => arr.filter((_, j) => j !== i))}
+                          onClick={() => updateFaqs((arr) => arr.filter((_, j) => j !== i))}
                           className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           aria-label="Delete FAQ"
                         >
@@ -383,7 +419,7 @@ function AiBotPage() {
                           placeholder="e.g. What are your prices?"
                       value={f.q}
                       onChange={(e) =>
-                        setFaqs((arr) =>
+                        updateFaqs((arr) =>
                           arr.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)),
                         )
                       }
@@ -393,7 +429,7 @@ function AiBotPage() {
                       <Textarea
                         value={f.a}
                         onChange={(v) =>
-                          setFaqs((arr) => arr.map((x, j) => (j === i ? { ...x, a: v } : x)))
+                          updateFaqs((arr) => arr.map((x, j) => (j === i ? { ...x, a: v } : x)))
                         }
                         disabled={!isOwner}
                             rows={3}
