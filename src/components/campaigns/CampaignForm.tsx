@@ -20,7 +20,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
 import { prepareCampaignCreate } from "@/lib/firebase/campaigns";
-import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,6 @@ const CONTACT_FIELDS = [
 export function CampaignForm() {
   const navigate = useNavigate();
   const uid = useEffectiveUid();
-  const selfUid = useFirebaseUid();
   const { data: contacts, error: contactsError } = useContacts();
   const { data: templates, error: templatesError } = useTemplates();
 
