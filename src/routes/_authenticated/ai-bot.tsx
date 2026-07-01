@@ -356,7 +356,7 @@ function AiBotPage() {
                     <WbButton
                       size="sm"
                       variant="secondary"
-                      onClick={() => setFaqs((a) => [...a, { q: "", a: "" }])}
+                      onClick={() => updateFaqs((a) => [...a, { q: "", a: "" }])}
                     >
                       <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add FAQ
                     </WbButton>
@@ -386,7 +386,7 @@ function AiBotPage() {
                       {isOwner && (
                         <button
                           type="button"
-                          onClick={() => setFaqs((arr) => arr.filter((_, j) => j !== i))}
+                          onClick={() => updateFaqs((arr) => arr.filter((_, j) => j !== i))}
                           className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           aria-label="Delete FAQ"
                         >
