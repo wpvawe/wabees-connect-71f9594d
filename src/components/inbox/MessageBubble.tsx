@@ -456,6 +456,25 @@ function MessageContent({
         : null;
       return (
         <div>
+          {hasCoords && (
+            <a
+              href={href!}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 block overflow-hidden rounded-md"
+              aria-label="Open map"
+            >
+              <img
+                src={`https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=320x160&markers=${lat},${lng},red-pushpin`}
+                alt="Map"
+                loading="lazy"
+                className="h-40 w-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </a>
+          )}
           <p className="mb-1 flex items-center gap-1.5 font-semibold">
             <FontAwesomeIcon icon={faLocationDot} className="h-3.5 w-3.5" />
             {m.locationName || "Location"}
@@ -491,22 +510,7 @@ function MessageContent({
             Contact{list.length > 1 ? "s" : ""}
           </p>
           {list.length > 0 ? (
-            list.map((c, i) => {
-              const name =
-                ((c.name as Record<string, unknown>)?.formatted_name as string | undefined) ??
-                String(c.formatted_name ?? "Contact");
-              const phones = Array.isArray(c.phones)
-                ? (c.phones as Array<{ phone?: string; wa_id?: string }>)
-                : [];
-              return (
-                <div key={i} className="text-xs opacity-90">
-                  <p className="font-medium">{name}</p>
-                  {phones.map((p, j) => (
-                    <p key={j}>{p.phone || p.wa_id}</p>
-                  ))}
-                </div>
-              );
-            })
+            list.map((c, i) => <ContactCard key={i} raw={c} mine={mine} />)
           ) : (
             <p className="text-xs opacity-80">{m.body || "Shared contact"}</p>
           )}
