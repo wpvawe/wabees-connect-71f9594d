@@ -19,6 +19,32 @@ export type LightboxItem = {
   mime?: string | null;
 };
 
+function extensionForMime(mime?: string | null): string {
+  const m = (mime ?? "").toLowerCase().split(";")[0].trim();
+  if (m === "image/jpeg") return "jpg";
+  if (m.startsWith("image/")) return m.slice(6);
+  if (m.startsWith("video/")) return m.slice(6);
+  return "bin";
+}
+
+function safeFileName(name: string | null | undefined, mime: string | null | undefined, fallback: string) {
+  const base = (name || fallback).replace(/[\\/:*?"<>|]+/g, "_");
+  if (/\.[A-Za-z0-9]{1,8}$/.test(base) && !/\.bin$/i.test(base)) return base;
+  return `${base.replace(/\.bin$/i, "")}.${extensionForMime(mime)}`;
+}
+
+function downloadUrl(url: string, fileName: string, mime?: string | null): string {
+  try {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("download", "1");
+    u.searchParams.set("filename", fileName);
+    if (mime) u.searchParams.set("mime", mime);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function MediaLightbox({
   items,
   startId,
@@ -61,19 +87,21 @@ export function MediaLightbox({
   if (!current) return null;
 
   const download = async () => {
+    const fileName = safeFileName(current.fileName, current.mime, `${current.kind}-${current.id}`);
+    const href = downloadUrl(current.url, fileName, current.mime);
     try {
-      const res = await fetch(current.url);
+      const res = await fetch(href, { mode: "cors" });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = current.fileName || `${current.kind}-${current.id}`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
-      window.open(current.url, "_blank", "noopener,noreferrer");
+      window.open(href, "_blank", "noopener,noreferrer");
     }
   };
 
