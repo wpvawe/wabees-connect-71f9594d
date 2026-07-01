@@ -16,6 +16,21 @@ import {
   faShareNodes,
   faKey,
   faCircleQuestion,
+  faShare,
+  faDownload,
+  faPhone,
+  faUserPlus,
+  faFilePdf,
+  faFileWord,
+  faFileExcel,
+  faFilePowerpoint,
+  faFileZipper,
+  faFileAudio,
+  faFileVideo,
+  faFileImage,
+  faFileLines,
+  faFile,
+  faPlay,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -34,6 +49,8 @@ export type MessageActions = {
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
   onDelete?: (m: Message) => void;
+  onForward?: (m: Message) => void;
+  onOpenMedia?: (m: Message) => void;
 };
 
 export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
@@ -87,6 +104,11 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
         {!isDeleted && mine && m.botName && (
           <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
         )}
+        {!isDeleted && (m as unknown as { forwarded?: boolean }).forwarded && (
+          <p className={cn("mb-1 flex items-center gap-1 text-[10px] italic", mine ? "opacity-80" : "text-muted-foreground")}>
+            <FontAwesomeIcon icon={faShare} className="h-2.5 w-2.5" /> Forwarded
+          </p>
+        )}
         {!isDeleted && m.replyToBody && (
           <ReplyQuote text={m.replyToBody} type={m.replyToType} mine={mine} />
         )}
@@ -96,7 +118,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             This message was deleted
           </p>
         ) : (
-          <MessageContent m={m} mine={mine} />
+          <MessageContent m={m} mine={mine} actions={actions} />
         )}
         <div
           className={cn(
@@ -195,6 +217,30 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             >
               <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" /> Copy
             </button>
+          )}
+          {actions?.onForward && (
+            <button
+              type="button"
+              onClick={() => {
+                actions.onForward?.(m);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <FontAwesomeIcon icon={faShare} className="h-3.5 w-3.5" /> Forward
+            </button>
+          )}
+          {m.mediaUrl && (
+            <a
+              href={m.mediaUrl}
+              download={m.fileName ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" /> Download
+            </a>
           )}
           {actions?.onDelete && (
             <button
