@@ -1,113 +1,208 @@
-import { useEffect, useState } from "react";
-import { WABEES_API_BASE } from "@/integrations/firebase/client";
-import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
-import { fbAuthOrNull } from "@/integrations/firebase/client";
+import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+  Timestamp,
+} from "firebase/firestore";
+import { fbDbOrNull } from "@/integrations/firebase/client";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
-export type InsightPoint = { start: number; end: number; value: number };
-export type InsightSeries = { type: string; data_points: InsightPoint[] };
+export type AnalyticsRange = "7d" | "30d" | "month" | "lastMonth";
 
 export type AnalyticsData = {
   sent: number;
   delivered: number;
   read: number;
   failed: number;
-  byDay: Array<{ date: string; sent: number; delivered: number; read: number }>;
+  pending: number;
+  incoming: number;
+  outgoing: number;
+  uniqueContacts: number;
+  byDay: Array<{
+    date: string;
+    sent: number;
+    delivered: number;
+    read: number;
+    failed: number;
+    incoming: number;
+  }>;
+  byType: Array<{ type: string; count: number }>;
+  topContacts: Array<{ phone: string; name: string; count: number }>;
 };
 
-export function useAnalytics(range: "7d" | "30d" | "month" | "lastMonth"): {
+type Row = {
+  direction: "incoming" | "outgoing";
+  status: string;
+  type: string;
+  createdAt: Date | null;
+  contactPhone: string;
+  contactName: string;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+};
+
+function toDate(v: unknown): Date | null {
+  if (!v) return null;
+  if (v instanceof Timestamp) return v.toDate();
+  if (v instanceof Date) return v;
+  if (typeof v === "string" || typeof v === "number") {
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof v === "object" && v && "seconds" in (v as Record<string, unknown>)) {
+    const s = (v as { seconds: number }).seconds;
+    return new Date(s * 1000);
+  }
+  return null;
+}
+
+export function computeRange(range: AnalyticsRange): { start: Date; end: Date } {
+  const now = new Date();
+  const end = now;
+  if (range === "7d") return { start: new Date(now.getTime() - 7 * 86400_000), end };
+  if (range === "30d") return { start: new Date(now.getTime() - 30 * 86400_000), end };
+  if (range === "month") {
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end };
+  }
+  const firstThis = new Date(now.getFullYear(), now.getMonth(), 1);
+  const firstLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return { start: firstLast, end: firstThis };
+}
+
+export function useAnalytics(range: AnalyticsRange): {
   data: AnalyticsData | null;
   loading: boolean;
   error: string | null;
   reload: () => void;
-  hasConfig: boolean;
 } {
-  const { data: wa } = useWhatsAppConfig();
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const uid = useEffectiveUid();
+  const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
-  const hasConfig = Boolean(wa?.phone_number_id);
-  const phoneNumberId = wa?.phone_number_id ?? null;
+  const { start, end } = useMemo(() => computeRange(range), [range]);
 
   useEffect(() => {
-    if (!phoneNumberId) return;
-    const { start, end } = computeRange(range);
-    let cancelled = false;
-    setLoading(true);
+    if (!uid) return;
+    const db = fbDbOrNull();
+    if (!db) return;
+    setRows(null);
     setError(null);
-    (async () => {
-      try {
-        const user = fbAuthOrNull()?.currentUser;
-        const idToken = user ? await user.getIdToken() : "";
-        const res = await fetch(`${WABEES_API_BASE}/get-insights.php`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone_number_id: phoneNumberId, start, end, id_token: idToken }),
+    // Query the widest window we might need; filter client-side by range.
+    // Avoids composite indexes and keeps switching ranges instant.
+    const q = query(
+      collection(db, `users/${uid}/messages`),
+      where("createdAt", ">=", Timestamp.fromDate(new Date(Date.now() - 90 * 86400_000))),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list: Row[] = snap.docs.map((d) => {
+          const x = d.data() as Record<string, unknown>;
+          return {
+            direction:
+              (x.direction as string) === "outgoing" ? "outgoing" : "incoming",
+            status: String(x.status ?? "sent"),
+            type: String(x.type ?? "text"),
+            createdAt: toDate(x.createdAt),
+            contactPhone: String(x.contactPhone ?? ""),
+            contactName: String(x.contactName ?? x.contactPhone ?? ""),
+            deliveredAt: toDate(x.deliveredAt),
+            readAt: toDate(x.readAt),
+          };
         });
-        const raw = (await res.json().catch(() => ({}))) as {
-          data?: InsightSeries[];
-          error?: unknown;
-        };
-        if (cancelled) return;
-        if (!res.ok || raw.error) {
-          setError(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
-          setLoading(false);
-          return;
+        setRows(list);
+      },
+      (err) => setError(err.message),
+    );
+    return () => unsub();
+  }, [uid, nonce]);
+
+  const data = useMemo<AnalyticsData | null>(() => {
+    if (!rows) return null;
+    const inRange = rows.filter((r) => {
+      if (!r.createdAt) return false;
+      return r.createdAt >= start && r.createdAt <= end;
+    });
+    const totals = { sent: 0, delivered: 0, read: 0, failed: 0, pending: 0, incoming: 0, outgoing: 0 };
+    const byDayMap = new Map<
+      string,
+      { sent: number; delivered: number; read: number; failed: number; incoming: number }
+    >();
+    const typeMap = new Map<string, number>();
+    const contactMap = new Map<string, { name: string; count: number }>();
+
+    for (const r of inRange) {
+      const date = (r.createdAt as Date).toISOString().slice(0, 10);
+      const day = byDayMap.get(date) ?? { sent: 0, delivered: 0, read: 0, failed: 0, incoming: 0 };
+      typeMap.set(r.type, (typeMap.get(r.type) ?? 0) + 1);
+      const key = r.contactPhone || "unknown";
+      const c = contactMap.get(key) ?? { name: r.contactName || key, count: 0 };
+      c.count += 1;
+      contactMap.set(key, c);
+
+      if (r.direction === "incoming") {
+        totals.incoming += 1;
+        day.incoming += 1;
+      } else {
+        totals.outgoing += 1;
+        // status ladder — count highest reached
+        const s = r.status.toLowerCase();
+        if (s === "failed" || s === "error") {
+          totals.failed += 1;
+          day.failed += 1;
+        } else if (s === "pending" || s === "queued" || s === "sending") {
+          totals.pending += 1;
+        } else {
+          totals.sent += 1;
+          day.sent += 1;
+          if (r.deliveredAt || s === "delivered" || s === "read") {
+            totals.delivered += 1;
+            day.delivered += 1;
+          }
+          if (r.readAt || s === "read") {
+            totals.read += 1;
+            day.read += 1;
+          }
         }
-        setData(aggregate(raw.data ?? []));
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [phoneNumberId, range, nonce]);
-
-  return { data, loading, error, reload: () => setNonce((n) => n + 1), hasConfig };
-}
-
-function computeRange(range: "7d" | "30d" | "month" | "lastMonth"): { start: number; end: number } {
-  const now = new Date();
-  const end = Math.floor(now.getTime() / 1000);
-  if (range === "7d") return { start: end - 7 * 86400, end };
-  if (range === "30d") return { start: end - 30 * 86400, end };
-  if (range === "month") {
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { start: Math.floor(first.getTime() / 1000), end };
-  }
-  const firstThis = new Date(now.getFullYear(), now.getMonth(), 1);
-  const firstLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return {
-    start: Math.floor(firstLast.getTime() / 1000),
-    end: Math.floor(firstThis.getTime() / 1000),
-  };
-}
-
-function aggregate(series: InsightSeries[]): AnalyticsData {
-  const totals = { sent: 0, delivered: 0, read: 0, failed: 0 };
-  const byDayMap = new Map<string, { sent: number; delivered: number; read: number }>();
-  for (const s of series) {
-    const key = s.type?.toUpperCase();
-    for (const p of s.data_points ?? []) {
-      const v = typeof p.value === "number" ? p.value : 0;
-      if (key === "SENT") totals.sent += v;
-      else if (key === "DELIVERED") totals.delivered += v;
-      else if (key === "READ") totals.read += v;
-      else if (key === "FAILED") totals.failed += v;
-      const date = new Date((p.start ?? 0) * 1000).toISOString().slice(0, 10);
-      const row = byDayMap.get(date) ?? { sent: 0, delivered: 0, read: 0 };
-      if (key === "SENT") row.sent += v;
-      else if (key === "DELIVERED") row.delivered += v;
-      else if (key === "READ") row.read += v;
-      byDayMap.set(date, row);
+      byDayMap.set(date, day);
     }
-  }
-  const byDay = Array.from(byDayMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, v]) => ({ date, ...v }));
-  return { ...totals, byDay };
+
+    // Fill missing days in range with zeros
+    const filled: AnalyticsData["byDay"] = [];
+    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    while (cursor <= endDay) {
+      const key = cursor.toISOString().slice(0, 10);
+      const v = byDayMap.get(key) ?? { sent: 0, delivered: 0, read: 0, failed: 0, incoming: 0 };
+      filled.push({ date: key.slice(5), ...v });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const byType = Array.from(typeMap.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+    const topContacts = Array.from(contactMap.entries())
+      .map(([phone, v]) => ({ phone, name: v.name, count: v.count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      ...totals,
+      uniqueContacts: contactMap.size,
+      byDay: filled,
+      byType,
+      topContacts,
+    };
+  }, [rows, start, end]);
+
+  return {
+    data,
+    loading: rows === null && !error,
+    error,
+    reload: () => setNonce((n) => n + 1),
+  };
 }
