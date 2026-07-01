@@ -1080,6 +1080,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     $mediaId = null;
     $mimeType = null;
     $caption = null;
+    $docFileName = null;
     $buttonReplyId = null;
     $buttonReplyText = null;
 
@@ -1101,7 +1102,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $mediaId = $message[$type]['id'] ?? '';
             $mimeType = $message[$type]['mime_type'] ?? '';
             $caption = $message[$type]['caption'] ?? '';
-            $messageBody = $caption ?: "[$type]";
+            if ($type === 'document') {
+                $docFileName = $message[$type]['filename'] ?? '';
+                $messageBody = $caption ?: wabees_document_label($docFileName, $mimeType);
+            } else {
+                $messageBody = $caption ?: "[$type]";
+            }
             break;
 
         case 'location':
@@ -1259,7 +1265,8 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                 $mediaId = $message[$type]['id'];
                 $mimeType = $message[$type]['mime_type'] ?? '';
                 $caption = $message[$type]['caption'] ?? '';
-                $messageBody = $caption ?: "[$type]";
+                $docFileName = $message[$type]['filename'] ?? '';
+                $messageBody = $caption ?: wabees_last_message_preview($type, '', $docFileName, $mimeType);
                 $foundText = true;
             }
             if (!$foundText) {
