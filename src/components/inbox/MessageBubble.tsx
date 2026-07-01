@@ -345,29 +345,46 @@ function ReplyQuote({
   );
 }
 
-function MessageContent({ m, mine }: { m: Message; mine: boolean }) {
+function MessageContent({
+  m,
+  mine,
+  actions,
+}: {
+  m: Message;
+  mine: boolean;
+  actions?: MessageActions;
+}) {
   // Inline media renderer used by image/video/audio/document/sticker.
   const Media = () =>
     m.mediaUrl ? (
       <div className="mb-1 overflow-hidden rounded-md">
         {m.mimeType?.startsWith("image/") || m.type === "sticker" || m.type === "image" ? (
-          <img
-            src={m.mediaUrl}
-            alt={m.caption ?? "image"}
-            className={cn("w-auto rounded-md", m.type === "sticker" ? "max-h-32" : "max-h-64")}
-            loading="lazy"
-          />
+          <button
+            type="button"
+            onClick={() => actions?.onOpenMedia?.(m)}
+            className="block w-full cursor-zoom-in overflow-hidden rounded-md"
+            aria-label="Open image"
+          >
+            <img
+              src={m.mediaUrl}
+              alt={m.caption ?? "image"}
+              className={cn(
+                "w-auto rounded-md",
+                m.type === "sticker" ? "max-h-32" : "max-h-64",
+              )}
+              loading="lazy"
+            />
+          </button>
         ) : m.mimeType?.startsWith("audio/") || m.type === "audio" ? (
           <VoiceNote url={m.mediaUrl} mime={m.mimeType} />
         ) : m.mimeType?.startsWith("video/") || m.type === "video" ? (
-          <video controls src={m.mediaUrl} className="max-h-64 w-full rounded-md" />
+          <VideoThumb
+            url={m.mediaUrl}
+            mime={m.mimeType}
+            onOpen={() => actions?.onOpenMedia?.(m)}
+          />
         ) : (
-          <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
-            📄 {m.fileName ?? "Attachment"}
-            {typeof m.fileSize === "number" && m.fileSize > 0 && (
-              <span className="opacity-70">({formatBytes(m.fileSize)})</span>
-            )}
-          </a>
+          <DocumentCard m={m} mine={mine} />
         )}
       </div>
     ) : null;
