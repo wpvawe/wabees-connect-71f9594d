@@ -1234,16 +1234,28 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             break;
 
         case 'unsupported':
-            // Try to extract error info or fallback text
+            // WhatsApp Cloud API forwards blocked message types (APK/EXE files,
+            // native polls, etc.) as `type=unsupported`. Meta strips the payload,
+            // so we can only show WHAT was sent — not the file itself.
+            $unsSub = strtolower((string) ($message['unsupported']['type'] ?? ''));
             $unsErrors = $message['errors'] ?? [];
-            if (!empty($unsErrors)) {
-                $errTitle = $unsErrors[0]['title'] ?? '';
-                $errMsg = $unsErrors[0]['message'] ?? '';
-                $messageBody = $errTitle ?: ($errMsg ?: 'Message not supported');
+            $errDetails = strtolower((string) ($unsErrors[0]['error_data']['details'] ?? ''));
+            $errTitle = $unsErrors[0]['title'] ?? '';
+
+            if ($unsSub === 'poll_creation' || strpos($errDetails, 'poll') !== false) {
+                $messageBody = '📊 Poll — WhatsApp Business API polls receive nahi karti';
+            } elseif ($unsSub === 'event' || strpos($errDetails, 'event') !== false) {
+                $messageBody = '📅 Event — WhatsApp Business API events receive nahi karti';
+            } elseif (strpos($errDetails, 'apk') !== false
+                || strpos($errDetails, 'executable') !== false
+                || strpos($errDetails, 'file type') !== false) {
+                $messageBody = '📦 APK/executable file — WhatsApp ne block ki (file type allowed nahi)';
+            } elseif ($unsSub && $unsSub !== 'unknown') {
+                $messageBody = "⚠️ Unsupported: $unsSub";
+            } elseif ($errTitle) {
+                $messageBody = "⚠️ $errTitle";
             } else {
-                // Check for any nested text
-                $messageBody = $message['text']['body'] ??
-                    ($message['body'] ?? 'Message not supported in WhatsApp Business');
+                $messageBody = '⚠️ Unsupported message (WhatsApp ne is type ko block kiya)';
             }
             break;
 
