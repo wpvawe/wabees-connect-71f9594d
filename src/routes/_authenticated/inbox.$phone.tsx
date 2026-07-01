@@ -5,6 +5,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
 import { Composer } from "@/components/inbox/Composer";
+import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightbox";
+import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -35,6 +37,8 @@ function Thread({ phone }: { phone: string }) {
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [lightboxId, setLightboxId] = useState<string | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -232,7 +236,29 @@ function Thread({ phone }: { phone: string }) {
     onReply: setReplyTo,
     onReact,
     onDelete,
+    onForward: setForwardMsg,
+    onOpenMedia: (m) => setLightboxId(m.id),
   };
+
+  const lightboxItems: LightboxItem[] = (data ?? [])
+    .filter(
+      (m) =>
+        !!m.mediaUrl &&
+        (m.type === "image" ||
+          m.type === "video" ||
+          m.type === "sticker" ||
+          m.mimeType?.startsWith("image/") ||
+          m.mimeType?.startsWith("video/")),
+    )
+    .map((m) => ({
+      id: m.id,
+      url: m.mediaUrl!,
+      kind:
+        m.type === "video" || m.mimeType?.startsWith("video/") ? "video" : "image",
+      caption: m.caption ?? m.body ?? null,
+      fileName: m.fileName ?? null,
+      mime: m.mimeType ?? null,
+    }));
 
   // H-4 fix: walk newest→oldest and pick the freshest real (non-phone) name.
   // `data` is sorted ascending by createdAt, so the contact-name on data[0]
@@ -297,6 +323,16 @@ function Thread({ phone }: { phone: string }) {
             ?.whatsappMessageId ?? null
         }
       />
+      {lightboxId && lightboxItems.length > 0 && (
+        <MediaLightbox
+          items={lightboxItems}
+          startId={lightboxId}
+          onClose={() => setLightboxId(null)}
+        />
+      )}
+      {forwardMsg && (
+        <ForwardDialog message={forwardMsg} onClose={() => setForwardMsg(null)} />
+      )}
     </section>
   );
 }
