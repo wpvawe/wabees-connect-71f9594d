@@ -25,6 +25,7 @@ import { signOut as fbSignOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { fbAuth } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
+import { useProfile } from "@/hooks/useProfile";
 import wbIcon from "@/assets/wabees-icon.png";
 
 const NAV: { to: string; label: string; icon: IconDefinition }[] = [
@@ -48,6 +49,8 @@ const COLLAPSE_KEY = "wb_sidebar_collapsed";
 
 export function SideRail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { data: profile } = useProfile("effective");
+  const aiBotVisible = Boolean(profile?.aiBotEnabled);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return window.localStorage.getItem(COLLAPSE_KEY) !== "0";
@@ -95,7 +98,7 @@ export function SideRail() {
         </button>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-        {NAV.map((n) => {
+        {NAV.filter((n) => n.to !== "/ai-bot" || aiBotVisible).map((n) => {
           const active = pathname.startsWith(n.to);
           return (
             <Link
