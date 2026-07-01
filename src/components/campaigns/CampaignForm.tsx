@@ -13,8 +13,9 @@ import {
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
-import { createCampaign } from "@/lib/firebase/campaigns";
+import { prepareCampaignCreate } from "@/lib/firebase/campaigns";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 import { cn } from "@/lib/utils";
 
 type DebugEntry = {
@@ -22,6 +23,7 @@ type DebugEntry = {
   ok: boolean;
   path: string;
   payload: Record<string, unknown>;
+  operation: "validation" | "setDoc";
   code?: string;
   name?: string;
   message?: string;
@@ -38,6 +40,7 @@ export function CampaignForm() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [messageBody, setMessageBody] = useState("");
+  const [manualPhones, setManualPhones] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -65,6 +68,19 @@ export function CampaignForm() {
       );
     });
   }, [contacts, tagFilter, search]);
+
+  const manualAudience = useMemo(() => parsePhoneList(manualPhones), [manualPhones]);
+
+  const audiencePreview = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...Array.from(selected)
+          .map((p) => normalizePhone(p))
+          .filter((p) => p.length >= 10),
+        ...manualAudience,
+      ]),
+    );
+  }, [selected, manualAudience]);
 
   function toggle(phone: string) {
     setSelected((prev) => {
@@ -102,40 +118,97 @@ export function CampaignForm() {
 
   async function save() {
     if (!uid) {
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path: "users/{unknown}/campaigns/{newDocId}",
+        operation: "validation",
+        payload: { reason: "No effective UID", selfUid },
+        code: "client-validation",
+        name: "ValidationError",
+        message: "No signed-in Firebase user/effective owner was available.",
+        durationMs: 0,
+      });
+      setDebugOpen(true);
       toast.error("Not signed in — refresh and try again");
       return;
     }
     if (!name.trim()) {
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path: `users/${uid}/campaigns/{newDocId}`,
+        operation: "validation",
+        payload: { name, description, messageBodyLength: messageBody.length },
+        code: "client-validation",
+        name: "ValidationError",
+        message: "Campaign name is empty; Firestore request was not sent.",
+        durationMs: 0,
+      });
+      setDebugOpen(true);
       toast.error("Enter a campaign name");
       return;
     }
     if (!messageBody.trim()) {
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path: `users/${uid}/campaigns/{newDocId}`,
+        operation: "validation",
+        payload: { name: name.trim(), description, messageBodyLength: messageBody.length },
+        code: "client-validation",
+        name: "ValidationError",
+        message: "Message body is empty; Firestore request was not sent.",
+        durationMs: 0,
+      });
+      setDebugOpen(true);
       toast.error("Write a message");
       return;
     }
-    const audience = Array.from(selected)
-      .map((p) => p.replace(/[^0-9+]/g, ""))
-      .filter((p) => p.length >= 6);
+    const audience = audiencePreview;
     if (audience.length === 0) {
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path: `users/${uid}/campaigns/{newDocId}`,
+        operation: "validation",
+        payload: {
+          selectedPhones: Array.from(selected),
+          manualPhonesRaw: manualPhones,
+          manualPhonesParsed: manualAudience,
+          contactsLoaded: contacts?.length ?? null,
+          contactsError,
+        },
+        code: "client-validation",
+        name: "ValidationError",
+        message: "No valid recipients; Firestore request was not sent.",
+        durationMs: 0,
+      });
+      setDebugOpen(true);
       toast.error("Pick at least one recipient");
       return;
     }
     setBusy(true);
-    const payload = {
+    const input = {
       name: name.trim(),
       description: description.trim(),
       messageBody: messageBody.trim(),
       audiencePhones: audience,
     };
-    const path = `users/${uid}/campaigns`;
+    let path = `users/${uid}/campaigns/{newDocId}`;
+    let debugPayload: Record<string, unknown> = input;
     const startedAt = performance.now();
     try {
-      const res = await createCampaign(uid, payload);
+      const request = prepareCampaignCreate(uid, input);
+      path = request.path;
+      debugPayload = request.debugPayload;
+      const res = await request.commit();
       setDebug({
         at: new Date().toISOString(),
         ok: true,
         path,
-        payload,
+        operation: "setDoc",
+        payload: debugPayload,
         resultId: res.id,
         durationMs: Math.round(performance.now() - startedAt),
       });
@@ -147,13 +220,13 @@ export function CampaignForm() {
       const nm = (err as { name?: string }).name;
       const raw = err instanceof Error ? err.message : String(err ?? "");
       const stack = err instanceof Error ? err.stack : undefined;
-      // eslint-disable-next-line no-console
       console.error("createCampaign failed", { code, raw, err });
       setDebug({
         at: new Date().toISOString(),
         ok: false,
         path,
-        payload,
+        operation: "setDoc",
+        payload: debugPayload,
         code,
         name: nm,
         message: raw,
@@ -163,7 +236,7 @@ export function CampaignForm() {
       setDebugOpen(true);
       const msg =
         code === "permission-denied"
-          ? "Permission denied by Firestore rules. Sign out and back in, then retry."
+          ? "Permission denied by backend rules. Open the debug trace and share the code/message."
           : code === "unavailable"
             ? "Network issue reaching Firestore. Check your connection and retry."
             : raw || "Could not create campaign";
@@ -211,12 +284,8 @@ export function CampaignForm() {
           </WbCardBody>
         </WbCard>
         <div className="flex justify-end gap-2">
-          <WbButton
-            onClick={() => void save()}
-            loading={busy}
-            disabled={!name.trim() || !messageBody.trim() || selected.size === 0}
-          >
-            Create campaign ({selected.size})
+          <WbButton onClick={() => void save()} loading={busy} disabled={busy}>
+            Create campaign ({audiencePreview.length})
           </WbButton>
         </div>
         <DebugPanel
@@ -235,7 +304,7 @@ export function CampaignForm() {
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <FontAwesomeIcon icon={faUserGroup} className="h-3.5 w-3.5" />
-              Recipients ({selected.size})
+              Recipients ({audiencePreview.length})
             </p>
             <div className="flex items-center gap-3 text-xs">
               <button
@@ -266,6 +335,18 @@ export function CampaignForm() {
               className="h-9 w-full rounded-md border border-input bg-background pl-7 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
             />
           </div>
+          <Field label="Manual recipients">
+            <textarea
+              value={manualPhones}
+              onChange={(e) => setManualPhones(e.target.value)}
+              rows={3}
+              placeholder="Paste phone numbers, one per line or comma separated"
+              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {manualAudience.length} valid manual recipient{manualAudience.length === 1 ? "" : "s"}
+            </p>
+          </Field>
           {allTags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {allTags.map((t) => {
@@ -334,6 +415,17 @@ export function CampaignForm() {
         </WbCardBody>
       </WbCard>
     </div>
+  );
+}
+
+function parsePhoneList(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,;\t]+/)
+        .map((p) => normalizePhone(p))
+        .filter((p) => p.length >= 10),
+    ),
   );
 }
 
