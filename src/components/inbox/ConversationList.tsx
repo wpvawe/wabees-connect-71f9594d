@@ -6,10 +6,13 @@ import {
   faComments,
   faMagnifyingGlass,
   faThumbtack,
-  faCheck,
-  faCheckDouble,
+  faMailBulk,
   faClock,
-  faTriangleExclamation,
+  faExclamation,
+  faTag,
+  faTrash,
+  faXmark,
+  faPlus,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -25,9 +28,27 @@ import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, str, toIso } from "@/lib/firebase/normalizers";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
+import { useConvTags } from "@/hooks/useConvTags";
+import {
+  togglePin,
+  addTag,
+  removeTag,
+  deleteConversation,
+  createTag,
+} from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+type Filter = "all" | "unread" | "free" | "free_unread";
+const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function isReplyWindowOpen(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return Date.now() - t < REPLY_WINDOW_MS;
+}
 
 // Session-scoped cache so switching between conversations doesn't refetch
 // the same last-message preview repeatedly.
@@ -36,7 +57,12 @@ const previewCache = new Map<string, { body: string; type: string; at: string | 
 export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data, error } = useConversations();
   const { data: contacts } = useContacts();
+  const { data: tags } = useConvTags();
+  const uid = useEffectiveUid();
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
   // Build a phone → Contact lookup so a saved name/photo wins over a stale
   // conversation doc that still shows the raw phone.
   const byPhone = useMemo(() => {
@@ -69,16 +95,88 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   }, [data, byPhone]);
   const filtered = useMemo(() => {
     if (!merged) return merged;
-    if (!q.trim()) return merged;
-    const needle = q.trim().toLowerCase();
-    return merged.filter(
-      (c) => c.contactName.toLowerCase().includes(needle) || c.contactPhone.includes(needle),
-    );
-  }, [merged, q]);
+    let rows = merged;
+    if (selectedTag) {
+      rows = rows.filter((c) => Array.isArray(c.tags) && c.tags.includes(selectedTag));
+    }
+    switch (filter) {
+      case "unread":
+        rows = rows.filter((c) => c.unreadCount > 0);
+        break;
+      case "free":
+        rows = rows.filter((c) => isReplyWindowOpen(c.lastIncomingMessageAt));
+        break;
+      case "free_unread":
+        rows = rows.filter(
+          (c) => c.unreadCount > 0 && isReplyWindowOpen(c.lastIncomingMessageAt),
+        );
+        break;
+    }
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase();
+      rows = rows.filter(
+        (c) => c.contactName.toLowerCase().includes(needle) || c.contactPhone.includes(needle),
+      );
+    }
+    return rows;
+  }, [merged, q, filter, selectedTag]);
+
+  // Close context menu on outside click / ESC.
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  async function handlePin(phone: string) {
+    if (!uid) return;
+    const ok = await togglePin(uid, phone).catch(() => false);
+    if (!ok) toast.error("Maximum 3 conversations can be pinned");
+  }
+
+  async function handleAddTag(phone: string, tagName: string) {
+    if (!uid) return;
+    await addTag(uid, phone, tagName).catch(() => toast.error("Could not add tag"));
+  }
+
+  async function handleRemoveTag(phone: string, tagName: string) {
+    if (!uid) return;
+    await removeTag(uid, phone, tagName).catch(() => toast.error("Could not remove tag"));
+  }
+
+  async function handleDelete(phone: string) {
+    if (!uid) return;
+    if (!confirm("Delete this conversation from your inbox? Messages will be removed from your side.")) return;
+    try {
+      await deleteConversation(uid, phone);
+      toast.success("Conversation deleted");
+    } catch {
+      toast.error("Could not delete");
+    }
+  }
+
+  async function handleCreateTag() {
+    if (!uid) return;
+    const name = prompt("Tag name?");
+    if (!name?.trim()) return;
+    const color = prompt("Hex color (e.g. #6366f1)?", "#6366f1") ?? "#6366f1";
+    try {
+      await createTag(uid, name.trim(), color);
+      toast.success("Tag created");
+    } catch {
+      toast.error("Could not create tag");
+    }
+  }
 
   return (
     <aside className="flex h-full w-full max-w-full flex-col border-r border-border bg-card md:max-w-sm">
-      <div className="border-b border-border p-3">
+      <div className="border-b border-border p-3 space-y-2">
         <div className="relative">
           <FontAwesomeIcon
             icon={faMagnifyingGlass}
@@ -90,6 +188,69 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
             placeholder="Search chats"
             className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
           />
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <FilterChip
+            icon={faMailBulk}
+            label="All"
+            active={filter === "all" && !selectedTag}
+            color="hsl(var(--primary))"
+            onClick={() => {
+              setFilter("all");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faExclamation}
+            label="Unread"
+            active={filter === "unread"}
+            color="#f59e0b"
+            onClick={() => {
+              setFilter(filter === "unread" ? "all" : "unread");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faClock}
+            label="Free Chat"
+            active={filter === "free"}
+            color="#0284c7"
+            onClick={() => {
+              setFilter(filter === "free" ? "all" : "free");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faExclamation}
+            label="Free Unread"
+            active={filter === "free_unread"}
+            color="#e91e63"
+            onClick={() => {
+              setFilter(filter === "free_unread" ? "all" : "free_unread");
+              setSelectedTag(null);
+            }}
+          />
+          {(tags ?? []).map((t) => (
+            <FilterChip
+              key={t.id}
+              label={t.name}
+              color={t.color}
+              icon={faTag}
+              active={selectedTag === t.name}
+              onClick={() => {
+                setSelectedTag(selectedTag === t.name ? null : t.name);
+                setFilter("all");
+              }}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={handleCreateTag}
+            title="Create tag"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-dashed border-border text-muted-foreground hover:bg-muted"
+          >
+            <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -104,25 +265,186 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           <div className="p-4">
             <WbEmpty
               icon={faComments}
-              title={q ? "No matches" : "No conversations yet"}
+              title={q || filter !== "all" || selectedTag ? "No matches" : "No conversations yet"}
               description={
-                q ? undefined : "Incoming WhatsApp messages will appear here in realtime."
+                q || filter !== "all" || selectedTag
+                  ? undefined
+                  : "Incoming WhatsApp messages will appear here in realtime."
               }
             />
           </div>
         ) : (
           <ul>
             {filtered.map((c) => (
-              <ConvRow key={c.contactPhone} c={c} active={c.contactPhone === activePhone} />
+              <ConvRow
+                key={c.contactPhone}
+                c={c}
+                active={c.contactPhone === activePhone}
+                tagColors={tagColorMap(tags)}
+                onContextMenu={(x, y) => setMenu({ phone: c.contactPhone, x, y })}
+              />
             ))}
           </ul>
         )}
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          conv={merged?.find((c) => c.contactPhone === menu.phone) ?? null}
+          tags={tags ?? []}
+          onClose={() => setMenu(null)}
+          onPin={() => handlePin(menu.phone)}
+          onDelete={() => handleDelete(menu.phone)}
+          onAddTag={(t) => handleAddTag(menu.phone, t)}
+          onRemoveTag={(t) => handleRemoveTag(menu.phone, t)}
+          onCreateTag={handleCreateTag}
+        />
+      )}
     </aside>
   );
 }
 
-function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
+function FilterChip({
+  icon,
+  label,
+  color,
+  active,
+  onClick,
+}: {
+  icon: import("@fortawesome/fontawesome-svg-core").IconDefinition;
+  label: string;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active ? "text-white" : "border-border bg-background text-foreground hover:bg-muted",
+      )}
+      style={active ? { backgroundColor: color, borderColor: color } : undefined}
+    >
+      <FontAwesomeIcon icon={icon} className="h-2.5 w-2.5" />
+      {label}
+    </button>
+  );
+}
+
+function tagColorMap(tags: ReturnType<typeof useConvTags>["data"]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const t of tags ?? []) m.set(t.name, t.color);
+  return m;
+}
+
+function ContextMenu({
+  x,
+  y,
+  conv,
+  tags,
+  onClose,
+  onPin,
+  onDelete,
+  onAddTag,
+  onRemoveTag,
+  onCreateTag,
+}: {
+  x: number;
+  y: number;
+  conv: Conversation | null;
+  tags: import("@/lib/firebase/conversations").TagDef[];
+  onClose: () => void;
+  onPin: () => void;
+  onDelete: () => void;
+  onAddTag: (name: string) => void;
+  onRemoveTag: (name: string) => void;
+  onCreateTag: () => void;
+}) {
+  const active = new Set(conv?.tags ?? []);
+  return (
+    <div
+      className="fixed z-50 min-w-[220px] rounded-lg border border-border bg-card p-1 text-sm shadow-lg"
+      style={{ top: y, left: x }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          onPin();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+      >
+        <FontAwesomeIcon icon={faThumbtack} className="h-3.5 w-3.5" />
+        {conv?.isPinned ? "Unpin" : "Pin conversation"}
+      </button>
+      <div className="my-1 border-t border-border" />
+      <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Tags</p>
+      <div className="max-h-40 overflow-y-auto">
+        {tags.length === 0 ? (
+          <p className="px-2 py-1 text-xs text-muted-foreground">No tags yet</p>
+        ) : (
+          tags.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                if (active.has(t.name)) onRemoveTag(t.name);
+                else onAddTag(t.name);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: t.color }}
+              />
+              <span className="flex-1 truncate">{t.name}</span>
+              {active.has(t.name) && (
+                <FontAwesomeIcon icon={faXmark} className="h-3 w-3 text-muted-foreground" />
+              )}
+            </button>
+          ))
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          onCreateTag();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-primary hover:bg-primary/10"
+      >
+        <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> New tag
+      </button>
+      <div className="my-1 border-t border-border" />
+      <button
+        type="button"
+        onClick={() => {
+          onDelete();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-destructive hover:bg-destructive/10"
+      >
+        <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" /> Delete conversation
+      </button>
+    </div>
+  );
+}
+
+function ConvRow({
+  c,
+  active,
+  tagColors,
+  onContextMenu,
+}: {
+  c: Conversation;
+  active: boolean;
+  tagColors: Map<string, string>;
+  onContextMenu: (x: number, y: number) => void;
+}) {
   const fallback = useLastMessageFallback(
     c.contactPhone,
     !((c.lastMessage || "").trim()),
@@ -133,11 +455,16 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
   const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+  const freeChat = isReplyWindowOpen(c.lastIncomingMessageAt);
   return (
     <li>
       <Link
         to="/inbox/$phone"
         params={{ phone: c.contactPhone }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu(e.clientX, e.clientY);
+        }}
         className={cn(
           "flex items-center gap-3 border-b border-border/60 px-3 py-3 transition-colors hover:bg-muted",
           active && "bg-accent/40",
@@ -168,6 +495,24 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
           <p className="truncate text-xs text-muted-foreground">
             {preview}
           </p>
+          {(c.tags?.length || freeChat) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {freeChat && (
+                <span className="rounded-full bg-emerald-500/15 px-1.5 py-0 text-[9px] font-semibold text-emerald-600">
+                  Free
+                </span>
+              )}
+              {(c.tags ?? []).slice(0, 3).map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full px-1.5 py-0 text-[9px] font-semibold text-white"
+                  style={{ backgroundColor: tagColors.get(t) ?? "#64748b" }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
           {c.isPinned && (

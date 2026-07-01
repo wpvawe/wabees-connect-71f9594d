@@ -32,6 +32,7 @@ import {
   faFile,
   faPlay,
   faUpRightFromSquare,
+  faRotateRight,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -183,6 +184,7 @@ export type MessageActions = {
   onDelete?: (m: Message) => void;
   onForward?: (m: Message) => void;
   onOpenMedia?: (m: Message) => void;
+  onResend?: (m: Message) => void;
 };
 
 export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
@@ -213,7 +215,13 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   }, [reactOpen, menuOpen]);
 
   function copy() {
-    const txt = m.body || m.caption || m.otpCode || "";
+    const txt =
+      m.body ||
+      m.caption ||
+      m.otpCode ||
+      (m.buttonReplyText ?? "") ||
+      (m.locationName ?? "") ||
+      "";
     if (txt) void navigator.clipboard?.writeText(txt);
     setMenuOpen(false);
   }
@@ -341,13 +349,25 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
           )}
           onMouseLeave={() => setMenuOpen(false)}
         >
-          {m.body && (
+          {(m.body || m.caption || m.buttonReplyText || m.locationName) && (
             <button
               type="button"
               onClick={copy}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
             >
               <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" /> Copy
+            </button>
+          )}
+          {mine && m.status === "failed" && actions?.onResend && (
+            <button
+              type="button"
+              onClick={() => {
+                actions.onResend?.(m);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-orange-600 hover:bg-orange-500/10"
+            >
+              <FontAwesomeIcon icon={faRotateRight} className="h-3.5 w-3.5" /> Resend
             </button>
           )}
           {actions?.onForward && (
