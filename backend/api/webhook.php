@@ -1676,7 +1676,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             webhook_log("FCM_MESSAGE: code=$code token=" . substr($token, 0, 20) . "... body=" . substr($response ?: '', 0, 200));
             if ($code >= 400 && fcm_response_is_bad_token($response ?: '')) {
-                clear_fcm_token_from_caches($userId, $phoneNumberId);
+                clear_fcm_token_from_caches($userId, $phoneNumberId, $token);
             }
             curl_multi_remove_handle($mh, $curl);
             curl_close($curl);
