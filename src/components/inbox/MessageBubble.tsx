@@ -472,7 +472,7 @@ function MessageContent({
       return (
         <>
           <Media />
-          <TextBody value={m.caption || m.body} />
+          <TextBody value={m.caption ?? "" ? m.caption! : cleanBody(m.body)} />
         </>
       );
 
@@ -480,7 +480,7 @@ function MessageContent({
       return (
         <>
           <Media />
-          <TextBody value={m.caption || m.body} />
+          <TextBody value={m.caption ?? "" ? m.caption! : cleanBody(m.body)} />
         </>
       );
 
@@ -549,7 +549,9 @@ function MessageContent({
           {list.length > 0 ? (
             list.map((c, i) => <ContactCard key={i} raw={c} mine={mine} />)
           ) : (
-            <p className="text-xs opacity-80">{m.body || "Shared contact"}</p>
+            <p className="text-xs opacity-80">
+              {cleanBody(m.body) || "Shared contact — open on phone for full details"}
+            </p>
           )}
         </div>
       );
@@ -605,7 +607,7 @@ function MessageContent({
       return (
         <p className="flex items-center gap-1.5 text-xs italic opacity-80">
           <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
-          {m.body || "Message not supported by WhatsApp Business"}
+          {cleanBody(m.body) || "This message type isn't supported on the web yet — open it on your phone."}
         </p>
       );
 
@@ -614,8 +616,8 @@ function MessageContent({
       return (
         <>
           <Media />
-          {m.body ? (
-            <TextBody value={m.body} />
+          {cleanBody(m.body) ? (
+            <TextBody value={cleanBody(m.body)} />
           ) : (
             <p className="flex items-center gap-1.5 text-xs italic opacity-70">
               <FontAwesomeIcon icon={faCircleQuestion} className="h-3 w-3" />
