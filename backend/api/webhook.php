@@ -3523,8 +3523,8 @@ function _call_deepseek_api($messages)
             break;
 
         if ($attempt < 2) {
-            webhook_log("AI_BOT: DeepSeek retry in 1s err=$curlErr");
-            usleep(1000000); // 1 second wait before retry
+            webhook_log("AI_BOT: DeepSeek retry in 200ms err=$curlErr");
+            usleep(200000); // 200ms — shaves ~800ms off the reply latency on transient failures
         } else {
             webhook_log("AI_BOT: DeepSeek FAILED after 2 attempts err=$curlErr resp=" . mb_substr($response ?? '', 0, 300));
             return '';
