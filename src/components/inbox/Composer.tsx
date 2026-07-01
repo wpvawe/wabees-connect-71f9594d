@@ -108,6 +108,32 @@ export function Composer({
     };
   }, []);
 
+  // Listen for files dropped anywhere in the chat thread. The thread wrapper
+  // fires a `wabees:chat-drop` CustomEvent with a File[] payload so we can
+  // reuse the composer's upload pipeline (creds, optimistic write, Meta send).
+  useEffect(() => {
+    const onDrop = (e: Event) => {
+      const detail = (e as CustomEvent<{ files: File[] }>).detail;
+      if (!detail?.files?.length) return;
+      for (const f of detail.files) {
+        const kind: "image" | "video" | "document" | "audio" = f.type.startsWith(
+          "image/",
+        )
+          ? "image"
+          : f.type.startsWith("video/")
+            ? "video"
+            : f.type.startsWith("audio/")
+              ? "audio"
+              : "document";
+        void sendFile(f, kind);
+      }
+    };
+    window.addEventListener("wabees:chat-drop", onDrop as EventListener);
+    return () => window.removeEventListener("wabees:chat-drop", onDrop as EventListener);
+    // sendFile is stable enough for this — it reads state via closures each call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, selfUid, phone, text, replyTo]);
+
   async function send() {
     const body = text.trim();
     if (!body || sending || !uid || !selfUid) return;
