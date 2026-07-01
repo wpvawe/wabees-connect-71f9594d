@@ -522,14 +522,18 @@ function MessageContent({
 
   const TextBody = ({ value }: { value: string }) =>
     value ? (
-      <p className="whitespace-pre-wrap break-words">
-        <Linkify options={linkifyOpts}>{value}</Linkify>
-      </p>
+      <>
+        <p className="whitespace-pre-wrap break-words">
+          <Linkify options={linkifyOpts}>{value}</Linkify>
+        </p>
+        <LinkPreview text={value} mine={mine} />
+      </>
     ) : null;
 
   // Authentication / OTP detection — show large copyable code.
-  if (m.otpCode || (m.templateName && /otp|auth|verif/i.test(m.templateName))) {
-    const code = m.otpCode ?? (m.body.match(/\b(\d{4,8})\b/)?.[1] ?? "");
+  const detectedOtp = m.otpCode ?? detectOtpCode(m.body, m.templateName);
+  if (detectedOtp || (m.templateName && /otp|auth|verif/i.test(m.templateName))) {
+    const code = detectedOtp ?? "";
     return (
       <div>
         <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold opacity-80">
