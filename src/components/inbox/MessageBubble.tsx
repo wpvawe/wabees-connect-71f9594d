@@ -761,6 +761,28 @@ function VideoThumb({
   );
 }
 
+function LinkPreview({ text, mine }: { text: string; mine: boolean }) {
+  const url = firstUrl(text);
+  if (!url) return null;
+  const label = hostLabel(url);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "mt-2 flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-xs no-underline transition-colors",
+        mine
+          ? "border-white/20 bg-white/15 text-primary-foreground hover:bg-white/25"
+          : "border-border bg-muted/60 text-card-foreground hover:bg-muted",
+      )}
+    >
+      <FontAwesomeIcon icon={faUpRightFromSquare} className="h-3 w-3 shrink-0 opacity-70" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </a>
+  );
+}
+
 function docIconFor(mime?: string | null, name?: string | null) {
   const s = `${mime ?? ""} ${name ?? ""}`.toLowerCase();
   if (s.includes("pdf")) return { icon: faFilePdf, color: "text-red-500" };
