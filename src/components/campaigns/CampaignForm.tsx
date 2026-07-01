@@ -7,17 +7,33 @@ import {
   faMagnifyingGlass,
   faCheck,
   faXmark,
+  faBug,
+  faCopy,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
 import { createCampaign } from "@/lib/firebase/campaigns";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { cn } from "@/lib/utils";
+
+type DebugEntry = {
+  at: string;
+  ok: boolean;
+  path: string;
+  payload: Record<string, unknown>;
+  code?: string;
+  name?: string;
+  message?: string;
+  stack?: string;
+  resultId?: string;
+  durationMs: number;
+};
 
 export function CampaignForm() {
   const navigate = useNavigate();
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const { data: contacts, error: contactsError } = useContacts();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -26,6 +42,8 @@ export function CampaignForm() {
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [debug, setDebug] = useState<DebugEntry | null>(null);
+  const [debugOpen, setDebugOpen] = useState(true);
 
   const allTags = useMemo(() => {
     if (!contacts) return [];
@@ -103,21 +121,46 @@ export function CampaignForm() {
       return;
     }
     setBusy(true);
+    const payload = {
+      name: name.trim(),
+      description: description.trim(),
+      messageBody: messageBody.trim(),
+      audiencePhones: audience,
+    };
+    const path = `users/${uid}/campaigns`;
+    const startedAt = performance.now();
     try {
-      const res = await createCampaign(uid, {
-        name: name.trim(),
-        description: description.trim(),
-        messageBody: messageBody.trim(),
-        audiencePhones: audience,
+      const res = await createCampaign(uid, payload);
+      setDebug({
+        at: new Date().toISOString(),
+        ok: true,
+        path,
+        payload,
+        resultId: res.id,
+        durationMs: Math.round(performance.now() - startedAt),
       });
       toast.success("Campaign created");
       navigate({ to: "/campaigns/$id", params: { id: res.id } });
     } catch (e) {
-      const err = e as { code?: string; message?: string } | Error;
+      const err = e as { code?: string; message?: string; name?: string; stack?: string } | Error;
       const code = (err as { code?: string }).code;
+      const nm = (err as { name?: string }).name;
       const raw = err instanceof Error ? err.message : String(err ?? "");
+      const stack = err instanceof Error ? err.stack : undefined;
       // eslint-disable-next-line no-console
       console.error("createCampaign failed", { code, raw, err });
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path,
+        payload,
+        code,
+        name: nm,
+        message: raw,
+        stack,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      setDebugOpen(true);
       const msg =
         code === "permission-denied"
           ? "Permission denied by Firestore rules. Sign out and back in, then retry."
@@ -176,6 +219,16 @@ export function CampaignForm() {
             Create campaign ({selected.size})
           </WbButton>
         </div>
+        <DebugPanel
+          entry={debug}
+          open={debugOpen}
+          onToggle={() => setDebugOpen((v) => !v)}
+          onClear={() => setDebug(null)}
+          effectiveUid={uid}
+          selfUid={selfUid}
+          contactsCount={contacts?.length ?? null}
+          contactsError={contactsError}
+        />
       </div>
       <WbCard>
         <WbCardBody className="space-y-3">
@@ -289,6 +342,127 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function DebugPanel({
+  entry,
+  open,
+  onToggle,
+  onClear,
+  effectiveUid,
+  selfUid,
+  contactsCount,
+  contactsError,
+}: {
+  entry: DebugEntry | null;
+  open: boolean;
+  onToggle: () => void;
+  onClear: () => void;
+  effectiveUid: string | null;
+  selfUid: string | null;
+  contactsCount: number | null;
+  contactsError: string | null;
+}) {
+  const dump = entry
+    ? JSON.stringify(entry, null, 2)
+    : "No create attempt yet. Fill the form and click Create campaign to record a trace.";
+  const toneOk = entry?.ok === true;
+  const toneErr = entry?.ok === false;
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(dump);
+      toast.success("Debug trace copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }
+  return (
+    <div
+      className={cn(
+        "rounded-xl border text-xs",
+        toneErr
+          ? "border-destructive/40 bg-destructive/5"
+          : toneOk
+            ? "border-emerald-500/40 bg-emerald-500/5"
+            : "border-dashed border-border bg-muted/30",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="inline-flex items-center gap-2 font-semibold text-foreground">
+          <FontAwesomeIcon icon={faBug} className="h-3 w-3" />
+          Create-campaign debug
+          {entry && (
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
+                toneErr
+                  ? "bg-destructive/15 text-destructive"
+                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              {toneErr ? entry.code || "error" : "ok"}
+            </span>
+          )}
+        </span>
+        <span className="text-muted-foreground">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-border/60 px-3 py-2.5">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <span>
+              effectiveUid: <span className="text-foreground">{effectiveUid ?? "—"}</span>
+            </span>
+            <span>
+              selfUid: <span className="text-foreground">{selfUid ?? "—"}</span>
+            </span>
+            <span>
+              contacts loaded:{" "}
+              <span className="text-foreground">
+                {contactsCount === null ? "loading…" : contactsCount}
+              </span>
+            </span>
+            <span>
+              contacts error:{" "}
+              <span className={contactsError ? "text-destructive" : "text-foreground"}>
+                {contactsError ?? "none"}
+              </span>
+            </span>
+          </div>
+          {entry?.message && (
+            <p className="rounded bg-destructive/10 px-2 py-1.5 text-destructive">
+              <strong>{entry.name ?? "Error"}:</strong> {entry.message}
+            </p>
+          )}
+          <pre className="max-h-64 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed text-foreground">
+            {dump}
+          </pre>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => void copy()}
+              className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] hover:bg-muted"
+            >
+              <FontAwesomeIcon icon={faCopy} className="h-2.5 w-2.5" />
+              Copy trace
+            </button>
+            {entry && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="rounded border border-border bg-background px-2 py-1 text-[11px] hover:bg-muted"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
