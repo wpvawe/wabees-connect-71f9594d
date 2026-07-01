@@ -31,6 +31,7 @@ import {
   faFileLines,
   faFile,
   faPlay,
+  faPause,
   faUpRightFromSquare,
   faRotateRight,
 } from "@fortawesome/free-solid-svg-icons";
@@ -427,31 +428,119 @@ function formatBytes(bytes: number): string {
 // WhatsApp voice notes are ogg/opus. Declare MIME via <source> so browsers
 // pick the right decoder, and offer a download fallback on decode errors.
 function VoiceNote({ url, mime }: { url: string; mime?: string | null }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const [errored, setErrored] = useState(false);
-  const type = mime || "audio/ogg";
+
+  // WhatsApp voice notes are ogg/opus. If the browser doesn't advertise
+  // support (Safari desktop < 17, older iOS), fail fast to the download
+  // fallback instead of showing a dead player.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const probe = document.createElement("audio");
+    const primary = mime || "audio/ogg";
+    // canPlayType returns "probably" | "maybe" | "".
+    const ok =
+      probe.canPlayType(primary) ||
+      probe.canPlayType("audio/ogg; codecs=opus") ||
+      probe.canPlayType("audio/mpeg");
+    if (!ok) setErrored(true);
+  }, [mime]);
+
+  function fmt(sec: number): string {
+    if (!isFinite(sec) || sec < 0) return "0:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  function toggle() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (playing) {
+      el.pause();
+    } else {
+      // Pause any other <audio> currently playing in the DOM so voice notes
+      // don't overlap (mimics WhatsApp).
+      document.querySelectorAll("audio").forEach((a) => {
+        if (a !== el && !a.paused) a.pause();
+      });
+      void el.play().catch(() => setErrored(true));
+    }
+  }
+
+  function seek(e: React.MouseEvent<HTMLDivElement>) {
+    const el = audioRef.current;
+    if (!el || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    el.currentTime = pct * duration;
+    setCurrentTime(el.currentTime);
+  }
+
   if (errored) {
     return (
       <a
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs underline"
+        className="inline-flex items-center gap-2 rounded-full bg-muted/60 px-3 py-1.5 text-xs underline"
       >
         🎤 Download voice message
       </a>
     );
   }
+
+  const pct = duration && duration > 0 ? (currentTime / duration) * 100 : 0;
+  const shown = duration ? (playing || currentTime > 0 ? currentTime : duration) : 0;
+
   return (
-    <audio
-      controls
-      preload="metadata"
-      className="h-10 w-[260px] max-w-full"
-      onError={() => setErrored(true)}
-    >
-      <source src={url} type={type} />
-      <source src={url} type="audio/ogg" />
-      <source src={url} type="audio/mpeg" />
-    </audio>
+    <div className="flex w-[260px] max-w-full items-center gap-2 rounded-full bg-muted/60 px-2 py-1.5">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? "Pause voice message" : "Play voice message"}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105"
+      >
+        <FontAwesomeIcon icon={playing ? faPause : faPlay} className="h-3 w-3 pl-[1px]" />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div
+          onClick={seek}
+          className="relative h-1.5 w-full cursor-pointer rounded-full bg-foreground/15"
+        >
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-primary transition-[width] duration-100"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="text-[10px] tabular-nums opacity-70">{fmt(shown)}</span>
+      </div>
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (isFinite(d) && d > 0) setDuration(d);
+        }}
+        onDurationChange={(e) => {
+          const d = e.currentTarget.duration;
+          if (isFinite(d) && d > 0) setDuration(d);
+        }}
+        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrentTime(0);
+        }}
+        onError={() => setErrored(true)}
+        className="hidden"
+      />
+    </div>
   );
 }
 
