@@ -47,7 +47,9 @@ export function TemplateGrid() {
     setSyncing(true);
     try {
       const r = await syncTemplatesFromMeta(uid, selfUid);
-      toast.success(`Synced ${r.synced} templates`);
+      toast.success(
+        `Synced ${r.synced} templates${r.deleted ? ` — ${r.deleted} removed` : ""}`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");
     } finally {

@@ -44,7 +44,10 @@ export function ConnectedCard({ row }: { row: Row }) {
   });
   const sync = useMutation({
     mutationFn: () => syncTemplatesFromMeta(effectiveUid!, selfUid!),
-    onSuccess: (r) => toast.success(`Synced ${r.synced} templates`),
+    onSuccess: (r) =>
+      toast.success(
+        `Synced ${r.synced} templates${r.deleted ? ` — ${r.deleted} removed` : ""}`,
+      ),
     onError: (e: Error) => toast.error(e.message),
   });
   const saveWaba = useMutation({

@@ -3,10 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
-  query,
   serverTimestamp,
-  where,
   writeBatch,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
@@ -69,7 +66,7 @@ function extractVariables(body: string): string[] {
 export async function syncTemplatesFromMeta(
   uid: string,
   credentialUid = uid,
-): Promise<{ synced: number }> {
+): Promise<{ synced: number; deleted: number }> {
   const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   // Load WABA id from the same config doc the Flutter app uses. The PHP
@@ -97,12 +94,29 @@ export async function syncTemplatesFromMeta(
     (res.raw.templates as MetaTemplate[] | undefined) ??
     (res.raw.data as MetaTemplate[] | undefined) ??
     [];
-  if (list.length === 0) return { synced: 0 };
+  if (list.length === 0) return { synced: 0, deleted: 0 };
 
   const col = collection(db, "users", uid, "templates");
+  // One collection fetch instead of N+1 reads (50 templates = 50 lookups
+  // before). Index by metaTemplateId AND name so both match paths work.
+  const existingSnap = await getDocs(col);
+  const byMetaId = new Map<string, { ref: typeof existingSnap.docs[number]["ref"] }>();
+  const byName = new Map<string, { ref: typeof existingSnap.docs[number]["ref"] }>();
+  const seenRefIds = new Set<string>();
+  for (const d of existingSnap.docs) {
+    const data = d.data() as { metaTemplateId?: string | null; name?: string };
+    if (data.metaTemplateId) byMetaId.set(data.metaTemplateId, { ref: d.ref });
+    if (data.name) byName.set(data.name, { ref: d.ref });
+  }
+
+  const incomingMetaIds = new Set<string>();
+  const incomingNames = new Set<string>();
   const batch = writeBatch(db);
+  let synced = 0;
   for (const t of list) {
     if (!t.name) continue;
+    if (t.id) incomingMetaIds.add(t.id);
+    incomingNames.add(t.name);
     const { body, header, headerFormat, headerMediaUrl, footer, buttons } = extractParts(t.components);
     const qualityScore =
       typeof t.quality_score === "string" ? t.quality_score : t.quality_score?.score;
@@ -123,18 +137,34 @@ export async function syncTemplatesFromMeta(
       variableTypes: {},
       status: (t.status ?? "PENDING").toUpperCase(),
       isSynced: true,
+      isDeleted: false,
       qualityScore: qualityScore ?? null,
       updatedAt: serverTimestamp(),
     };
-    const existing = t.id
-      ? await getDocs(query(col, where("metaTemplateId", "==", t.id), limit(1)))
-      : await getDocs(query(col, where("name", "==", t.name), limit(1)));
-    if (existing.empty) {
-      batch.set(doc(col), { ...payload, createdAt: serverTimestamp() });
+    const existing = (t.id && byMetaId.get(t.id)) || byName.get(t.name);
+    if (existing) {
+      batch.update(existing.ref, payload);
+      seenRefIds.add(existing.ref.id);
     } else {
-      batch.update(existing.docs[0].ref, payload);
+      batch.set(doc(col), { ...payload, createdAt: serverTimestamp() });
     }
+    synced++;
   }
+
+  // Mark local templates that no longer exist upstream as deleted. Soft-flag
+  // (not hard delete) so campaigns still resolve the historical row.
+  let deleted = 0;
+  for (const d of existingSnap.docs) {
+    if (seenRefIds.has(d.id)) continue;
+    const data = d.data() as { metaTemplateId?: string | null; name?: string; isDeleted?: boolean };
+    const stillPresent =
+      (data.metaTemplateId && incomingMetaIds.has(data.metaTemplateId)) ||
+      (data.name && incomingNames.has(data.name));
+    if (stillPresent || data.isDeleted) continue;
+    batch.update(d.ref, { isDeleted: true, status: "DELETED", updatedAt: serverTimestamp() });
+    deleted++;
+  }
+
   await batch.commit();
-  return { synced: list.length };
+  return { synced, deleted };
 }
