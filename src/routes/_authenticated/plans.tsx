@@ -5,6 +5,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { usePlans, type Plan } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
+import { usePendingSubscription } from "@/hooks/usePendingSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/_authenticated/plans")({
 function PlansPage() {
   const { data: plans, error } = usePlans();
   const { data: sub, loading } = useSubscription();
+  const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
   const uid = useFirebaseUid();
@@ -75,11 +77,13 @@ function PlansPage() {
                 key={plan.id}
                 plan={plan}
                 active={sub?.planId === plan.id}
+                pendingPlanId={pending?.planId ?? null}
+                hasPending={Boolean(pending)}
                 onRequest={async () => {
                   if (!uid) return;
                   try {
                     await requestSubscription(uid, plan);
-                    toast.success("Subscription request sent");
+                    toast.success("Request sent — waiting for admin approval");
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : "Request failed");
                   }
@@ -96,18 +100,26 @@ function PlansPage() {
 function PlanCard({
   plan,
   active,
+  pendingPlanId,
+  hasPending,
   onRequest,
 }: {
   plan: Plan;
   active: boolean;
+  pendingPlanId: string | null;
+  hasPending: boolean;
   onRequest: () => Promise<void>;
 }) {
+  const isPendingThis = pendingPlanId === plan.id;
+  const disableOther = hasPending && !isPendingThis && !active;
   return (
     <article
       className={
         active
           ? "rounded-xl border border-primary bg-card p-5 shadow-soft"
-          : "rounded-xl border border-border bg-card p-5 shadow-soft"
+          : isPendingThis
+            ? "rounded-xl border border-amber-500 bg-card p-5 shadow-soft"
+            : "rounded-xl border border-border bg-card p-5 shadow-soft"
       }
     >
       <div className="flex items-start justify-between gap-3">
@@ -115,11 +127,19 @@ function PlanCard({
           <h3 className="text-base font-semibold text-foreground">{plan.name}</h3>
           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{plan.description}</p>
         </div>
-        {(active || plan.isPopular) && (
-          <span className="rounded-full bg-accent px-2 py-1 text-[11px] font-medium text-primary">
-            {active ? "Current" : "Popular"}
+        {isPendingThis ? (
+          <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+            Pending
           </span>
-        )}
+        ) : active ? (
+          <span className="rounded-full bg-accent px-2 py-1 text-[11px] font-medium text-primary">
+            Current
+          </span>
+        ) : plan.isPopular ? (
+          <span className="rounded-full bg-accent px-2 py-1 text-[11px] font-medium text-primary">
+            Popular
+          </span>
+        ) : null}
       </div>
       <p className="mt-4 text-2xl font-semibold text-foreground">
         {plan.priceMonthly === 0 ? "Free" : `${plan.currency} ${plan.priceMonthly}`}
@@ -151,11 +171,17 @@ function PlanCard({
       )}
       <WbButton
         className="mt-4 w-full"
-        variant={active ? "secondary" : "primary"}
-        disabled={active}
+        variant={active || isPendingThis ? "secondary" : "primary"}
+        disabled={active || isPendingThis || disableOther}
         onClick={() => void onRequest()}
       >
-        {active ? "Current plan" : "Request subscription"}
+        {active
+          ? "Current plan"
+          : isPendingThis
+            ? "Pending approval"
+            : disableOther
+              ? "Another request pending"
+              : "Request subscription"}
       </WbButton>
     </article>
   );
