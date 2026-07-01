@@ -62,10 +62,15 @@ $allowedTypes = [
         'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
         'application/vnd.ms-powerpoint.template.macroEnabled.12',
         'application/vnd.ms-powerpoint.slideshow.macroEnabled.12',
+        'application/rtf',
         'application/zip',
         'application/x-zip-compressed',
+        'application/x-rar-compressed',
+        'application/x-7z-compressed',
+        'application/vnd.android.package-archive',
         'application/octet-stream',
         'text/plain',
+        'text/rtf',
     ],
     'audio' => ['audio/mpeg', 'audio/ogg', 'application/ogg', 'audio/opus', 'audio/amr', 'audio/amr-wb', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'video/mp4', 'audio/mp4a-latm'],
 ];
@@ -73,6 +78,31 @@ $allowedTypes = [
 $finfo = finfo_open(FILEINFO_MIME_TYPE);
 $mimeType = finfo_file($finfo, $file['tmp_name']);
 finfo_close($finfo);
+$originalExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+// finfo often reports APK/RTF/Office-ish uploads as application/octet-stream.
+// Preserve the real document MIME from the original extension so Meta accepts
+// the upload and the website can download with the correct extension later.
+if ($type === 'document') {
+    $extMimeMap = [
+        'rtf' => 'application/rtf',
+        'apk' => 'application/vnd.android.package-archive',
+        'doc' => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls' => 'application/vnd.ms-excel',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt' => 'application/vnd.ms-powerpoint',
+        'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'pdf' => 'application/pdf',
+        'zip' => 'application/zip',
+        'rar' => 'application/x-rar-compressed',
+        '7z' => 'application/x-7z-compressed',
+        'txt' => 'text/plain',
+    ];
+    if (($mimeType === 'application/octet-stream' || $mimeType === 'text/plain') && isset($extMimeMap[$originalExt])) {
+        $mimeType = $extMimeMap[$originalExt];
+    }
+}
 
 $validMimes = $allowedTypes[$type] ?? $allowedTypes['document'];
 
@@ -117,7 +147,7 @@ if ($file['size'] > $maxSize) {
 }
 
 // Get file extension
-$ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+$ext = $originalExt;
 if (empty($ext)) {
     $extMap = [
         'image/jpeg' => 'jpg',
@@ -130,7 +160,21 @@ if (empty($ext)) {
         'audio/ogg' => 'ogg',
         'audio/amr' => 'amr',
         'application/pdf' => 'pdf',
+        'application/rtf' => 'rtf',
+        'text/rtf' => 'rtf',
         'text/plain' => 'txt',
+        'text/csv' => 'csv',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'application/vnd.ms-powerpoint' => 'ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+        'application/zip' => 'zip',
+        'application/x-zip-compressed' => 'zip',
+        'application/x-rar-compressed' => 'rar',
+        'application/x-7z-compressed' => '7z',
+        'application/vnd.android.package-archive' => 'apk',
     ];
     $ext = $extMap[$mimeType] ?? 'bin';
 }
