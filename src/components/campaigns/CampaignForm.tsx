@@ -12,12 +12,26 @@ import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useContacts } from "@/hooks/useContacts";
 import { createCampaign } from "@/lib/firebase/campaigns";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { cn } from "@/lib/utils";
+
+type DebugEntry = {
+  at: string;
+  ok: boolean;
+  path: string;
+  payload: Record<string, unknown>;
+  code?: string;
+  name?: string;
+  message?: string;
+  stack?: string;
+  resultId?: string;
+  durationMs: number;
+};
 
 export function CampaignForm() {
   const navigate = useNavigate();
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const { data: contacts, error: contactsError } = useContacts();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -26,6 +40,8 @@ export function CampaignForm() {
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [debug, setDebug] = useState<DebugEntry | null>(null);
+  const [debugOpen, setDebugOpen] = useState(true);
 
   const allTags = useMemo(() => {
     if (!contacts) return [];
