@@ -15,9 +15,8 @@ export type Profile = {
   totalContacts: number;
   totalBots: number;
   totalCampaigns: number;
+  aiBotEnabled: boolean;
 };
-
-export type ProfileWithFlags = Profile & { aiBotEnabled: boolean };
 
 export function useProfile(scope: "self" | "effective" = "self"): {
   data: Profile | null;
@@ -58,6 +57,7 @@ export function useProfile(scope: "self" | "effective" = "self"): {
           totalContacts: (d.totalContacts as number) ?? 0,
           totalBots: (d.totalBots as number) ?? 0,
           totalCampaigns: (d.totalCampaigns as number) ?? 0,
+          aiBotEnabled: Boolean(d.aiBotEnabled),
         });
       },
       (err) => {
