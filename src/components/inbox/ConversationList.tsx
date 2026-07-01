@@ -1,7 +1,16 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNowStrict } from "date-fns";
+import { format, isToday, isYesterday, differenceInDays } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch, faComments, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleNotch,
+  faComments,
+  faMagnifyingGlass,
+  faThumbtack,
+  faCheck,
+  faCheckDouble,
+  faClock,
+  faTriangleExclamation,
+} from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo } from "react";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
@@ -94,9 +103,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
 }
 
 function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
-  const when = c.lastMessageAt
-    ? formatDistanceToNowStrict(new Date(c.lastMessageAt), { addSuffix: false })
-    : "";
+  const when = formatConvTime(c.lastMessageAt);
   const preview = formatPreview(c.lastMessage, c.lastMessageType);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
@@ -123,27 +130,53 @@ function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
             <p className="truncate text-sm font-semibold text-foreground">
               {displayName || c.contactPhone}
             </p>
-            <span className="shrink-0 text-[10px] text-muted-foreground">{when}</span>
+            <span
+              className={cn(
+                "shrink-0 text-[10px]",
+                c.unreadCount > 0 ? "font-semibold text-primary" : "text-muted-foreground",
+              )}
+            >
+              {when}
+            </span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
             {displayName ? (
               <>
                 <span className="opacity-70">{c.contactPhone} · </span>
-                {preview}
+                <span className="truncate">{preview}</span>
               </>
             ) : (
-              preview
+              <span className="truncate">{preview}</span>
             )}
           </p>
         </div>
-        {c.unreadCount > 0 && (
-          <span className="ml-1 grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
-            {c.unreadCount}
-          </span>
-        )}
+        <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
+          {c.isPinned && (
+            <FontAwesomeIcon
+              icon={faThumbtack}
+              className="h-3 w-3 rotate-45 text-muted-foreground"
+              title="Pinned"
+            />
+          )}
+          {c.unreadCount > 0 && (
+            <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+              {c.unreadCount > 99 ? "99+" : c.unreadCount}
+            </span>
+          )}
+        </div>
       </Link>
     </li>
   );
+}
+
+function formatConvTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isToday(d)) return format(d, "HH:mm");
+  if (isYesterday(d)) return "Yesterday";
+  const days = differenceInDays(new Date(), d);
+  if (days < 7) return format(d, "EEE");
+  return format(d, "dd/MM/yy");
 }
 
 function formatPreview(body: string | null | undefined, type: string | null | undefined): string {
