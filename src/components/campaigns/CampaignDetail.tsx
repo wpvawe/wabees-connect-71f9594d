@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlay, faTrash, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
+import { faPlay, faTrash, faCircleNotch, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useCampaign } from "@/hooks/useCampaigns";
@@ -84,6 +84,14 @@ export function CampaignDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-4">
+      <button
+        type="button"
+        onClick={() => navigate({ to: "/campaigns" })}
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <FontAwesomeIcon icon={faArrowLeft} className="h-3.5 w-3.5" />
+        Back to campaigns
+      </button>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-foreground">{data.name}</h2>
