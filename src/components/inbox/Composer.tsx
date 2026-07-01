@@ -652,3 +652,43 @@ function formatSec(s: number): string {
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
+
+// Dynamic import keeps ~200KB emoji data out of the initial bundle.
+function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    onEmojiClick: (e: { emoji: string }) => void;
+    width?: number;
+    height?: number;
+    lazyLoadEmojis?: boolean;
+    previewConfig?: { showPreview: boolean };
+    searchPlaceHolder?: string;
+  }> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void import("emoji-picker-react").then((m) => {
+      if (alive) setComp(() => m.default);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!Comp) {
+    return (
+      <div className="grid h-[360px] w-[320px] place-items-center rounded-lg border border-border bg-card text-xs text-muted-foreground shadow-md">
+        Loading emoji…
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-lg border border-border shadow-md">
+      <Comp
+        onEmojiClick={(e) => onSelect(e.emoji)}
+        width={320}
+        height={360}
+        lazyLoadEmojis
+        previewConfig={{ showPreview: false }}
+        searchPlaceHolder="Search"
+      />
+    </div>
+  );
+}
