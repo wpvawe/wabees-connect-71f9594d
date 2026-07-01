@@ -12,6 +12,12 @@ export type Campaign = {
   messageType: string;
   messageBody: string;
   templateName?: string | null;
+  templateLanguage?: string | null;
+  selectedTemplateId?: string | null;
+  templateVariables?: string[];
+  variableSource?: "static" | "contact";
+  staticVariableValues?: Record<string, string>;
+  contactFieldMap?: Record<string, string>;
   totalRecipients: number;
   audiencePhones?: string[];
   sentCount: number;
@@ -47,6 +53,16 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
               messageType: (x.messageType as string) ?? "text",
               messageBody: (x.messageBody as string) ?? "",
               templateName: (x.templateName as string | null) ?? null,
+              templateLanguage: (x.templateLanguage as string | null) ?? null,
+              selectedTemplateId: (x.selectedTemplateId as string | null) ?? null,
+              templateVariables: (x.templateVariables as string[] | undefined) ?? [],
+              variableSource: (((x.variableSource as string) ?? "static") === "contact"
+                ? "contact"
+                : "static") as "static" | "contact",
+              staticVariableValues:
+                (x.staticVariableValues as Record<string, string> | undefined) ?? {},
+              contactFieldMap:
+                (x.contactFieldMap as Record<string, string> | undefined) ?? {},
               totalRecipients: (x.totalRecipients as number) ?? 0,
               audiencePhones: (x.audiencePhones as string[] | undefined) ?? [],
               sentCount: (x.sentCount as number) ?? 0,
