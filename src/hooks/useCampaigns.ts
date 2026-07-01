@@ -56,8 +56,9 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
               templateLanguage: (x.templateLanguage as string | null) ?? null,
               selectedTemplateId: (x.selectedTemplateId as string | null) ?? null,
               templateVariables: (x.templateVariables as string[] | undefined) ?? [],
-              variableSource:
-                ((x.variableSource as string) ?? "static") === "contact" ? "contact" : "static",
+              variableSource: (((x.variableSource as string) ?? "static") === "contact"
+                ? "contact"
+                : "static") as "static" | "contact",
               staticVariableValues:
                 (x.staticVariableValues as Record<string, string> | undefined) ?? {},
               contactFieldMap:
