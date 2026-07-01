@@ -40,17 +40,22 @@ const LANGUAGES: Array<{ code: string; label: string }> = [
 ];
 
 function extractVars(text: string): string[] {
-  const m = text.match(/\{\{\s*(\d+)\s*\}\}/g);
+  // Meta supports positional ({{1}}) and named ({{name}}) parameters. Accept both.
+  const m = text.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g);
   if (!m) return [];
   return Array.from(new Set(m.map((s) => s.replace(/[{}\s]/g, ""))));
 }
 
 function renderWithSamples(text: string, samples: Record<string, string>): string {
-  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, k) => samples[k] || `{{${k}}}`);
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => samples[k] || `{{${k}}}`);
 }
 
 function nextVarToken(text: string): string {
-  const nums = extractVars(text).map((n) => Number(n));
+  // Only auto-increment numeric variables (Meta best-practice for positional
+  // params). Named variables like {{name}} must be typed manually by the user.
+  const nums = extractVars(text)
+    .filter((v) => /^\d+$/.test(v))
+    .map((n) => Number(n));
   const next = nums.length ? Math.max(...nums) + 1 : 1;
   return `{{${next}}}`;
 }
