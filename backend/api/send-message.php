@@ -250,5 +250,7 @@ if ($curlError) {
 }
 
 $data = json_decode($response, true);
-http_response_code($httpCode);
+// Guard against $httpCode == 0 (curl returned but no HTTP status) — otherwise
+// http_response_code(0) is a no-op and the client sees a stale 200.
+http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
 echo json_encode($data ?: ['error' => ['message' => 'No response from WhatsApp API']]);
