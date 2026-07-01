@@ -24,6 +24,11 @@ export type CreateCampaignInput = {
   templateLanguage?: string | null;
   selectedTemplateId?: string | null;
   templateVariables?: string[];
+  templateHeader?: string | null;
+  templateHeaderFormat?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+  templateHeaderMediaUrl?: string | null;
+  templateFooter?: string | null;
+  templateButtons?: Array<Record<string, unknown>>;
   variableSource?: VariableSource;
   staticVariableValues?: Record<string, string>;
   /** For "contact" source: variable name -> contact field key (name/phone/email/company). */
@@ -41,6 +46,11 @@ export type CampaignCreatePayload = {
   templateLanguage: string | null;
   selectedTemplateId: string | null;
   templateVariables: string[];
+  templateHeader: string | null;
+  templateHeaderFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+  templateHeaderMediaUrl: string | null;
+  templateFooter: string | null;
+  templateButtons: Array<Record<string, unknown>>;
   variableSource: VariableSource;
   staticVariableValues: Record<string, string>;
   contactFieldMap: Record<string, string>;
@@ -70,6 +80,11 @@ export function buildCampaignCreatePayload(input: CreateCampaignInput): Campaign
     templateLanguage: input.templateLanguage ?? null,
     selectedTemplateId: input.selectedTemplateId ?? null,
     templateVariables: input.templateVariables ?? [],
+    templateHeader: input.templateHeader ?? null,
+    templateHeaderFormat: input.templateHeaderFormat ?? null,
+    templateHeaderMediaUrl: input.templateHeaderMediaUrl ?? null,
+    templateFooter: input.templateFooter ?? null,
+    templateButtons: input.templateButtons ?? [],
     variableSource: input.variableSource ?? "static",
     staticVariableValues: input.staticVariableValues ?? {},
     contactFieldMap: input.contactFieldMap ?? {},
@@ -208,6 +223,8 @@ export async function runCampaign(
     templateName?: string | null;
     templateLanguage?: string | null;
     templateVariables?: string[];
+    templateHeaderFormat?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
+    templateHeaderMediaUrl?: string | null;
     variableSource?: VariableSource;
     staticVariableValues?: Record<string, string>;
     contactFieldMap?: Record<string, string>;
@@ -252,14 +269,22 @@ export async function runCampaign(
     try {
       if (isTemplate) {
         const values = vars.map((v) => resolveVar(v, opts, phone));
-        const components = values.length
-          ? [
-              {
-                type: "body",
-                parameters: values.map((t) => ({ type: "text", text: t })),
-              },
-            ]
-          : [];
+        const components: Array<Record<string, unknown>> = [];
+        const hFmt = opts?.templateHeaderFormat;
+        const hUrl = opts?.templateHeaderMediaUrl;
+        if (hFmt && hFmt !== "TEXT" && hUrl) {
+          const kind = hFmt.toLowerCase(); // image | video | document
+          components.push({
+            type: "header",
+            parameters: [{ type: kind, [kind]: { link: hUrl } }],
+          });
+        }
+        if (values.length) {
+          components.push({
+            type: "body",
+            parameters: values.map((t) => ({ type: "text", text: t })),
+          });
+        }
         res = await sendTemplateMessage({
           phone_number_id: creds.phone_number_id,
           access_token: creds.access_token,
