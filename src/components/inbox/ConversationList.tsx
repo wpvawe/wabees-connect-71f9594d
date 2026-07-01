@@ -11,12 +11,27 @@ import {
   faClock,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import { fbDbOrNull } from "@/integrations/firebase/client";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { phoneQueryCandidates, str, toIso } from "@/lib/firebase/normalizers";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { cn } from "@/lib/utils";
+
+// Session-scoped cache so switching between conversations doesn't refetch
+// the same last-message preview repeatedly.
+const previewCache = new Map<string, { body: string; type: string; at: string | null } | null>();
 
 export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data, error } = useConversations();
@@ -108,8 +123,14 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
 }
 
 function ConvRow({ c, active }: { c: Conversation; active: boolean }) {
-  const when = formatConvTime(c.lastMessageAt);
-  const preview = formatPreview(c.lastMessage, c.lastMessageType);
+  const fallback = useLastMessageFallback(
+    c.contactPhone,
+    !((c.lastMessage || "").trim()),
+  );
+  const bodyForPreview = (c.lastMessage || "").trim() || fallback?.body || "";
+  const typeForPreview = (c.lastMessage || "").trim() ? c.lastMessageType : fallback?.type ?? c.lastMessageType;
+  const when = formatConvTime(c.lastMessageAt || fallback?.at || null);
+  const preview = formatPreview(bodyForPreview, typeForPreview);
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
   return (
