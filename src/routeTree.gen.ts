@@ -29,6 +29,7 @@ import { Route as AuthenticatedBotsRouteImport } from './routes/_authenticated/b
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiBotRouteImport } from './routes/_authenticated/ai-bot'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
+import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
 import { Route as AuthenticatedInboxPhoneRouteImport } from './routes/_authenticated/inbox.$phone'
 import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authenticated/campaigns.new'
 import { Route as AuthenticatedCampaignsIdRouteImport } from './routes/_authenticated/campaigns.$id'
@@ -134,6 +135,12 @@ const AuthenticatedAgentsRoute = AuthenticatedAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCampaignsIndexRoute =
+  AuthenticatedCampaignsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedCampaignsRoute,
+  } as any)
 const AuthenticatedInboxPhoneRoute = AuthenticatedInboxPhoneRouteImport.update({
   id: '/$phone',
   path: '/$phone',
@@ -175,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -183,7 +191,6 @@ export interface FileRoutesByTo {
   '/ai-bot': typeof AuthenticatedAiBotRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/bots': typeof AuthenticatedBotsRoute
-  '/campaigns': typeof AuthenticatedCampaignsRouteWithChildren
   '/connect': typeof AuthenticatedConnectRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/campaigns': typeof AuthenticatedCampaignsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -225,6 +233,7 @@ export interface FileRoutesById {
   '/_authenticated/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
+  '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/inbox/$phone'
+    | '/campaigns/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -259,7 +269,6 @@ export interface FileRouteTypes {
     | '/ai-bot'
     | '/analytics'
     | '/bots'
-    | '/campaigns'
     | '/connect'
     | '/contacts'
     | '/dashboard'
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
     | '/campaigns/$id'
     | '/campaigns/new'
     | '/inbox/$phone'
+    | '/campaigns'
   id:
     | '__root__'
     | '/'
@@ -300,6 +310,7 @@ export interface FileRouteTypes {
     | '/_authenticated/campaigns/$id'
     | '/_authenticated/campaigns/new'
     | '/_authenticated/inbox/$phone'
+    | '/_authenticated/campaigns/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -450,6 +461,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/campaigns/': {
+      id: '/_authenticated/campaigns/'
+      path: '/'
+      fullPath: '/campaigns/'
+      preLoaderRoute: typeof AuthenticatedCampaignsIndexRouteImport
+      parentRoute: typeof AuthenticatedCampaignsRoute
+    }
     '/_authenticated/inbox/$phone': {
       id: '/_authenticated/inbox/$phone'
       path: '/$phone'
@@ -477,12 +495,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedCampaignsRouteChildren {
   AuthenticatedCampaignsIdRoute: typeof AuthenticatedCampaignsIdRoute
   AuthenticatedCampaignsNewRoute: typeof AuthenticatedCampaignsNewRoute
+  AuthenticatedCampaignsIndexRoute: typeof AuthenticatedCampaignsIndexRoute
 }
 
 const AuthenticatedCampaignsRouteChildren: AuthenticatedCampaignsRouteChildren =
   {
     AuthenticatedCampaignsIdRoute: AuthenticatedCampaignsIdRoute,
     AuthenticatedCampaignsNewRoute: AuthenticatedCampaignsNewRoute,
+    AuthenticatedCampaignsIndexRoute: AuthenticatedCampaignsIndexRoute,
   }
 
 const AuthenticatedCampaignsRouteWithChildren =
