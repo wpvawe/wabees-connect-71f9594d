@@ -38,6 +38,14 @@ import {
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -63,6 +71,11 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
+  const [tagDialog, setTagDialog] = useState<{ open: boolean; name: string; color: string }>({
+    open: false,
+    name: "",
+    color: "#6366f1",
+  });
   // Build a phone → Contact lookup so a saved name/photo wins over a stale
   // conversation doc that still shows the raw phone.
   const byPhone = useMemo(() => {
@@ -136,18 +149,30 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
 
   async function handlePin(phone: string) {
     if (!uid) return;
-    const ok = await togglePin(uid, phone).catch(() => false);
-    if (!ok) toast.error("Maximum 3 conversations can be pinned");
+    try {
+      const ok = await togglePin(uid, phone);
+      if (!ok) toast.error("Maximum 3 conversations can be pinned");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not pin");
+    }
   }
 
   async function handleAddTag(phone: string, tagName: string) {
     if (!uid) return;
-    await addTag(uid, phone, tagName).catch(() => toast.error("Could not add tag"));
+    try {
+      await addTag(uid, phone, tagName);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not add tag");
+    }
   }
 
   async function handleRemoveTag(phone: string, tagName: string) {
     if (!uid) return;
-    await removeTag(uid, phone, tagName).catch(() => toast.error("Could not remove tag"));
+    try {
+      await removeTag(uid, phone, tagName);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not remove tag");
+    }
   }
 
   async function handleDelete(phone: string) {
@@ -161,16 +186,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     }
   }
 
-  async function handleCreateTag() {
+  function handleCreateTag() {
+    setTagDialog({ open: true, name: "", color: "#6366f1" });
+  }
+
+  async function submitCreateTag() {
     if (!uid) return;
-    const name = prompt("Tag name?");
-    if (!name?.trim()) return;
-    const color = prompt("Hex color (e.g. #6366f1)?", "#6366f1") ?? "#6366f1";
+    const name = tagDialog.name.trim();
+    if (!name) {
+      toast.error("Tag name is required");
+      return;
+    }
     try {
-      await createTag(uid, name.trim(), color);
+      await createTag(uid, name, tagDialog.color || "#6366f1");
       toast.success("Tag created");
-    } catch {
-      toast.error("Could not create tag");
+      setTagDialog({ open: false, name: "", color: "#6366f1" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create tag");
     }
   }
 
@@ -301,6 +333,54 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           onCreateTag={handleCreateTag}
         />
       )}
+      <Dialog
+        open={tagDialog.open}
+        onOpenChange={(o) => setTagDialog((s) => ({ ...s, open: o }))}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Create tag</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium">Name</label>
+              <input
+                autoFocus
+                value={tagDialog.name}
+                onChange={(e) => setTagDialog((s) => ({ ...s, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && submitCreateTag()}
+                placeholder="e.g. Lead"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 ring-ring"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">Color</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={tagDialog.color}
+                  onChange={(e) => setTagDialog((s) => ({ ...s, color: e.target.value }))}
+                  className="h-9 w-14 cursor-pointer rounded border border-input bg-background"
+                />
+                <input
+                  value={tagDialog.color}
+                  onChange={(e) => setTagDialog((s) => ({ ...s, color: e.target.value }))}
+                  className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm font-mono outline-none focus-visible:ring-2 ring-ring"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setTagDialog({ open: false, name: "", color: "#6366f1" })}
+            >
+              Cancel
+            </Button>
+            <Button onClick={submitCreateTag}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
