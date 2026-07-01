@@ -162,11 +162,7 @@ export function CampaignsWorkspace() {
             <p className="text-sm font-semibold">
               {filtered.length} campaign{filtered.length === 1 ? "" : "s"}
             </p>
-            {data && data.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {stats.active} active
-              </span>
-            )}
+            {data && data.length > 0 && <span className="text-xs text-muted-foreground">{stats.active} active</span>}
           </div>
           {data === null ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
@@ -204,9 +200,7 @@ export function CampaignsWorkspace() {
               <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary/10 text-primary">
                 <FontAwesomeIcon icon={faBullhorn} className="h-6 w-6" />
               </div>
-              <h4 className="mt-4 text-base font-semibold text-foreground">
-                Select a campaign
-              </h4>
+              <h4 className="mt-4 text-base font-semibold text-foreground">Select a campaign</h4>
               <p className="mt-1 max-w-xs text-sm">
                 Choose a campaign from the list to view analytics, message preview, and send logs.
               </p>
@@ -268,7 +262,9 @@ function CampaignRow({
           )}
           <span className="inline-flex items-center gap-1">
             <FontAwesomeIcon icon={faClock} className="h-3 w-3" />
-            {campaign.createdAt ? formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true }) : "—"}
+            {campaign.createdAt
+              ? formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true })
+              : "—"}
           </span>
         </div>
         {campaign.status !== "draft" && (
@@ -513,12 +509,7 @@ function CampaignDetailPanel({
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <MiniStat icon={faUsers} label="Recipients" value={campaign.totalRecipients} />
-          <MiniStat
-            icon={faPaperPlane}
-            label="Sent"
-            value={campaign.sentCount}
-            tone="primary"
-          />
+          <MiniStat icon={faPaperPlane} label="Sent" value={campaign.sentCount} tone="primary" />
           <MiniStat
             icon={faCheckDouble}
             label="Delivered"
@@ -688,7 +679,10 @@ function IconBtn({
         tone === "danger" && "hover:bg-destructive/10 hover:text-destructive",
       )}
     >
-      <FontAwesomeIcon icon={loading ? faCircleNotch : icon} className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+      <FontAwesomeIcon
+        icon={loading ? faCircleNotch : icon}
+        className={cn("h-3.5 w-3.5", loading && "animate-spin")}
+      />
     </button>
   );
 }
