@@ -68,6 +68,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
             activeChatterEmail: strOrNull(x.activeChatterEmail),
             isBlocked: Boolean(x.isBlocked),
             tags: listOfStrings(x.tags),
+            assignedAgentId: strOrNull(x.assignedAgentId),
+            assignedAgentEmail: strOrNull(x.assignedAgentEmail),
           };
           const existing = grouped.get(phone);
           if (!existing) grouped.set(phone, row);
