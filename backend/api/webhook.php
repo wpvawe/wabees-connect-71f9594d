@@ -929,24 +929,7 @@ function download_whatsapp_media($mediaId, $accessToken, $mimeType, $type)
     }
 
     // Step 3: Determine extension from MIME type
-    $extMap = [
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png',
-        'image/gif' => 'gif',
-        'image/webp' => 'webp',
-        'video/mp4' => 'mp4',
-        'video/3gpp' => '3gp',
-        'audio/mpeg' => 'mp3',
-        'audio/ogg' => 'ogg',
-        'audio/amr' => 'amr',
-        'audio/aac' => 'aac',
-        'audio/mp4' => 'm4a',
-        'application/pdf' => 'pdf',
-        'text/plain' => 'txt',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
-        'application/msword' => 'doc',
-    ];
-    $ext = $extMap[$mimeType] ?? 'bin';
+    $ext = wabees_extension_for_mime($mimeType);
 
     // Step 4: Save to uploads directory
     $uploadDir = __DIR__ . '/../uploads/media/';
@@ -965,6 +948,82 @@ function download_whatsapp_media($mediaId, $accessToken, $mimeType, $type)
 
     webhook_log("MEDIA_DOWNLOAD: Saved $type as $filename ($mimeType)");
     return $publicUrl;
+}
+
+function wabees_extension_for_mime($mimeType)
+{
+    $mime = strtolower(trim(explode(';', (string) $mimeType)[0]));
+    $extMap = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp',
+        'video/mp4' => 'mp4',
+        'video/3gpp' => '3gp',
+        'audio/mpeg' => 'mp3',
+        'audio/ogg' => 'ogg',
+        'audio/amr' => 'amr',
+        'audio/aac' => 'aac',
+        'audio/mp4' => 'm4a',
+        'application/pdf' => 'pdf',
+        'application/rtf' => 'rtf',
+        'text/rtf' => 'rtf',
+        'text/plain' => 'txt',
+        'text/csv' => 'csv',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'application/vnd.ms-powerpoint' => 'ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+        'application/zip' => 'zip',
+        'application/x-rar-compressed' => 'rar',
+        'application/x-7z-compressed' => '7z',
+        'application/vnd.android.package-archive' => 'apk',
+    ];
+    if (isset($extMap[$mime])) return $extMap[$mime];
+    if (strpos($mime, 'image/') === 0) return str_replace('jpeg', 'jpg', substr($mime, 6));
+    if (strpos($mime, 'video/') === 0) return substr($mime, 6);
+    if (strpos($mime, 'audio/') === 0) return str_replace('mpeg', 'mp3', substr($mime, 6));
+    return 'bin';
+}
+
+function wabees_document_label($filename, $mimeType)
+{
+    $name = trim((string) $filename);
+    if ($name !== '') return '📄 ' . $name;
+    $ext = strtoupper(wabees_extension_for_mime($mimeType));
+    return $ext && $ext !== 'BIN' ? "📄 $ext document" : '📄 Document';
+}
+
+function wabees_last_message_preview($type, $body, $filename = '', $mimeType = '')
+{
+    $text = trim((string) $body);
+    $low = strtolower($text);
+    if (preg_match('/^\[[a-z_ ]+\]$/i', $low) || in_array($low, ['message type unknown', 'message not supported', 'message not supported in whatsapp business', 'contact shared', '📇 contact shared'], true)) {
+        $text = '';
+    }
+    if ($text !== '') return $text;
+    $map = [
+        'image' => '📷 Photo',
+        'sticker' => '💟 Sticker',
+        'video' => '🎥 Video',
+        'audio' => '🎤 Voice message',
+        'document' => wabees_document_label($filename, $mimeType),
+        'location' => '📍 Location',
+        'contacts' => '👤 Contact',
+        'reaction' => '❤️ Reaction',
+        'button' => '🔘 Button reply',
+        'interactive' => '🔘 Interactive reply',
+        'template' => '📋 Template',
+        'order' => '🛒 Order',
+        'poll' => '📊 Poll',
+        'poll_response' => '📊 Poll response',
+        'event' => '📅 Event',
+        'system' => 'ℹ️ System message',
+        'unsupported' => '⚠️ Unsupported WhatsApp message',
+    ];
+    return $map[$type] ?? 'Message';
 }
 
 // ================================================================
