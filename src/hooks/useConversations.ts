@@ -136,6 +136,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
                   activeChatterEmail: merged.activeChatterEmail ?? null,
                   isBlocked: merged.isBlocked ?? false,
                   tags: merged.tags ?? [],
+                  assignedAgentId: merged.assignedAgentId ?? null,
+                  assignedAgentEmail: merged.assignedAgentEmail ?? null,
                 },
                 { merge: true },
               );
