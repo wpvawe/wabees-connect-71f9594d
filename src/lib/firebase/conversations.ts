@@ -31,20 +31,30 @@ export const MAX_PINNED = 3;
  */
 export async function resolveConversationDocId(uid: string, phone: string): Promise<string> {
   const db = fbDb();
-  for (const c of phoneQueryCandidates(phone)) {
-    const s = await getDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => null);
-    if (s && s.exists()) return c;
-  }
-  return phoneDocId(phone);
+  // Parallel probes — was up to 10 sequential reads per call.
+  const candidates = phoneQueryCandidates(phone);
+  const snaps = await Promise.all(
+    candidates.map((c) =>
+      getDoc(doc(db, `users/${uid}/conversations/${c}`))
+        .then((s) => ({ c, exists: s.exists() }))
+        .catch(() => ({ c, exists: false })),
+    ),
+  );
+  const hit = snaps.find((s) => s.exists);
+  return hit ? hit.c : phoneDocId(phone);
 }
 
 export async function resolveConversationDocIds(uid: string, phone: string): Promise<string[]> {
   const db = fbDb();
-  const found: string[] = [];
-  for (const c of phoneQueryCandidates(phone)) {
-    const s = await getDoc(doc(db, `users/${uid}/conversations/${c}`)).catch(() => null);
-    if (s?.exists()) found.push(c);
-  }
+  const candidates = phoneQueryCandidates(phone);
+  const snaps = await Promise.all(
+    candidates.map((c) =>
+      getDoc(doc(db, `users/${uid}/conversations/${c}`))
+        .then((s) => (s.exists() ? c : null))
+        .catch(() => null),
+    ),
+  );
+  const found = snaps.filter((c): c is string => c !== null);
   const canonical = phoneDocId(phone);
   if (!found.includes(canonical)) found.push(canonical);
   return found;
