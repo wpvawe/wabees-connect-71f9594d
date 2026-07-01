@@ -1432,15 +1432,27 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
 
     $lastPreview = wabees_last_message_preview($type, $messageBody, $firestoreMsg['fileName'] ?? '', $mimeType ?? '');
 
+    // Only user-generated inbound messages open Meta's 24-hour customer service window.
+    // Reactions, call_permission, unknown/system events do NOT open it, so we must not
+    // touch lastIncomingMessageAt for those — otherwise the banner says "window open"
+    // while Meta still rejects free-form sends with error 131047.
+    $windowOpeningTypes = [
+        'text', 'image', 'video', 'audio', 'voice', 'document',
+        'sticker', 'location', 'contacts', 'interactive', 'button', 'order',
+    ];
+    $opensWindow = in_array($type, $windowOpeningTypes, true);
+
     $convData = [
         'contactPhone' => $from,
         'contactName' => $contactName,
         'lastMessage' => mb_substr($lastPreview, 0, 100),
         'lastMessageType' => $type,
         'lastMessageAt' => $nowIso,
-        'lastIncomingMessageAt' => $nowIso,
         'isRead' => false,
     ];
+    if ($opensWindow) {
+        $convData['lastIncomingMessageAt'] = $nowIso;
+    }
 
     // Mark call permission as granted on conversation
     if ($type === 'call_permission' && strpos($messageBody, 'granted') !== false) {
