@@ -8,7 +8,6 @@
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { initializeApp, getApps } from "firebase/app";
 import { toast } from "sonner";
 import { playNotificationChime } from "@/lib/notification-sound";
 
@@ -89,15 +88,8 @@ export async function initFcm(input: InitFcmInput): Promise<void> {
     const readyReg = await navigator.serviceWorker.ready;
     postFirebaseConfig(reg);
     postFirebaseConfig(readyReg);
-    if (getApps().length === 0) {
-      initializeApp({
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
-        appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
-      });
-    }
+    // Main Firebase app is already initialized in
+    // `integrations/firebase/client.ts` — no re-init needed.
     const messaging = getMessaging();
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
@@ -123,7 +115,12 @@ export async function initFcm(input: InitFcmInput): Promise<void> {
       const body =
         payload.notification?.body || (payload.data?.body as string | undefined) || "";
       toast(title, { description: body });
-      if (Notification.permission === "granted") {
+      // Only fire the system-level Notification when the tab is hidden.
+      // Otherwise the user sees BOTH a toast and an OS popup for the same
+      // message — jarring and easy to mis-click.
+      const hidden =
+        typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (hidden && Notification.permission === "granted") {
         try {
           new Notification(title, {
             body,
