@@ -119,21 +119,46 @@ export function CampaignForm() {
       return;
     }
     setBusy(true);
+    const payload = {
+      name: name.trim(),
+      description: description.trim(),
+      messageBody: messageBody.trim(),
+      audiencePhones: audience,
+    };
+    const path = `users/${uid}/campaigns`;
+    const startedAt = performance.now();
     try {
-      const res = await createCampaign(uid, {
-        name: name.trim(),
-        description: description.trim(),
-        messageBody: messageBody.trim(),
-        audiencePhones: audience,
+      const res = await createCampaign(uid, payload);
+      setDebug({
+        at: new Date().toISOString(),
+        ok: true,
+        path,
+        payload,
+        resultId: res.id,
+        durationMs: Math.round(performance.now() - startedAt),
       });
       toast.success("Campaign created");
       navigate({ to: "/campaigns/$id", params: { id: res.id } });
     } catch (e) {
-      const err = e as { code?: string; message?: string } | Error;
+      const err = e as { code?: string; message?: string; name?: string; stack?: string } | Error;
       const code = (err as { code?: string }).code;
+      const nm = (err as { name?: string }).name;
       const raw = err instanceof Error ? err.message : String(err ?? "");
+      const stack = err instanceof Error ? err.stack : undefined;
       // eslint-disable-next-line no-console
       console.error("createCampaign failed", { code, raw, err });
+      setDebug({
+        at: new Date().toISOString(),
+        ok: false,
+        path,
+        payload,
+        code,
+        name: nm,
+        message: raw,
+        stack,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      setDebugOpen(true);
       const msg =
         code === "permission-denied"
           ? "Permission denied by Firestore rules. Sign out and back in, then retry."
@@ -192,6 +217,16 @@ export function CampaignForm() {
             Create campaign ({selected.size})
           </WbButton>
         </div>
+        <DebugPanel
+          entry={debug}
+          open={debugOpen}
+          onToggle={() => setDebugOpen((v) => !v)}
+          onClear={() => setDebug(null)}
+          effectiveUid={uid}
+          selfUid={selfUid}
+          contactsCount={contacts?.length ?? null}
+          contactsError={contactsError}
+        />
       </div>
       <WbCard>
         <WbCardBody className="space-y-3">
