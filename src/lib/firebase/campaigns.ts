@@ -322,7 +322,13 @@ export async function runCampaign(
         sentAt: serverTimestamp(),
       }).catch(() => {});
     }
-    await updateDoc(campaignRef, { sentCount: sent, failedCount: failed });
+    // Use atomic increments so multiple tabs / retries don't clobber each
+    // other, and so the counters stay consistent with the webhook's
+    // delivered/read increments.
+    await updateDoc(campaignRef, {
+      sentCount: increment(ok ? 1 : 0),
+      failedCount: increment(ok ? 0 : 1),
+    });
     // Rate limit: ~2 msg/sec, plus a 3s cooldown every 80 messages.
     if (i < audience.length - 1) {
       await new Promise((r) => setTimeout(r, 500));
