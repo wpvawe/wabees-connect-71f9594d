@@ -31,6 +31,7 @@ import {
   faFileLines,
   faFile,
   faPlay,
+  faPause,
   faUpRightFromSquare,
   faRotateRight,
 } from "@fortawesome/free-solid-svg-icons";
