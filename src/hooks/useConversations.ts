@@ -92,6 +92,11 @@ export function useConversations(): { data: Conversation[] | null; error: string
                 (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
                   ? row.lastMessage
                   : existing.lastMessage,
+              lastMessageType:
+                row.lastMessageAt &&
+                (!existing.lastMessageAt || row.lastMessageAt >= existing.lastMessageAt)
+                  ? row.lastMessageType
+                  : existing.lastMessageType,
             });
           }
         }
