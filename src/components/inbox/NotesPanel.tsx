@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faNoteSticky, faTrash, faXmark, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faNoteSticky, faTrash, faXmark, faPlus, faThumbtack, faPen, faCheck } from "@fortawesome/free-solid-svg-icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useConvNotes } from "@/hooks/useConvNotes";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { addNote, deleteNote } from "@/lib/firebase/notes";
+import { addNote, deleteNote, updateNote, pinNote } from "@/lib/firebase/notes";
 
 export function NotesPanel({
   phone,
@@ -23,6 +23,8 @@ export function NotesPanel({
   const { data, error } = useConvNotes(phone);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
   async function submit() {
     const body = text.trim();
@@ -46,6 +48,28 @@ export function NotesPanel({
       await deleteNote(uid, phone, id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+  async function saveEdit(id: string) {
+    if (!uid) return;
+    const body = editText.trim();
+    if (!body) return;
+    try {
+      await updateNote(uid, phone, id, body);
+      setEditingId(null);
+      setEditText("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    }
+  }
+
+  async function togglePin(id: string, pinned: boolean) {
+    if (!uid) return;
+    try {
+      await pinNote(uid, phone, id, !pinned);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Pin failed");
     }
   }
 
@@ -75,24 +99,73 @@ export function NotesPanel({
             data.map((n) => (
               <div
                 key={n.id}
-                className="group rounded-lg border border-border bg-card p-3 shadow-soft"
+                className={`group rounded-lg border p-3 shadow-soft ${n.pinned ? "border-primary/40 bg-primary/5" : "border-border bg-card"}`}
               >
+                {n.pinned && (
+                  <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    <FontAwesomeIcon icon={faThumbtack} className="h-2.5 w-2.5" /> Pinned
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
-                  <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                    {n.body}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => remove(n.id)}
-                    className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                    aria-label="Delete note"
-                  >
-                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-                  </button>
+                  {editingId === n.id ? (
+                    <textarea
+                      autoFocus
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={2}
+                      className="flex-1 resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
+                    />
+                  ) : (
+                    <p className="flex-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                      {n.body}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                    {editingId === n.id ? (
+                      <button
+                        type="button"
+                        onClick={() => saveEdit(n.id)}
+                        className="grid h-7 w-7 place-items-center rounded-full text-primary hover:bg-primary/10"
+                        aria-label="Save note"
+                      >
+                        <FontAwesomeIcon icon={faCheck} className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => togglePin(n.id, n.pinned)}
+                          className={`grid h-7 w-7 place-items-center rounded-full hover:bg-primary/10 ${n.pinned ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+                          aria-label={n.pinned ? "Unpin note" : "Pin note"}
+                        >
+                          <FontAwesomeIcon icon={faThumbtack} className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setEditingId(n.id); setEditText(n.body); }}
+                          className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label="Edit note"
+                        >
+                          <FontAwesomeIcon icon={faPen} className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remove(n.id)}
+                          className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          aria-label="Delete note"
+                        >
+                          <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <p className="mt-2 text-[10px] text-muted-foreground">
                   {n.authorEmail || n.authorUid} ·{" "}
                   {formatNoteTime(n.createdAt)}
+                  {n.updatedAt && n.createdAt && n.updatedAt !== n.createdAt && (
+                    <span className="ml-1 italic">(edited)</span>
+                  )}
                 </p>
               </div>
             ))
