@@ -35,6 +35,8 @@ import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { fbAuth } from "@/integrations/firebase/client";
+import { assignConversation } from "@/lib/firebase/assignments";
 import type { Message } from "@/hooks/useMessages";
 
 export function Composer({
@@ -164,6 +166,9 @@ export function Composer({
       } catch {
         /* fall back to phone */
       }
+      // Auto-assign on first outgoing reply from an agent/owner if the
+      // conversation isn't already assigned. Silent — never blocks send.
+      void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
       // Optimistic write — message doc + conversation summary (Flutter pattern).
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
