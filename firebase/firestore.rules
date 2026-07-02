@@ -111,6 +111,12 @@ service cloud.firestore {
         allow read: if isAdmin();
       }
 
+      // ============ Assignment audit log (per conversation subcollection) ============
+      match /conversations/{convId}/assign_log/{logId} {
+        allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read: if isAdmin();
+      }
+
       // ============ Scheduled Messages ============
       match /scheduled_messages/{msgId} {
         allow read, write: if isOwner(userId) || isAgentOf(userId);
