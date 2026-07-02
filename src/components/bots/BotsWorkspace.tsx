@@ -706,7 +706,11 @@ function BotEditor({
             headerFormat={form.headerText ? "TEXT" : null}
             body={form.responseText || "Your reply will appear here as the customer sees it."}
             footer={form.footerText || null}
-            buttons={[]}
+            buttons={
+              form.ctaLabel.trim() && form.ctaUrl.trim()
+                ? [{ type: "URL", text: form.ctaLabel.trim(), url: form.ctaUrl.trim() }]
+                : []
+            }
           />
           <div className="rounded-xl border border-dashed border-border bg-background/60 p-3 text-[11px] text-muted-foreground">
             Preview updates as you type. Formatting: <code>*bold*</code>, <code>_italic_</code>,{" "}
