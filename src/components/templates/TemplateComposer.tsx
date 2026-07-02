@@ -13,10 +13,11 @@ import { WbInput } from "@/components/wb/WbInput";
 import { WhatsAppPreview, type HeaderFormat } from "@/components/shared/WhatsAppPreview";
 import { cn } from "@/lib/utils";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
-import { createMetaTemplate } from "@/lib/wabees/api";
+import { createMetaTemplate, editMetaTemplate } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import type { Template } from "@/hooks/useTemplates";
 
 type Category = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 type HeaderKind = "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
@@ -60,31 +61,82 @@ function nextVarToken(text: string): string {
   return `{{${next}}}`;
 }
 
-export function TemplateComposer() {
+function headerKindFrom(t: Template | undefined): HeaderKind {
+  if (!t) return "NONE";
+  const f = t.headerFormat ?? (t.header ? "TEXT" : null);
+  if (!f) return "NONE";
+  return f as HeaderKind;
+}
+
+function buttonKindFrom(buttons: Array<Record<string, unknown>>): ButtonKind {
+  if (!buttons.length) return "NONE";
+  const first = buttons[0];
+  const type = String(first?.type ?? "").toUpperCase();
+  if (type === "QUICK_REPLY") return "QUICK_REPLY";
+  if (type === "URL" || type === "PHONE_NUMBER") return "CTA";
+  return "NONE";
+}
+
+function quickRepliesFrom(buttons: Array<Record<string, unknown>>): string[] {
+  const qr = buttons.filter((b) => String(b?.type ?? "").toUpperCase() === "QUICK_REPLY");
+  const texts = qr.map((b) => String(b?.text ?? "")).filter(Boolean);
+  return texts.length ? texts : [""];
+}
+
+function ctaButtonsFrom(buttons: Array<Record<string, unknown>>): CtaButton[] {
+  const cta = buttons
+    .map((b): CtaButton | null => {
+      const type = String(b?.type ?? "").toUpperCase();
+      if (type === "URL")
+        return { type: "URL", text: String(b?.text ?? ""), url: String(b?.url ?? "https://") };
+      if (type === "PHONE_NUMBER")
+        return {
+          type: "PHONE_NUMBER",
+          text: String(b?.text ?? ""),
+          phone_number: String(b?.phone_number ?? ""),
+        };
+      return null;
+    })
+    .filter((v): v is CtaButton => !!v);
+  return cta.length ? cta : [{ type: "URL", text: "", url: "https://" }];
+}
+
+export function TemplateComposer({ initial }: { initial?: Template } = {}) {
   const navigate = useNavigate();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const isEdit = !!initial;
 
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState<Category>("MARKETING");
-  const [language, setLanguage] = useState("en_US");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [category, setCategory] = useState<Category>(
+    (initial?.category as Category) ?? "MARKETING",
+  );
+  const [language, setLanguage] = useState(initial?.languageCode ?? "en_US");
   const [allowCategoryChange, setAllowCategoryChange] = useState(true);
 
-  const [headerKind, setHeaderKind] = useState<HeaderKind>("NONE");
-  const [headerText, setHeaderText] = useState("");
-  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
+  const [headerKind, setHeaderKind] = useState<HeaderKind>(headerKindFrom(initial));
+  const [headerText, setHeaderText] = useState(
+    initial?.headerFormat === "TEXT" ? (initial?.header ?? "") : "",
+  );
+  const [headerMediaUrl, setHeaderMediaUrl] = useState(initial?.headerMediaUrl ?? "");
 
-  const [body, setBody] = useState("");
-  const [bodySamples, setBodySamples] = useState<Record<string, string>>({});
+  const [body, setBody] = useState(initial?.body ?? "");
+  const [bodySamples, setBodySamples] = useState<Record<string, string>>(
+    initial?.variableSamples ?? {},
+  );
   const [namedVar, setNamedVar] = useState("");
 
-  const [footer, setFooter] = useState("");
+  const [footer, setFooter] = useState(initial?.footer ?? "");
 
-  const [buttonKind, setButtonKind] = useState<ButtonKind>("NONE");
-  const [quickReplies, setQuickReplies] = useState<string[]>([""]);
-  const [ctaButtons, setCtaButtons] = useState<CtaButton[]>([
-    { type: "URL", text: "", url: "https://" },
-  ]);
+  const [buttonKind, setButtonKind] = useState<ButtonKind>(
+    buttonKindFrom(initial?.buttons ?? []),
+  );
+  const [quickReplies, setQuickReplies] = useState<string[]>(
+    quickRepliesFrom(initial?.buttons ?? []),
+  );
+  const [ctaButtons, setCtaButtons] = useState<CtaButton[]>(
+    ctaButtonsFrom(initial?.buttons ?? []),
+  );
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -247,24 +299,60 @@ export function TemplateComposer() {
         "";
       if (!waba_id) throw new Error("WABA ID missing — add it on Connect page.");
 
-      const res = await createMetaTemplate({
-        business_account_id: waba_id,
-        access_token: creds.access_token,
-        name,
-        category,
-        language,
-        components: buildComponents(),
-        allow_category_change: allowCategoryChange,
-      });
-      if (!res.success) {
-        throw new Error(res.message ?? "Meta rejected the template.");
+      const components = buildComponents();
+      if (isEdit && initial) {
+        if (!initial.metaTemplateId) {
+          throw new Error("This template has no Meta ID yet — sync from Meta first, then edit.");
+        }
+        const res = await editMetaTemplate({
+          business_account_id: waba_id,
+          access_token: creds.access_token,
+          hsm_id: initial.metaTemplateId,
+          category,
+          components,
+        });
+        if (!res.success) {
+          throw new Error(res.message ?? "Meta rejected the edit.");
+        }
+        // Mirror changes locally so the UI updates without waiting for a sync.
+        await updateDoc(doc(db, "users", uid, "templates", initial.id), {
+          category,
+          body,
+          header: headerKind === "TEXT" ? headerText : null,
+          headerFormat: headerKind === "NONE" ? null : headerKind,
+          headerMediaUrl: headerKind !== "NONE" && headerKind !== "TEXT" ? headerMediaUrl : null,
+          footer: footer.trim() || null,
+          buttons: previewButtons,
+          variables: bodyVars,
+          headerVariables: headerVars,
+          variableSamples: bodySamples,
+          status: "PENDING",
+          updatedAt: serverTimestamp(),
+        });
+        toast.success("Template updated — Meta will re-review; sync to refresh status.");
+        navigate({ to: "/templates" });
+      } else {
+        const res = await createMetaTemplate({
+          business_account_id: waba_id,
+          access_token: creds.access_token,
+          name,
+          category,
+          language,
+          components,
+          allow_category_change: allowCategoryChange,
+        });
+        if (!res.success) {
+          throw new Error(res.message ?? "Meta rejected the template.");
+        }
+        toast.success(
+          `Template submitted — status: ${res.data?.status ?? "PENDING"}. Sync from Meta to refresh.`,
+        );
+        navigate({ to: "/templates" });
       }
-      toast.success(
-        `Template submitted — status: ${res.data?.status ?? "PENDING"}. Sync from Meta to refresh.`,
-      );
-      navigate({ to: "/templates" });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create template.");
+      toast.error(
+        e instanceof Error ? e.message : isEdit ? "Could not update template." : "Could not create template.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -289,14 +377,16 @@ export function TemplateComposer() {
                 placeholder="order_confirmation"
                 value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
-                hint="Lowercase letters, numbers, underscores."
+                hint={isEdit ? "Name is locked — Meta doesn't allow renaming." : "Lowercase letters, numbers, underscores."}
+                disabled={isEdit}
               />
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Language</label>
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm"
+                  disabled={isEdit}
+                  className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm disabled:opacity-60"
                 >
                   {LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
@@ -584,7 +674,7 @@ export function TemplateComposer() {
               Cancel
             </WbButton>
             <WbButton onClick={() => void submit()} loading={submitting}>
-              Submit for approval
+              {isEdit ? "Save changes" : "Submit for approval"}
             </WbButton>
           </div>
         </div>
