@@ -34,6 +34,7 @@ import {
   faPause,
   faUpRightFromSquare,
   faRotateRight,
+  faCircleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -193,6 +194,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
+  const [errorOpen, setErrorOpen] = useState(false);
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
   // H-3 helper: reactions need a wamid to forward to Meta. Pending outgoing
   // messages don't have one yet, so disable the react button until the
@@ -203,17 +205,52 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   // onMouseLeave alone never fires on mobile.
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!reactOpen && !menuOpen) return;
+    if (!reactOpen && !menuOpen && !errorOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!rootRef.current) return;
       if (!rootRef.current.contains(e.target as Node)) {
         setReactOpen(false);
         setMenuOpen(false);
+        setErrorOpen(false);
       }
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [reactOpen, menuOpen]);
+  }, [reactOpen, menuOpen, errorOpen]);
+
+  // A10 · long-press to open the actions menu on touch devices where the
+  // hover action bar never appears. 450 ms matches WhatsApp's feel.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressFired = useRef(false);
+  function pressStart() {
+    if (isDeleted || !actions) return;
+    pressFired.current = false;
+    pressTimer.current = setTimeout(() => {
+      pressFired.current = true;
+      setMenuOpen(true);
+      if (actions.onReact && !reactDisabled) setReactOpen(true);
+      // Haptic tick on supported devices
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try {
+          (navigator as Navigator & { vibrate?: (p: number) => boolean }).vibrate?.(15);
+        } catch {
+          /* noop */
+        }
+      }
+    }, 450);
+  }
+  function pressCancel() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+  function onContextMenu(e: React.MouseEvent) {
+    if (isDeleted || !actions) return;
+    e.preventDefault();
+    setMenuOpen(true);
+    if (actions.onReact && !reactDisabled) setReactOpen(true);
+  }
 
   function copy() {
     const txt =
@@ -241,6 +278,17 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             : "rounded-bl-md border border-border bg-card text-card-foreground",
           isDeleted && "italic opacity-70",
         )}
+        onTouchStart={pressStart}
+        onTouchEnd={pressCancel}
+        onTouchMove={pressCancel}
+        onTouchCancel={pressCancel}
+        onContextMenu={onContextMenu}
+        onClick={(e) => {
+          if (pressFired.current) {
+            e.preventDefault();
+            pressFired.current = false;
+          }
+        }}
       >
         {!isDeleted && mine && m.botName && (
           <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
@@ -371,6 +419,18 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               <FontAwesomeIcon icon={faRotateRight} className="h-3.5 w-3.5" /> Resend
             </button>
           )}
+          {mine && m.status === "failed" && (
+            <button
+              type="button"
+              onClick={() => {
+                setErrorOpen(true);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-destructive hover:bg-destructive/10"
+            >
+              <FontAwesomeIcon icon={faCircleExclamation} className="h-3.5 w-3.5" /> View error
+            </button>
+          )}
           {actions?.onForward && (
             <button
               type="button"
@@ -407,6 +467,46 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" /> Delete
             </button>
           )}
+        </div>
+      )}
+
+      {/* Error detail popup for failed outgoing messages */}
+      {errorOpen && (
+        <div
+          className={cn(
+            "absolute z-30 w-64 rounded-lg border border-destructive/40 bg-card p-3 text-xs shadow-md",
+            "top-full mt-1",
+            mine ? "right-0" : "left-0",
+          )}
+        >
+          <div className="flex items-center gap-2 text-destructive">
+            <FontAwesomeIcon icon={faCircleExclamation} className="h-3.5 w-3.5" />
+            <p className="font-semibold">Send failed</p>
+          </div>
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-muted-foreground">
+            {m.errorReason || "No error detail was returned by WhatsApp."}
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            {actions?.onResend && (
+              <button
+                type="button"
+                onClick={() => {
+                  actions.onResend?.(m);
+                  setErrorOpen(false);
+                }}
+                className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Try again
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setErrorOpen(false)}
+              className="rounded-md border border-border px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
       </div>
