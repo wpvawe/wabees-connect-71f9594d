@@ -209,7 +209,7 @@ export function useMessages(phone: string | undefined): {
             (m) =>
               !(m.type === "reaction" && !m.mediaUrl),
           )
-          .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+          .sort((a, b) => (a.createdAt ?? "9999").localeCompare(b.createdAt ?? "9999"));
         setData(rows);
       },
       (err) => setError(err.message),

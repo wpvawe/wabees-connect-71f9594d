@@ -22,7 +22,11 @@ define('VERIFY_TOKEN', 'wabees_webhook_verify_2024');
 // one's AI reply — which was the #1 cause of "7-10s late receive".
 // Requires LiteSpeed/PHP-FPM (Hostinger already provides it) + ignore_user_abort.
 if (!defined('ENABLE_FAST_WEBHOOK_ACK')) {
-    define('ENABLE_FAST_WEBHOOK_ACK', true);
+    // Default OFF: some Hostinger/LiteSpeed setups stop PHP work after an
+    // early flush. If we ACK before the Firestore commit, Meta sees success
+    // while the inbox row is never written, so messages appear sent by the
+    // customer but are not received in Wabees.
+    define('ENABLE_FAST_WEBHOOK_ACK', false);
 }
 
 // ============ GET = WEBHOOK VERIFICATION ============
