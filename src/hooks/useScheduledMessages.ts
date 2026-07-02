@@ -202,6 +202,9 @@ export function useScheduledDispatcher() {
               await updateDoc(doc(db!, `users/${uid}`), {
                 totalMessages: increment(1),
               }).catch(() => {});
+              await updateDoc(doc(db!, `users/${uid}/subscription/current`), {
+                messagesUsed: increment(1),
+              }).catch(() => {});
             } catch (e) {
               await updateDoc(d.ref, {
                 status: "failed",
