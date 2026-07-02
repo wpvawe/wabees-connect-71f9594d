@@ -217,7 +217,7 @@ function send_message_fcm_notification($token, $contactName, $messageBody, $from
                     'tag' => $tag,
                     'renotify' => true,
                 ],
-                'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+                'fcm_options' => ['link' => isset($userData) ? get_owner_webpush_link($userData) : 'https://wabees.live/'],
             ],
             'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
         ],
@@ -1688,7 +1688,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                     'webpush' => [
                         'headers' => ['Urgency' => 'high'],
                         'notification' => ['title' => $contactName, 'body' => $body, 'icon' => '/wabees-icon.png', 'badge' => '/favicon.ico', 'tag' => $tag, 'renotify' => true],
-                        'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+                        'fcm_options' => ['link' => get_owner_webpush_link($userData)],
                     ],
                     'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
                 ],
