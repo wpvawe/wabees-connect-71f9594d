@@ -116,7 +116,10 @@ function DashboardPage() {
               <UsageStat
                 icon={faPaperPlane}
                 label="Messages"
-                used={subscription?.messagesUsed ?? profile?.totalMessages ?? 0}
+                used={Math.max(
+                  subscription?.messagesUsed ?? 0,
+                  profile?.totalMessages ?? 0,
+                )}
                 max={subscription?.maxMessages ?? 0}
               />
               <UsageStat
