@@ -15,10 +15,13 @@ import {
   cancelScheduledMessage,
   createScheduledMessage,
   deleteScheduledMessage,
+  updateScheduledMessage,
+  type ScheduledMessage,
+  type ScheduledRecurrence,
 } from "@/lib/firebase/scheduled";
 import { useScheduledMessages } from "@/hooks/useScheduledMessages";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClock, faTrash, faBan } from "@fortawesome/free-solid-svg-icons";
+import { faClock, faTrash, faBan, faPen, faRepeat } from "@fortawesome/free-solid-svg-icons";
 
 export function ScheduleDialog({
   phone,
@@ -38,8 +41,10 @@ export function ScheduleDialog({
     return toLocalDatetimeInput(d);
   }, []);
   const [when, setWhen] = useState(defaultWhen);
+  const [recurrence, setRecurrence] = useState<ScheduledRecurrence>("none");
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function submit() {
     if (!uid) return;
@@ -59,14 +64,43 @@ export function ScheduleDialog({
     }
     setBusy(true);
     try {
-      await createScheduledMessage(uid, { phone, body: text, scheduledFor });
+      if (editingId) {
+        await updateScheduledMessage(uid, editingId, {
+          body: text,
+          scheduledFor,
+          recurrence,
+        });
+        toast.success("Scheduled message updated");
+        setEditingId(null);
+      } else {
+        await createScheduledMessage(uid, { phone, body: text, scheduledFor, recurrence });
+        toast.success(
+          recurrence === "none"
+            ? `Scheduled for ${format(scheduledFor, "PPp")}`
+            : `Scheduled ${recurrence} starting ${format(scheduledFor, "PPp")}`,
+        );
+      }
       setBody("");
-      toast.success(`Scheduled for ${format(scheduledFor, "PPp")}`);
+      setRecurrence("none");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Schedule failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function beginEdit(s: ScheduledMessage) {
+    setEditingId(s.id);
+    setBody(s.body);
+    setRecurrence(s.recurrence ?? "none");
+    if (s.scheduledFor) setWhen(toLocalDatetimeInput(new Date(s.scheduledFor)));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setBody("");
+    setRecurrence("none");
+    setWhen(defaultWhen);
   }
 
   async function cancelRow(id: string) {
@@ -101,7 +135,7 @@ export function ScheduleDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FontAwesomeIcon icon={faClock} className="h-4 w-4 text-primary" />
-            Schedule a message
+            {editingId ? "Edit scheduled message" : "Schedule a message"}
           </DialogTitle>
           <DialogDescription>
             Delivered automatically by our server at the scheduled time — you don't need to keep the tab or app open.
@@ -121,16 +155,33 @@ export function ScheduleDialog({
               className="w-full resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-              Send at
-            </label>
-            <input
-              type="datetime-local"
-              value={when}
-              onChange={(e) => setWhen(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none ring-ring focus-visible:ring-2"
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                Send at
+              </label>
+              <input
+                type="datetime-local"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none ring-ring focus-visible:ring-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                Repeat
+              </label>
+              <select
+                value={recurrence}
+                onChange={(e) => setRecurrence(e.target.value as ScheduledRecurrence)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none ring-ring focus-visible:ring-2"
+              >
+                <option value="none">Once</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -146,7 +197,14 @@ export function ScheduleDialog({
                   className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-xs hover:bg-card"
                 >
                   <div className="min-w-0">
-                    <p className="truncate">{s.body}</p>
+                    <p className="truncate">
+                      {s.body}
+                      {s.recurrence && s.recurrence !== "none" && (
+                        <span className="ml-1 text-[10px] text-primary">
+                          <FontAwesomeIcon icon={faRepeat} className="h-2.5 w-2.5" /> {s.recurrence}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-[10px] text-muted-foreground">
                       {s.scheduledFor
                         ? `${format(new Date(s.scheduledFor), "PPp")} · ${statusLabel(s.status, s.scheduledFor)}`
@@ -155,6 +213,17 @@ export function ScheduleDialog({
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {s.status === "pending" && uid && (
+                      <button
+                        type="button"
+                        disabled={rowBusy === s.id}
+                        onClick={() => beginEdit(s)}
+                        title="Edit"
+                        className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+                      >
+                        <FontAwesomeIcon icon={faPen} className="h-3 w-3" />
+                      </button>
+                    )}
                     {s.status === "pending" && uid && (
                       <button
                         type="button"
@@ -185,12 +254,18 @@ export function ScheduleDialog({
         )}
 
         <DialogFooter>
-          <WbButton variant="secondary" onClick={() => onOpenChange(false)}>
-            Close
-          </WbButton>
+          {editingId ? (
+            <WbButton variant="secondary" onClick={cancelEdit}>
+              Cancel edit
+            </WbButton>
+          ) : (
+            <WbButton variant="secondary" onClick={() => onOpenChange(false)}>
+              Close
+            </WbButton>
+          )}
           <WbButton onClick={submit} loading={busy}>
-            <FontAwesomeIcon icon={faClock} className="mr-1.5 h-3.5 w-3.5" />
-            Schedule
+            <FontAwesomeIcon icon={editingId ? faPen : faClock} className="mr-1.5 h-3.5 w-3.5" />
+            {editingId ? "Save changes" : "Schedule"}
           </WbButton>
         </DialogFooter>
       </DialogContent>
