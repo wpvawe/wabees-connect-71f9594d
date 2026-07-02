@@ -16,6 +16,7 @@ import {
   faPen,
   faUser,
   faUserSlash,
+  faNoteSticky,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -841,6 +842,15 @@ function ConvRow({
               className="h-3 w-3 rotate-45 text-muted-foreground"
               title="Pinned"
             />
+          )}
+          {typeof c.notesCount === "number" && c.notesCount > 0 && (
+            <span
+              title={`${c.notesCount} internal note${c.notesCount > 1 ? "s" : ""}`}
+              className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 text-[9px] font-semibold text-amber-600"
+            >
+              <FontAwesomeIcon icon={faNoteSticky} className="h-2.5 w-2.5" />
+              {c.notesCount}
+            </span>
           )}
           {c.unreadCount > 0 && (
             <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">

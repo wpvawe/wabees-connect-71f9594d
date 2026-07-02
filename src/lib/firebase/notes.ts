@@ -12,6 +12,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  increment,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { ensureConversationDoc, resolveConversationDocId } from "@/lib/firebase/conversations";
@@ -24,6 +25,7 @@ export type ConvNote = {
   authorEmail: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  pinned: boolean;
 };
 
 export async function addNote(
@@ -40,10 +42,18 @@ export async function addNote(
       body: body.trim(),
       authorUid: author.uid,
       authorEmail: author.email,
+      pinned: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
   );
+  // Maintain a lightweight counter on the parent conversation doc so the
+  // inbox list can show a note-count badge without reading the subcollection.
+  await setDoc(
+    doc(db, `users/${uid}/conversations/${convId}`),
+    { notesCount: increment(1) },
+    { merge: true },
+  ).catch(() => {});
   return ref.id;
 }
 
@@ -70,6 +80,24 @@ export async function updateNote(
   );
 }
 
+export async function pinNote(
+  uid: string,
+  phone: string,
+  noteId: string,
+  pinned: boolean,
+): Promise<void> {
+  const db = fbDb();
+  const convId = await resolveConversationDocId(uid, phone).catch(() => null);
+  const candidates = phoneQueryCandidates(phone);
+  const ids = Array.from(new Set([convId, ...candidates].filter(Boolean) as string[]));
+  const payload = { pinned, updatedAt: serverTimestamp() };
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, `users/${uid}/conversations/${id}/notes/${noteId}`), payload).catch(() => {}),
+    ),
+  );
+}
+
 export async function deleteNote(
   uid: string,
   phone: string,
@@ -79,13 +107,24 @@ export async function deleteNote(
   const candidates = phoneQueryCandidates(phone);
   const resolved = await resolveConversationDocId(uid, phone).catch(() => null);
   const ids = Array.from(new Set([resolved, ...candidates].filter(Boolean) as string[]));
+  let decremented = false;
   await Promise.all(
     ids.map(async (convId) => {
       const ref = doc(db, `users/${uid}/conversations/${convId}/notes/${noteId}`);
+      const snap = await getDoc(ref).catch(() => null);
+      if (!snap?.exists()) return;
+      const wasActive = snap.data()?.isDeleted !== true;
       await deleteDoc(ref).catch(async () => {
-        const snap = await getDoc(ref).catch(() => null);
-        if (snap?.exists()) await setDoc(ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
+        await setDoc(ref, { isDeleted: true, deletedAt: serverTimestamp() }, { merge: true });
       });
+      if (wasActive && !decremented) {
+        decremented = true;
+        await setDoc(
+          doc(db, `users/${uid}/conversations/${convId}`),
+          { notesCount: increment(-1) },
+          { merge: true },
+        ).catch(() => {});
+      }
     }),
   );
 }
