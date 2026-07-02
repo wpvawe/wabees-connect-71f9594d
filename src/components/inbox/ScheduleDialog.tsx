@@ -104,7 +104,7 @@ export function ScheduleDialog({
             Schedule a message
           </DialogTitle>
           <DialogDescription>
-            Delivery runs in-browser — keep a Wabees tab open around the scheduled time.
+            Delivered automatically by our server at the scheduled time — you don't need to keep the tab or app open.
           </DialogDescription>
         </DialogHeader>
 
