@@ -34,6 +34,7 @@ import {
   faPause,
   faUpRightFromSquare,
   faRotateRight,
+  faCircleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
@@ -193,6 +194,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
+  const [errorOpen, setErrorOpen] = useState(false);
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
   // H-3 helper: reactions need a wamid to forward to Meta. Pending outgoing
   // messages don't have one yet, so disable the react button until the
@@ -203,17 +205,52 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   // onMouseLeave alone never fires on mobile.
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!reactOpen && !menuOpen) return;
+    if (!reactOpen && !menuOpen && !errorOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!rootRef.current) return;
       if (!rootRef.current.contains(e.target as Node)) {
         setReactOpen(false);
         setMenuOpen(false);
+        setErrorOpen(false);
       }
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [reactOpen, menuOpen]);
+  }, [reactOpen, menuOpen, errorOpen]);
+
+  // A10 · long-press to open the actions menu on touch devices where the
+  // hover action bar never appears. 450 ms matches WhatsApp's feel.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressFired = useRef(false);
+  function pressStart() {
+    if (isDeleted || !actions) return;
+    pressFired.current = false;
+    pressTimer.current = setTimeout(() => {
+      pressFired.current = true;
+      setMenuOpen(true);
+      if (actions.onReact && !reactDisabled) setReactOpen(true);
+      // Haptic tick on supported devices
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try {
+          (navigator as Navigator & { vibrate?: (p: number) => boolean }).vibrate?.(15);
+        } catch {
+          /* noop */
+        }
+      }
+    }, 450);
+  }
+  function pressCancel() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+  function onContextMenu(e: React.MouseEvent) {
+    if (isDeleted || !actions) return;
+    e.preventDefault();
+    setMenuOpen(true);
+    if (actions.onReact && !reactDisabled) setReactOpen(true);
+  }
 
   function copy() {
     const txt =
@@ -241,6 +278,17 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
             : "rounded-bl-md border border-border bg-card text-card-foreground",
           isDeleted && "italic opacity-70",
         )}
+        onTouchStart={pressStart}
+        onTouchEnd={pressCancel}
+        onTouchMove={pressCancel}
+        onTouchCancel={pressCancel}
+        onContextMenu={onContextMenu}
+        onClick={(e) => {
+          if (pressFired.current) {
+            e.preventDefault();
+            pressFired.current = false;
+          }
+        }}
       >
         {!isDeleted && mine && m.botName && (
           <p className="mb-1 text-[10px] font-semibold opacity-80">🤖 {m.botName}</p>
