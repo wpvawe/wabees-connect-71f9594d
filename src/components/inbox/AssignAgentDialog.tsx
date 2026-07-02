@@ -31,14 +31,22 @@ export function AssignAgentDialog({
   const selfUid = useFirebaseUid();
   const { data: agents } = useAgents();
   const [busy, setBusy] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
 
   async function pick(agent: { id: string; email: string | null } | null) {
     if (!uid || !selfUid) return;
     setBusy(agent?.id ?? "clear");
     try {
       const actorEmail = fbAuth().currentUser?.email ?? null;
-      await assignConversation(uid, phone, agent, { uid: selfUid, email: actorEmail });
+      await assignConversation(
+        uid,
+        phone,
+        agent,
+        { uid: selfUid, email: actorEmail },
+        { reason: reason.trim() || undefined, source: "manual" },
+      );
       toast.success(agent ? `Assigned to ${agent.email || agent.id}` : "Unassigned");
+      setReason("");
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Assign failed");
@@ -88,6 +96,20 @@ export function AssignAgentDialog({
               );
             })
           )}
+        </div>
+
+        <div className="space-y-1.5 border-t border-border pt-3">
+          <label htmlFor="assign-reason" className="text-xs font-medium text-muted-foreground">
+            Reason / note (optional)
+          </label>
+          <textarea
+            id="assign-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. escalation to senior, out-of-office cover, follow-up owner…"
+            className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs outline-none ring-ring focus-visible:ring-2"
+          />
         </div>
 
         <DialogFooter className="gap-2">

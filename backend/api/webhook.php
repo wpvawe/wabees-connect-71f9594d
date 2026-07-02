@@ -1668,15 +1668,40 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         $fcmTokens[] = $ownerFcm;
 
     // --- 2. Agents FCM Tokens (Cached 10 min) ---
+    // NEW: If the conversation is assigned to a specific agent, notify ONLY
+    //       the owner + that assigned agent — not every teammate. Cuts FCM
+    //       spam and gives each thread a clear on-call owner. Falls back to
+    //       full fanout when the thread is unassigned.
+    $assignedAgentId = null;
+    try {
+        $convPathForAssign = "users/$userId/conversations/$from";
+        $convResp = firestore_get($convPathForAssign);
+        if (($convResp['code'] ?? 0) === 200) {
+            $assignedAgentId = $convResp['data']['fields']['assignedAgentId']['stringValue'] ?? null;
+        }
+    } catch (\Throwable $e) {
+        webhook_log('ASSIGN_FCM_LOOKUP_ERR: ' . $e->getMessage());
+    }
     $agentsCacheKey = "users/$userId/agents";
     $agentsResp = firestore_get_cached($agentsCacheKey, 600);
     if (($agentsResp['code'] ?? 404) === 200) {
         foreach ($agentsResp['data']['documents'] ?? [] as $agentDoc) {
             $aToken = $agentDoc['fields']['fcmToken']['stringValue'] ?? null;
-            if ($aToken && !in_array($aToken, $fcmTokens))
+            if (empty($aToken))
+                continue;
+            if ($assignedAgentId) {
+                // Only push to the assigned agent (owner stays in $fcmTokens above).
+                $agentDocName = $agentDoc['name'] ?? '';
+                if (!preg_match('#/agents/([^/]+)$#', $agentDocName, $m))
+                    continue;
+                if ($m[1] !== $assignedAgentId)
+                    continue;
+            }
+            if (!in_array($aToken, $fcmTokens))
                 $fcmTokens[] = $aToken;
         }
     }
+    webhook_log('FCM_ROUTING: assigned=' . ($assignedAgentId ?: 'none') . ' recipients=' . count($fcmTokens));
 
     // --- 3. Dispatch ALL Notifications in Parallel ---
     if (!empty($fcmTokens) && $adminToken) {

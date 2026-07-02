@@ -14,6 +14,8 @@ import {
   faXmark,
   faPlus,
   faPen,
+  faUser,
+  faUserSlash,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -25,7 +27,7 @@ import {
   where,
 } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { phoneQueryCandidates, str, toIso } from "@/lib/firebase/normalizers";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
@@ -53,7 +55,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Filter = "all" | "unread" | "free" | "free_unread";
+type Filter = "all" | "unread" | "free" | "free_unread" | "mine" | "unassigned";
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function isReplyWindowOpen(iso: string | null | undefined): boolean {
@@ -85,6 +87,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data: contacts } = useContacts();
   const { data: tags } = useConvTags();
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -155,6 +158,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           (c) => c.unreadCount > 0 && isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbacks[c.contactPhone] ?? c.lastIncomingMessageAt }),
         );
         break;
+      case "mine":
+        rows = rows.filter((c) => selfUid && c.assignedAgentId === selfUid);
+        break;
+      case "unassigned":
+        rows = rows.filter((c) => !c.assignedAgentId);
+        break;
     }
     if (q.trim()) {
       const needle = q.trim().toLowerCase();
@@ -163,7 +172,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       );
     }
     return rows;
-  }, [merged, q, filter, selectedTag, incomingFallbacks]);
+  }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid]);
 
   useEffect(() => {
     if (!uid || !merged) return;
@@ -380,6 +389,26 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
             color="hsl(var(--primary))"
             onClick={() => {
               setFilter("all");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faUser}
+            label="Mine"
+            active={filter === "mine"}
+            color="#0ea5e9"
+            onClick={() => {
+              setFilter(filter === "mine" ? "all" : "mine");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faUserSlash}
+            label="Unassigned"
+            active={filter === "unassigned"}
+            color="#64748b"
+            onClick={() => {
+              setFilter(filter === "unassigned" ? "all" : "unassigned");
               setSelectedTag(null);
             }}
           />
@@ -798,6 +827,14 @@ function ConvRow({
           )}
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
+          {c.assignedAgentEmail && (
+            <span
+              title={`Assigned: ${c.assignedAgentEmail}`}
+              className="grid h-4 min-w-[16px] place-items-center rounded-full bg-sky-500/15 px-1 text-[9px] font-semibold text-sky-600"
+            >
+              {(c.assignedAgentEmail.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase()}
+            </span>
+          )}
           {c.isPinned && (
             <FontAwesomeIcon
               icon={faThumbtack}

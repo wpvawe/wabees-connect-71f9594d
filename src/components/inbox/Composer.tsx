@@ -35,6 +35,8 @@ import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { fbAuth } from "@/integrations/firebase/client";
+import { assignConversation } from "@/lib/firebase/assignments";
 import type { Message } from "@/hooks/useMessages";
 
 export function Composer({
@@ -164,6 +166,9 @@ export function Composer({
       } catch {
         /* fall back to phone */
       }
+      // Auto-assign on first outgoing reply from an agent/owner if the
+      // conversation isn't already assigned. Silent — never blocks send.
+      void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
       // Optimistic write — message doc + conversation summary (Flutter pattern).
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
@@ -706,5 +711,30 @@ function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
         searchPlaceHolder="Search"
       />
     </div>
+  );
+}
+
+/**
+ * Auto-assign a conversation to the sending user on their first outgoing
+ * reply, when nobody owns the thread yet. Silent — best-effort only.
+ */
+async function maybeAutoAssignOnReply(
+  ownerUid: string,
+  selfUid: string,
+  phone: string,
+): Promise<void> {
+  const db = fbDb();
+  const convId = phoneDocId(phone);
+  const snap = await getDoc(doc(db, "users", ownerUid, "conversations", convId));
+  const data = snap.data() as Record<string, unknown> | undefined;
+  const currentAssignee = typeof data?.assignedAgentId === "string" ? data.assignedAgentId : null;
+  if (currentAssignee) return;
+  const actorEmail = fbAuth().currentUser?.email ?? null;
+  await assignConversation(
+    ownerUid,
+    phone,
+    { id: selfUid, email: actorEmail },
+    { uid: selfUid, email: actorEmail },
+    { source: "auto_reply", reason: "Auto-assigned on first reply" },
   );
 }
