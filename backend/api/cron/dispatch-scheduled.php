@@ -130,6 +130,26 @@ foreach ($dueDocs as $doc) {
 
     firestore_increment("users/$uid", 'totalMessages', 1);
 
+    // Re-queue next occurrence for recurring schedules.
+    $recurrence = _fs_string($fields['recurrence'] ?? null, 'none');
+    if (in_array($recurrence, ['daily', 'weekly', 'monthly'], true)) {
+        $origIso = _fs_timestamp($fields['scheduledFor'] ?? null);
+        $nextTs = _next_occurrence($origIso, $recurrence);
+        if ($nextTs) {
+            $nextId = 'rec_' . bin2hex(random_bytes(8));
+            firestore_set("users/$uid/scheduled_messages/$nextId", [
+                'contactPhone' => $phone,
+                'body' => $body,
+                'scheduledFor' => ['timestampValue' => $nextTs],
+                'status' => 'pending',
+                'errorReason' => null,
+                'sentMessageId' => null,
+                'recurrence' => $recurrence,
+                'createdAt' => firestore_timestamp(),
+            ], false);
+        }
+    }
+
     $processed[] = ['uid' => $uid, 'id' => $schedId, 'wamid' => $wamid];
 }
 
@@ -279,4 +299,23 @@ function _fs_string($v, string $def = ''): string {
 function _fs_timestamp($v): ?string {
     if (!is_array($v)) return null;
     return $v['timestampValue'] ?? null;
+}
+
+function _next_occurrence(?string $origIso, string $recurrence): ?string {
+    $base = $origIso ? strtotime($origIso) : time();
+    if (!$base) return null;
+    $nowTs = time();
+    // Roll forward until strictly in the future (skip missed cycles).
+    $ts = $base;
+    $guard = 0;
+    do {
+        switch ($recurrence) {
+            case 'daily': $ts = strtotime('+1 day', $ts); break;
+            case 'weekly': $ts = strtotime('+1 week', $ts); break;
+            case 'monthly': $ts = strtotime('+1 month', $ts); break;
+            default: return null;
+        }
+        if (++$guard > 500) return null;
+    } while ($ts <= $nowTs);
+    return gmdate('Y-m-d\TH:i:s.000\Z', $ts);
 }
