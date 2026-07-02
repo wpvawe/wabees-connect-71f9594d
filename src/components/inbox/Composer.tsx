@@ -713,3 +713,28 @@ function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
     </div>
   );
 }
+
+/**
+ * Auto-assign a conversation to the sending user on their first outgoing
+ * reply, when nobody owns the thread yet. Silent — best-effort only.
+ */
+async function maybeAutoAssignOnReply(
+  ownerUid: string,
+  selfUid: string,
+  phone: string,
+): Promise<void> {
+  const db = fbDb();
+  const convId = phoneDocId(phone);
+  const snap = await getDoc(doc(db, "users", ownerUid, "conversations", convId));
+  const data = snap.data() as Record<string, unknown> | undefined;
+  const currentAssignee = typeof data?.assignedAgentId === "string" ? data.assignedAgentId : null;
+  if (currentAssignee) return;
+  const actorEmail = fbAuth().currentUser?.email ?? null;
+  await assignConversation(
+    ownerUid,
+    phone,
+    { id: selfUid, email: actorEmail },
+    { uid: selfUid, email: actorEmail },
+    { source: "auto_reply", reason: "Auto-assigned on first reply" },
+  );
+}
