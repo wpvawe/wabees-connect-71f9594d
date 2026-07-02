@@ -618,6 +618,48 @@ function BotEditor({
             />
           </Section>
 
+          <Section title="Call-to-action button" icon={faLink}>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
+              <WbInput
+                label="Button label"
+                placeholder="Visit site"
+                value={form.ctaLabel}
+                onChange={(e) => set("ctaLabel", e.target.value)}
+                disabled={!isOwner}
+              />
+              <WbInput
+                label="URL"
+                placeholder="https://example.com"
+                value={form.ctaUrl}
+                onChange={(e) => set("ctaUrl", e.target.value)}
+                disabled={!isOwner}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Adds a URL button below the reply. Leave both empty for a plain text reply.
+            </p>
+          </Section>
+
+          <Section title="Follow-up messages" icon={faList}>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-foreground">
+                Additional messages (one per line)
+              </label>
+              <textarea
+                rows={4}
+                value={form.additionalMessages}
+                onChange={(e) => set("additionalMessages", e.target.value)}
+                disabled={!isOwner}
+                placeholder={"Second message sent right after the main reply\nThird message …"}
+                className="block w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Each non-empty line is sent as a separate WhatsApp message after the main reply, in
+                order. Use blank lines to skip.
+              </p>
+            </div>
+          </Section>
+
           <Section title="Timing & limits" icon={faStopwatch}>
             <div className="grid gap-3 sm:grid-cols-2">
               <WbInput
