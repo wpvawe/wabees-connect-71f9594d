@@ -210,6 +210,7 @@ export function Composer({
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
+      await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
     } catch (err) {
       if (msgRef) {
         await updateDoc(msgRef, {
@@ -336,6 +337,7 @@ export function Composer({
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
+      await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
     } catch (err) {
       if (msgRef) {
         await updateDoc(msgRef, {

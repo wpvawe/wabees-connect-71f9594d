@@ -10,7 +10,13 @@ import {
   faTriangleExclamation,
   faInbox,
   faUsers,
+  faFileLines,
+  faBullhorn,
+  faAddressBook,
+  faArrowUp,
+  faArrowDown,
 } from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
   Area,
   AreaChart,
@@ -30,6 +36,9 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { useAnalytics, type AnalyticsRange } from "@/hooks/useAnalytics";
+import { useTemplates } from "@/hooks/useTemplates";
+import { useCampaigns } from "@/hooks/useCampaigns";
+import { useContacts } from "@/hooks/useContacts";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
@@ -49,17 +58,48 @@ const PIE_COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b
 function AnalyticsPage() {
   const [range, setRange] = useState<AnalyticsRange>("7d");
   const { data, loading, error, reload } = useAnalytics(range);
+  const { data: templates } = useTemplates();
+  const { data: campaigns } = useCampaigns();
+  const { data: contacts } = useContacts();
 
   const totalOut = data?.outgoing ?? 0;
   const delivery = data && totalOut > 0 ? Math.round((data.delivered / totalOut) * 100) : 0;
   const readRate = data && totalOut > 0 ? Math.round((data.read / totalOut) * 100) : 0;
   const failureRate = data && totalOut > 0 ? Math.round((data.failed / totalOut) * 100) : 0;
 
+  const approvedTemplates = templates?.filter((t) => t.status?.toUpperCase() === "APPROVED").length ?? 0;
+  const pendingTemplates = templates?.filter((t) => t.status?.toUpperCase() === "PENDING").length ?? 0;
+  const rejectedTemplates = templates?.filter((t) => t.status?.toUpperCase() === "REJECTED").length ?? 0;
+
+  const activeCampaigns = campaigns?.filter((c) =>
+    ["running", "scheduled", "active"].includes((c.status || "").toLowerCase()),
+  ).length ?? 0;
+  const completedCampaigns = campaigns?.filter((c) => (c.status || "").toLowerCase() === "completed").length ?? 0;
+  const campaignSent = campaigns?.reduce((a, c) => a + (c.sentCount ?? 0), 0) ?? 0;
+  const campaignDelivered = campaigns?.reduce((a, c) => a + (c.deliveredCount ?? 0), 0) ?? 0;
+  const campaignRead = campaigns?.reduce((a, c) => a + (c.readCount ?? 0), 0) ?? 0;
+
+  const topCampaigns = (campaigns ?? [])
+    .filter((c) => (c.sentCount ?? 0) > 0)
+    .sort((a, b) => (b.sentCount ?? 0) - (a.sentCount ?? 0))
+    .slice(0, 5);
+
   return (
     <>
-      <TopBar title="Analytics" subtitle="WhatsApp message insights from Meta" />
-      <div className="space-y-5 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center gap-2">
+      <TopBar title="Analytics" subtitle="Deep insights across messages, templates & campaigns" />
+      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+        {/* Hero header — mirrors Dashboard style */}
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-soft sm:p-6">
+          <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full bg-primary/20 blur-3xl" />
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-primary">Analytics</p>
+              <h2 className="mt-1 text-2xl font-semibold text-foreground">Performance overview</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Live message delivery, template health, and campaign performance.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
           {RANGES.map((r) => (
             <button
               key={r.id}
@@ -75,6 +115,8 @@ function AnalyticsPage() {
             </button>
           ))}
         </div>
+          </div>
+        </section>
 
         {error ? (
           <WbCard>
@@ -100,6 +142,81 @@ function AnalyticsPage() {
               <Stat label="Outgoing" value={data.outgoing} icon={faPaperPlane} tone="blue" />
               <Stat label="Unique contacts" value={data.uniqueContacts} icon={faUsers} tone="amber" />
               <Stat label="Pending" value={data.pending} icon={faCircleNotch} tone="slate" />
+            </div>
+
+            {/* Templates + Campaigns + Contacts overview */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              <WbCard>
+                <WbCardBody className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <span className="grid h-8 w-8 place-items-center rounded-md bg-emerald-500/10 text-emerald-500">
+                        <FontAwesomeIcon icon={faFileLines} className="h-3.5 w-3.5" />
+                      </span>
+                      Templates
+                    </div>
+                    <span className="text-2xl font-semibold text-foreground">
+                      {templates?.length ?? 0}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <MiniStat label="Approved" value={approvedTemplates} tone="emerald" />
+                    <MiniStat label="Pending" value={pendingTemplates} tone="amber" />
+                    <MiniStat label="Rejected" value={rejectedTemplates} tone="red" />
+                  </div>
+                </WbCardBody>
+              </WbCard>
+
+              <WbCard>
+                <WbCardBody className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <span className="grid h-8 w-8 place-items-center rounded-md bg-violet-500/10 text-violet-500">
+                        <FontAwesomeIcon icon={faBullhorn} className="h-3.5 w-3.5" />
+                      </span>
+                      Campaigns
+                    </div>
+                    <span className="text-2xl font-semibold text-foreground">
+                      {campaigns?.length ?? 0}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <MiniStat label="Active" value={activeCampaigns} tone="blue" />
+                    <MiniStat label="Done" value={completedCampaigns} tone="emerald" />
+                    <MiniStat label="Sent" value={campaignSent} tone="violet" />
+                  </div>
+                </WbCardBody>
+              </WbCard>
+
+              <WbCard>
+                <WbCardBody className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <span className="grid h-8 w-8 place-items-center rounded-md bg-amber-500/10 text-amber-500">
+                        <FontAwesomeIcon icon={faAddressBook} className="h-3.5 w-3.5" />
+                      </span>
+                      Contacts
+                    </div>
+                    <span className="text-2xl font-semibold text-foreground">
+                      {contacts?.length ?? 0}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <MiniStat
+                      label="Outgoing"
+                      value={data.outgoing}
+                      tone="blue"
+                      icon={faArrowUp}
+                    />
+                    <MiniStat
+                      label="Incoming"
+                      value={data.incoming}
+                      tone="cyan"
+                      icon={faArrowDown}
+                    />
+                  </div>
+                </WbCardBody>
+              </WbCard>
             </div>
 
             <WbCard>
@@ -189,6 +306,48 @@ function AnalyticsPage() {
               </WbCard>
             </div>
 
+            {/* Campaign performance summary */}
+            {(campaigns?.length ?? 0) > 0 && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <WbCard>
+                  <WbCardBody>
+                    <div className="mb-3 text-sm text-muted-foreground">Campaign performance</div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <Stat label="Sent" value={campaignSent} icon={faPaperPlane} tone="blue" />
+                      <Stat label="Delivered" value={campaignDelivered} icon={faCheck} tone="emerald" />
+                      <Stat label="Read" value={campaignRead} icon={faCheckDouble} tone="violet" />
+                    </div>
+                  </WbCardBody>
+                </WbCard>
+                <WbCard>
+                  <WbCardBody>
+                    <div className="mb-3 text-sm text-muted-foreground">Top campaigns</div>
+                    {topCampaigns.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-muted-foreground">
+                        No campaigns have been sent yet.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {topCampaigns.map((c) => (
+                          <div key={c.id} className="flex items-center justify-between py-2 text-sm">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-foreground">{c.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {c.status} · {c.totalRecipients ?? 0} recipients
+                              </p>
+                            </div>
+                            <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                              {c.sentCount} sent
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </WbCardBody>
+                </WbCard>
+              </div>
+            )}
+
             <WbCard>
               <WbCardBody>
                 <div className="mb-3 text-sm text-muted-foreground">Top conversations</div>
@@ -238,7 +397,7 @@ function Stat({
   label: string;
   value: number | string;
   sub?: string;
-  icon?: typeof faPaperPlane;
+  icon?: IconDefinition;
   tone?: keyof typeof TONES;
 }) {
   return (
@@ -258,5 +417,27 @@ function Stat({
         </div>
       </WbCardBody>
     </WbCard>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone = "blue",
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone?: keyof typeof TONES;
+  icon?: IconDefinition;
+}) {
+  return (
+    <div className={cn("rounded-lg px-2 py-2", TONES[tone])}>
+      <p className="text-[10px] uppercase tracking-wide opacity-80">{label}</p>
+      <p className="mt-0.5 flex items-center justify-center gap-1 text-lg font-semibold">
+        {icon && <FontAwesomeIcon icon={icon} className="h-3 w-3" />}
+        {value.toLocaleString()}
+      </p>
+    </div>
   );
 }
