@@ -58,6 +58,7 @@ export function useScheduledMessages(phone?: string): {
             errorReason: strOrNull(x.errorReason),
             createdAt: toIso(x.createdAt),
             sentMessageId: strOrNull(x.sentMessageId),
+            recurrence: (str(x.recurrence, "none") as ScheduledMessage["recurrence"]),
           } satisfies ScheduledMessage;
         });
         rows.sort((a, b) => (a.scheduledFor ?? "").localeCompare(b.scheduledFor ?? ""));
