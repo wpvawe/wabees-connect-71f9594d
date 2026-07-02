@@ -827,6 +827,14 @@ function ConvRow({
           )}
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
+          {c.assignedAgentEmail && (
+            <span
+              title={`Assigned: ${c.assignedAgentEmail}`}
+              className="grid h-4 min-w-[16px] place-items-center rounded-full bg-sky-500/15 px-1 text-[9px] font-semibold text-sky-600"
+            >
+              {(c.assignedAgentEmail.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase()}
+            </span>
+          )}
           {c.isPinned && (
             <FontAwesomeIcon
               icon={faThumbtack}
