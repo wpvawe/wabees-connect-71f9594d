@@ -419,6 +419,18 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               <FontAwesomeIcon icon={faRotateRight} className="h-3.5 w-3.5" /> Resend
             </button>
           )}
+          {mine && m.status === "failed" && (
+            <button
+              type="button"
+              onClick={() => {
+                setErrorOpen(true);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-destructive hover:bg-destructive/10"
+            >
+              <FontAwesomeIcon icon={faCircleExclamation} className="h-3.5 w-3.5" /> View error
+            </button>
+          )}
           {actions?.onForward && (
             <button
               type="button"
