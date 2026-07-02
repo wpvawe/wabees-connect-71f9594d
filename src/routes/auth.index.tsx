@@ -1,24 +1,9 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { AuthTabs } from "@/components/auth/AuthTabs";
 import { Link } from "@tanstack/react-router";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { fbAuth } from "@/integrations/firebase/client";
 
 export const Route = createFileRoute("/auth/")({
-  ssr: false,
-  beforeLoad: async () => {
-    const auth = fbAuth();
-    const user: User | null =
-      auth.currentUser ??
-      (await new Promise<User | null>((resolve) => {
-        const unsub = onAuthStateChanged(auth, (u) => {
-          unsub();
-          resolve(u);
-        });
-      }));
-    if (user) throw redirect({ to: "/dashboard" });
-  },
   head: () => ({
     meta: [
       { title: "Sign in — Wabees" },
