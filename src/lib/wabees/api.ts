@@ -402,6 +402,60 @@ export function createMetaTemplate(args: {
   );
 }
 
+/**
+ * Edit an existing WhatsApp message template. Meta permits changing only
+ * `category` and `components` — name/language are immutable. Prefers the
+ * PHP proxy for auditability; falls back to a direct Meta Graph POST on
+ * older backends that don't ship `/edit-template.php`.
+ */
+export async function editMetaTemplate(args: {
+  business_account_id: string;
+  access_token: string;
+  hsm_id: string;
+  category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
+  components?: Array<Record<string, unknown>>;
+}): Promise<WabeesApiResult> {
+  try {
+    const proxied = await postJson("edit-template.php", args);
+    const raw = proxied.raw ?? {};
+    const errorObj =
+      raw.error && typeof raw.error === "object"
+        ? (raw.error as { code?: number; message?: string })
+        : null;
+    const looksMissing =
+      typeof raw.php_error === "string" ||
+      (typeof raw.message === "string" && /not found|endpoint/i.test(raw.message));
+    if (!looksMissing && (proxied.success || errorObj?.code !== 404)) {
+      return proxied;
+    }
+  } catch {
+    /* fall through to direct Graph call */
+  }
+
+  const body: Record<string, unknown> = {};
+  if (args.category) body.category = args.category;
+  if (args.components) body.components = args.components;
+  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(args.hsm_id)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const err =
+    raw.error && typeof raw.error === "object"
+      ? (raw.error as { message?: string; code?: number })
+      : null;
+  return {
+    success: res.ok && !err,
+    message: err?.message ?? (raw.success === true ? "Updated" : undefined),
+    raw,
+  };
+}
+
 export type MessageLink = {
   id: string;
   code: string;
