@@ -21,6 +21,8 @@ import {
   faUsers,
   faXmark,
   faFilter,
+  faDownload,
+  faLayerGroup,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbButton } from "@/components/wb/WbButton";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -39,6 +41,7 @@ type CsvRow = {
   email?: string;
   company?: string;
   tags?: string;
+  group?: string;
 };
 
 export function ContactsWorkspace() {
@@ -48,6 +51,7 @@ export function ContactsWorkspace() {
 
   const [q, setQ] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ open: boolean; contact: Contact | null }>({
     open: false,
     contact: null,
@@ -58,17 +62,20 @@ export function ContactsWorkspace() {
   const stats = useMemo(() => {
     const list = data ?? [];
     const tags = new Set<string>();
+    const groups = new Set<string>();
     let tagged = 0;
     let withMessages = 0;
     for (const c of list) {
       if (c.tags.length > 0) tagged++;
       if (c.totalMessages > 0) withMessages++;
       c.tags.forEach((t) => tags.add(t));
+      if (c.group) groups.add(c.group);
     }
     return {
       total: list.length,
       tagged,
       tags: Array.from(tags).sort((a, b) => a.localeCompare(b)),
+      groups: Array.from(groups).sort((a, b) => a.localeCompare(b)),
       withMessages,
     };
   }, [data]);
@@ -78,19 +85,36 @@ export function ContactsWorkspace() {
     const n = q.trim().toLowerCase();
     return data.filter((c) => {
       if (activeTag && !c.tags.includes(activeTag)) return false;
+      if (activeGroup && (c.group || "") !== activeGroup) return false;
       if (!n) return true;
       return (
         c.name.toLowerCase().includes(n) ||
         c.phone.toLowerCase().includes(n) ||
         (c.email ?? "").toLowerCase().includes(n) ||
         (c.company ?? "").toLowerCase().includes(n) ||
+        (c.group ?? "").toLowerCase().includes(n) ||
         c.tags.some((t) => t.toLowerCase().includes(n))
       );
     });
-  }, [data, q, activeTag]);
+  }, [data, q, activeTag, activeGroup]);
 
   function triggerImport() {
     fileRef.current?.click();
+  }
+
+  function downloadSampleCsv() {
+    const sample = Papa.unparse([
+      { name: "Jane Doe", phone: "+923001234567", email: "jane@acme.com", company: "Acme Inc", tags: "lead,vip", group: "Customers" },
+      { name: "John Smith", phone: "+14155551234", email: "", company: "", tags: "trial", group: "Prospects" },
+      { name: "Ali Khan", phone: "+923215551234", email: "ali@shop.pk", company: "Shop", tags: "", group: "Suppliers" },
+    ]);
+    const blob = new Blob([sample], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "wabees-contacts-sample.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast.success("Sample CSV downloaded");
   }
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -109,6 +133,7 @@ export function ContactsWorkspace() {
               phone: String(r.phone).trim(),
               email: r.email ? String(r.email).trim() : undefined,
               company: r.company ? String(r.company).trim() : undefined,
+              group: r.group ? String(r.group).trim() : undefined,
               tags: r.tags
                 ? String(r.tags)
                     .split(/[,;]/)
@@ -117,7 +142,7 @@ export function ContactsWorkspace() {
                 : [],
             }));
           if (contacts.length === 0) {
-            toast.error("CSV needs columns: name, phone (also email, company, tags)");
+            toast.error("CSV needs columns: name, phone (also email, company, tags, group)");
             return;
           }
           const res = await bulkImportContacts(uid, contacts);
@@ -149,6 +174,7 @@ export function ContactsWorkspace() {
         email: c.email ?? "",
         company: c.company ?? "",
         tags: c.tags.join(","),
+        group: c.group ?? "",
       })),
     );
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -183,6 +209,10 @@ export function ContactsWorkspace() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <WbButton variant="ghost" size="sm" onClick={downloadSampleCsv}>
+            <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
+            Sample CSV
+          </WbButton>
           <WbButton
             variant="secondary"
             size="sm"
@@ -214,7 +244,7 @@ export function ContactsWorkspace() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={faAddressBook} label="Total contacts" value={stats.total} tone="primary" />
         <StatCard icon={faTag} label="With tags" value={stats.tagged} tone="accent" />
-        <StatCard icon={faUserGroup} label="Unique tags" value={stats.tags.length} tone="muted" />
+        <StatCard icon={faLayerGroup} label="Groups" value={stats.groups.length} tone="muted" />
         <StatCard icon={faMessage} label="Chatted with" value={stats.withMessages} tone="muted" />
       </div>
 
@@ -243,12 +273,13 @@ export function ContactsWorkspace() {
               </button>
             )}
           </div>
-          {(q || activeTag) && (
+          {(q || activeTag || activeGroup) && (
             <button
               type="button"
               onClick={() => {
                 setQ("");
                 setActiveTag(null);
+                setActiveGroup(null);
               }}
               className="h-10 rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:bg-muted"
             >
@@ -256,6 +287,23 @@ export function ContactsWorkspace() {
             </button>
           )}
         </div>
+        {stats.groups.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 pr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <FontAwesomeIcon icon={faLayerGroup} className="h-3 w-3" />
+              Groups
+            </span>
+            <TagChip label="All" active={activeGroup === null} onClick={() => setActiveGroup(null)} />
+            {stats.groups.map((g) => (
+              <TagChip
+                key={g}
+                label={g}
+                active={activeGroup === g}
+                onClick={() => setActiveGroup(activeGroup === g ? null : g)}
+              />
+            ))}
+          </div>
+        )}
         {stats.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center gap-1.5 pr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
