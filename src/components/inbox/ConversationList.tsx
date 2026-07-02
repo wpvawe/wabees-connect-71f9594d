@@ -16,6 +16,7 @@ import {
   faPen,
   faUser,
   faUserSlash,
+  faNoteSticky,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
