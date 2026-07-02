@@ -4,7 +4,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faComments } from "@fortawesome/free-solid-svg-icons";
 import { WbFirebaseGate } from "@/components/wb/WbFirebaseGate";
 import { ConversationList } from "@/components/inbox/ConversationList";
-import { useScheduledDispatcher } from "@/hooks/useScheduledMessages";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({ meta: [{ title: "Inbox — Wabees" }] }),
@@ -17,8 +16,8 @@ function InboxIndex() {
   const activePhone = hasChild
     ? decodeURIComponent(pathname.replace(/^\/inbox\//, "").split(/[/?#]/)[0])
     : undefined;
-  // Runs while any inbox tab is open — dispatches scheduled messages due.
-  useScheduledDispatcher();
+  // Scheduled-message delivery is handled by the server cron
+  // (backend/api/cron/dispatch-scheduled.php) — no in-tab dispatcher needed.
   return (
     <WbFirebaseGate>
       <div className="flex h-[calc(100vh-3.5rem)] md:h-screen">
