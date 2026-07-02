@@ -13,6 +13,7 @@ import {
   faPaperPlane,
   faPlus,
   faXmark,
+  faPencil,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
@@ -327,6 +328,14 @@ export function TemplateGrid() {
                     <FontAwesomeIcon icon={showSend ? faXmark : faPaperPlane} className="h-3 w-3" />
                     {showSend ? "Close send" : "Send test"}
                   </WbButton>
+                )}
+                {selected.metaTemplateId && (
+                  <Link to="/templates/$id/edit" params={{ id: selected.id }}>
+                    <WbButton size="sm" variant="secondary">
+                      <FontAwesomeIcon icon={faPencil} className="h-3 w-3" />
+                      Edit
+                    </WbButton>
+                  </Link>
                 )}
                 <WbButton
                   size="sm"

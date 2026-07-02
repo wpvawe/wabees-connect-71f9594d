@@ -35,6 +35,7 @@ import { Route as AuthenticatedTemplatesNewRouteImport } from './routes/_authent
 import { Route as AuthenticatedInboxPhoneRouteImport } from './routes/_authenticated/inbox.$phone'
 import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authenticated/campaigns.new'
 import { Route as AuthenticatedCampaignsIdRouteImport } from './routes/_authenticated/campaigns.$id'
+import { Route as AuthenticatedTemplatesIdEditRouteImport } from './routes/_authenticated/templates.$id.edit'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -172,6 +173,12 @@ const AuthenticatedCampaignsIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedCampaignsRoute,
   } as any)
+const AuthenticatedTemplatesIdEditRoute =
+  AuthenticatedTemplatesIdEditRouteImport.update({
+    id: '/$id/edit',
+    path: '/$id/edit',
+    getParentRoute: () => AuthenticatedTemplatesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
+  '/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -224,6 +232,7 @@ export interface FileRoutesByTo {
   '/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/campaigns': typeof AuthenticatedCampaignsIndexRoute
   '/templates': typeof AuthenticatedTemplatesIndexRoute
+  '/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -253,6 +262,7 @@ export interface FileRoutesById {
   '/_authenticated/templates/new': typeof AuthenticatedTemplatesNewRoute
   '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
+  '/_authenticated/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/templates/new'
     | '/campaigns/'
     | '/templates/'
+    | '/templates/$id/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/templates/new'
     | '/campaigns'
     | '/templates'
+    | '/templates/$id/edit'
   id:
     | '__root__'
     | '/'
@@ -335,6 +347,7 @@ export interface FileRouteTypes {
     | '/_authenticated/templates/new'
     | '/_authenticated/campaigns/'
     | '/_authenticated/templates/'
+    | '/_authenticated/templates/$id/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -527,6 +540,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCampaignsIdRouteImport
       parentRoute: typeof AuthenticatedCampaignsRoute
     }
+    '/_authenticated/templates/$id/edit': {
+      id: '/_authenticated/templates/$id/edit'
+      path: '/$id/edit'
+      fullPath: '/templates/$id/edit'
+      preLoaderRoute: typeof AuthenticatedTemplatesIdEditRouteImport
+      parentRoute: typeof AuthenticatedTemplatesRoute
+    }
   }
 }
 
@@ -562,12 +582,14 @@ const AuthenticatedInboxRouteWithChildren =
 interface AuthenticatedTemplatesRouteChildren {
   AuthenticatedTemplatesNewRoute: typeof AuthenticatedTemplatesNewRoute
   AuthenticatedTemplatesIndexRoute: typeof AuthenticatedTemplatesIndexRoute
+  AuthenticatedTemplatesIdEditRoute: typeof AuthenticatedTemplatesIdEditRoute
 }
 
 const AuthenticatedTemplatesRouteChildren: AuthenticatedTemplatesRouteChildren =
   {
     AuthenticatedTemplatesNewRoute: AuthenticatedTemplatesNewRoute,
     AuthenticatedTemplatesIndexRoute: AuthenticatedTemplatesIndexRoute,
+    AuthenticatedTemplatesIdEditRoute: AuthenticatedTemplatesIdEditRoute,
   }
 
 const AuthenticatedTemplatesRouteWithChildren =
