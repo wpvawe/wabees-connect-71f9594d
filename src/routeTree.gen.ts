@@ -52,14 +52,14 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => AuthRoute,
+  id: '/auth/reset-password',
+  path: '/auth/reset-password',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthForgotRoute = AuthForgotRouteImport.update({
-  id: '/forgot',
-  path: '/forgot',
-  getParentRoute: () => AuthRoute,
+  id: '/auth/forgot',
+  path: '/auth/forgot',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedTemplatesRoute = AuthenticatedTemplatesRouteImport.update({
   id: '/templates',
@@ -353,6 +353,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthForgotRoute: typeof AuthForgotRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
@@ -381,17 +383,17 @@ declare module '@tanstack/react-router' {
     }
     '/auth/reset-password': {
       id: '/auth/reset-password'
-      path: '/reset-password'
+      path: '/auth/reset-password'
       fullPath: '/auth/reset-password'
       preLoaderRoute: typeof AuthResetPasswordRouteImport
-      parentRoute: typeof AuthRoute
+      parentRoute: typeof rootRouteImport
     }
     '/auth/forgot': {
       id: '/auth/forgot'
-      path: '/forgot'
+      path: '/auth/forgot'
       fullPath: '/auth/forgot'
       preLoaderRoute: typeof AuthForgotRouteImport
-      parentRoute: typeof AuthRoute
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/templates': {
       id: '/_authenticated/templates'
@@ -639,6 +641,8 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthForgotRoute: AuthForgotRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthIndexRoute: AuthIndexRoute,
 }
 export const routeTree = rootRouteImport
