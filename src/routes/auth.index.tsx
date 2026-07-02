@@ -5,7 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
 
-export const Route = createFileRoute("/auth")({
+export const Route = createFileRoute("/auth/")({
   ssr: false,
   beforeLoad: async () => {
     const auth = fbAuth();
