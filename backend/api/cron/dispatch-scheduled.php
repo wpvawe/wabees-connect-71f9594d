@@ -4,8 +4,10 @@
  * Runs from Hostinger crontab every minute:
  *   * * * * * /usr/bin/curl -fsS "https://api.wabees.live/api/cron/dispatch-scheduled.php?key=REPLACE_ME" > /dev/null 2>&1
  *
- * - CollectionGroup query over users/{uid}/scheduled_messages where
- *   status IN ('pending','sending') AND scheduledFor <= now.
+ * - Per-user query on users/{uid}/scheduled_messages using ONLY a
+ *   single-field filter (scheduledFor <= now). Single-field indexes are
+ *   automatic in Firestore, so no composite / collection-group index is
+ *   required. Status is filtered in PHP.
  * - Atomic claim (status -> 'sending' + claimedAt) so parallel cron ticks
  *   never double-send.
  * - Sends via Meta Graph using the owner's stored WhatsApp credentials.
@@ -44,8 +46,8 @@ $startedAt = microtime(true);
 $now = new DateTime('now', new DateTimeZone('UTC'));
 $nowIso = $now->format('Y-m-d\TH:i:s.v\Z');
 
-// ---- Query: due pending/sending across every user (collection group) ----
-$dueDocs = _fetch_due_scheduled($nowIso, 50);
+// ---- Query: due pending/sending per-user (no composite index needed) ----
+$dueDocs = _fetch_due_scheduled_per_user($nowIso, 20);
 $processed = [];
 $staleWindowSec = 5 * 60;
 
@@ -145,38 +147,68 @@ echo json_encode([
 
 // -------- helpers --------------------------------------------------------
 
-function _fetch_due_scheduled(string $nowIso, int $limit): array {
+/**
+ * Iterate users and pull each owner's due scheduled_messages using a
+ * single-field query (scheduledFor <= now). Firestore auto-creates
+ * single-field indexes, so no composite index / collection-group index
+ * is required. Status is filtered in PHP after fetch.
+ */
+function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
+    $out = [];
+    $pageToken = null;
+    // Cap total users scanned per tick so a single run stays bounded.
+    $maxUsers = 500;
+    $scanned = 0;
+    do {
+        [$userIds, $pageToken] = _list_user_ids($pageToken, 100);
+        foreach ($userIds as $uid) {
+            if (++$scanned > $maxUsers) break 2;
+            $docs = _query_user_due($uid, $nowIso, $perUserLimit);
+            foreach ($docs as $d) $out[] = $d;
+        }
+    } while ($pageToken);
+    return $out;
+}
+
+function _list_user_ids(?string $pageToken, int $pageSize): array {
+    // listDocuments returns only document names — cheap read.
     $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
-        . '/databases/(default)/documents:runQuery';
+        . '/databases/(default)/documents/users?pageSize=' . $pageSize
+        . '&mask.fieldPaths=_';
+    if ($pageToken) $url .= '&pageToken=' . urlencode($pageToken);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code >= 400) { error_log("[WABEES cron] list users $code $resp"); return [[], null]; }
+    $j = json_decode($resp, true) ?: [];
+    $ids = [];
+    foreach (($j['documents'] ?? []) as $d) {
+        if (preg_match('#/documents/users/([^/]+)$#', $d['name'] ?? '', $m)) $ids[] = $m[1];
+    }
+    return [$ids, $j['nextPageToken'] ?? null];
+}
+
+function _query_user_due(string $uid, string $nowIso, int $limit): array {
+    $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/(default)/documents/users/' . rawurlencode($uid) . ':runQuery';
     $q = [
         'structuredQuery' => [
-            'from' => [[
-                'collectionId' => 'scheduled_messages',
-                'allDescendants' => true,
-            ]],
+            'from' => [['collectionId' => 'scheduled_messages']],
             'where' => [
-                'compositeFilter' => [
-                    'op' => 'AND',
-                    'filters' => [
-                        ['fieldFilter' => [
-                            'field' => ['fieldPath' => 'status'],
-                            'op' => 'IN',
-                            'value' => ['arrayValue' => ['values' => [
-                                ['stringValue' => 'pending'],
-                                ['stringValue' => 'sending'],
-                            ]]],
-                        ]],
-                        ['fieldFilter' => [
-                            'field' => ['fieldPath' => 'scheduledFor'],
-                            'op' => 'LESS_THAN_OR_EQUAL',
-                            'value' => ['timestampValue' => $nowIso],
-                        ]],
-                    ],
+                'fieldFilter' => [
+                    'field' => ['fieldPath' => 'scheduledFor'],
+                    'op' => 'LESS_THAN_OR_EQUAL',
+                    'value' => ['timestampValue' => $nowIso],
                 ],
             ],
             'orderBy' => [
                 ['field' => ['fieldPath' => 'scheduledFor'], 'direction' => 'ASCENDING'],
-                ['field' => ['fieldPath' => '__name__'], 'direction' => 'ASCENDING'],
             ],
             'limit' => $limit,
         ],
@@ -192,13 +224,17 @@ function _fetch_due_scheduled(string $nowIso, int $limit): array {
     $resp = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    if ($code >= 400) {
-        error_log("[WABEES cron] runQuery failed $code $resp");
-        return [];
-    }
+    if ($code >= 400) { error_log("[WABEES cron] user $uid query $code $resp"); return []; }
     $rows = json_decode($resp, true) ?: [];
     $out = [];
-    foreach ($rows as $r) if (!empty($r['document'])) $out[] = $r['document'];
+    foreach ($rows as $r) {
+        if (empty($r['document'])) continue;
+        $doc = $r['document'];
+        // Filter status in PHP to avoid composite index.
+        $status = _fs_string(($doc['fields']['status'] ?? null), 'pending');
+        if ($status !== 'pending' && $status !== 'sending') continue;
+        $out[] = $doc;
+    }
     return $out;
 }
 
