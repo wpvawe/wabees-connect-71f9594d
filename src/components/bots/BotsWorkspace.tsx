@@ -18,6 +18,8 @@ import {
   faPause,
   faStopwatch,
   faListCheck,
+  faLink,
+  faList,
 } from "@fortawesome/free-solid-svg-icons";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
@@ -45,6 +47,9 @@ type FormState = {
   footerText: string;
   delaySeconds: number;
   cooldownMinutes: number;
+  ctaLabel: string;
+  ctaUrl: string;
+  additionalMessages: string; // newline-separated, each line = an extra follow-up message
 };
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -67,10 +72,20 @@ function empty(): FormState {
     footerText: "",
     delaySeconds: 0,
     cooldownMinutes: 0,
+    ctaLabel: "",
+    ctaUrl: "",
+    additionalMessages: "",
   };
 }
 
 function fromBot(b: Bot): FormState {
+  const cta = (b.ctaButton ?? {}) as Record<string, unknown>;
+  const ctaLabel = typeof cta.label === "string" ? cta.label : typeof cta.text === "string" ? cta.text : "";
+  const ctaUrl = typeof cta.url === "string" ? cta.url : typeof cta.href === "string" ? cta.href : "";
+  const extras = (b.additionalResponses ?? [])
+    .map((r) => (r && typeof (r as Record<string, unknown>).text === "string" ? String((r as Record<string, unknown>).text) : ""))
+    .filter(Boolean)
+    .join("\n");
   return {
     name: b.name,
     description: b.description,
@@ -83,6 +98,9 @@ function fromBot(b: Bot): FormState {
     footerText: b.footerText ?? "",
     delaySeconds: b.delaySeconds,
     cooldownMinutes: b.cooldownMinutes ?? 0,
+    ctaLabel,
+    ctaUrl,
+    additionalMessages: extras,
   };
 }
 
@@ -159,6 +177,15 @@ export function BotsWorkspace() {
         footerText: form.footerText || null,
         delaySeconds: Number(form.delaySeconds) || 0,
         cooldownMinutes: Number(form.cooldownMinutes) || 0,
+        ctaButton:
+          form.ctaLabel.trim() && form.ctaUrl.trim()
+            ? { label: form.ctaLabel.trim(), url: form.ctaUrl.trim(), type: "URL" }
+            : null,
+        additionalResponses: form.additionalMessages
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((text) => ({ type: "text", text })),
         updatedAt: serverTimestamp(),
       };
       if (mode.kind === "edit") {
@@ -168,7 +195,6 @@ export function BotsWorkspace() {
         const ref = await addDoc(collection(fbDb(), "users", uid, "bots"), {
           ...payload,
           quickReplies: [],
-          ctaButton: null,
           totalTriggered: 0,
           createdAt: serverTimestamp(),
         });
