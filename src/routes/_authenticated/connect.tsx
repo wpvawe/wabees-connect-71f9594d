@@ -16,6 +16,7 @@ import { ManualTokenForm } from "@/components/connect/ManualTokenForm";
 // Embedded Signup UI hidden for now (Meta BSP/TP gate). Keep import commented for future use.
 // import { EmbeddedSignupButton } from "@/components/connect/EmbeddedSignupButton";
 import { ConnectedCard } from "@/components/connect/ConnectedCard";
+import { PhoneHealthCard } from "@/components/connect/PhoneHealthCard";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 
 export const Route = createFileRoute("/_authenticated/connect")({
@@ -92,7 +93,15 @@ function ConnectPage() {
             Loading…
           </div>
         ) : data ? (
-          <ConnectedCard row={data} />
+          <>
+            <ConnectedCard row={data} />
+            {data.phone_number_id && (
+              <PhoneHealthCard
+                phoneNumberId={data.phone_number_id}
+                cachedRating={data.quality_rating}
+              />
+            )}
+          </>
         ) : (
           <>
             {/* Auto (Embedded Signup) flow hidden — requires Meta BSP/TP approval.

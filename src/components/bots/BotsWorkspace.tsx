@@ -18,6 +18,8 @@ import {
   faPause,
   faStopwatch,
   faListCheck,
+  faLink,
+  faList,
 } from "@fortawesome/free-solid-svg-icons";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
@@ -45,6 +47,9 @@ type FormState = {
   footerText: string;
   delaySeconds: number;
   cooldownMinutes: number;
+  ctaLabel: string;
+  ctaUrl: string;
+  additionalMessages: string; // newline-separated, each line = an extra follow-up message
 };
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -67,10 +72,20 @@ function empty(): FormState {
     footerText: "",
     delaySeconds: 0,
     cooldownMinutes: 0,
+    ctaLabel: "",
+    ctaUrl: "",
+    additionalMessages: "",
   };
 }
 
 function fromBot(b: Bot): FormState {
+  const cta = (b.ctaButton ?? {}) as Record<string, unknown>;
+  const ctaLabel = typeof cta.label === "string" ? cta.label : typeof cta.text === "string" ? cta.text : "";
+  const ctaUrl = typeof cta.url === "string" ? cta.url : typeof cta.href === "string" ? cta.href : "";
+  const extras = (b.additionalResponses ?? [])
+    .map((r) => (r && typeof (r as Record<string, unknown>).text === "string" ? String((r as Record<string, unknown>).text) : ""))
+    .filter(Boolean)
+    .join("\n");
   return {
     name: b.name,
     description: b.description,
@@ -83,6 +98,9 @@ function fromBot(b: Bot): FormState {
     footerText: b.footerText ?? "",
     delaySeconds: b.delaySeconds,
     cooldownMinutes: b.cooldownMinutes ?? 0,
+    ctaLabel,
+    ctaUrl,
+    additionalMessages: extras,
   };
 }
 
@@ -159,6 +177,15 @@ export function BotsWorkspace() {
         footerText: form.footerText || null,
         delaySeconds: Number(form.delaySeconds) || 0,
         cooldownMinutes: Number(form.cooldownMinutes) || 0,
+        ctaButton:
+          form.ctaLabel.trim() && form.ctaUrl.trim()
+            ? { label: form.ctaLabel.trim(), url: form.ctaUrl.trim(), type: "URL" }
+            : null,
+        additionalResponses: form.additionalMessages
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((text) => ({ type: "text", text })),
         updatedAt: serverTimestamp(),
       };
       if (mode.kind === "edit") {
@@ -168,7 +195,6 @@ export function BotsWorkspace() {
         const ref = await addDoc(collection(fbDb(), "users", uid, "bots"), {
           ...payload,
           quickReplies: [],
-          ctaButton: null,
           totalTriggered: 0,
           createdAt: serverTimestamp(),
         });
@@ -592,6 +618,48 @@ function BotEditor({
             />
           </Section>
 
+          <Section title="Call-to-action button" icon={faLink}>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
+              <WbInput
+                label="Button label"
+                placeholder="Visit site"
+                value={form.ctaLabel}
+                onChange={(e) => set("ctaLabel", e.target.value)}
+                disabled={!isOwner}
+              />
+              <WbInput
+                label="URL"
+                placeholder="https://example.com"
+                value={form.ctaUrl}
+                onChange={(e) => set("ctaUrl", e.target.value)}
+                disabled={!isOwner}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Adds a URL button below the reply. Leave both empty for a plain text reply.
+            </p>
+          </Section>
+
+          <Section title="Follow-up messages" icon={faList}>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-foreground">
+                Additional messages (one per line)
+              </label>
+              <textarea
+                rows={4}
+                value={form.additionalMessages}
+                onChange={(e) => set("additionalMessages", e.target.value)}
+                disabled={!isOwner}
+                placeholder={"Second message sent right after the main reply\nThird message …"}
+                className="block w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Each non-empty line is sent as a separate WhatsApp message after the main reply, in
+                order. Use blank lines to skip.
+              </p>
+            </div>
+          </Section>
+
           <Section title="Timing & limits" icon={faStopwatch}>
             <div className="grid gap-3 sm:grid-cols-2">
               <WbInput
@@ -638,7 +706,11 @@ function BotEditor({
             headerFormat={form.headerText ? "TEXT" : null}
             body={form.responseText || "Your reply will appear here as the customer sees it."}
             footer={form.footerText || null}
-            buttons={[]}
+            buttons={
+              form.ctaLabel.trim() && form.ctaUrl.trim()
+                ? [{ type: "URL", text: form.ctaLabel.trim(), url: form.ctaUrl.trim() }]
+                : []
+            }
           />
           <div className="rounded-xl border border-dashed border-border bg-background/60 p-3 text-[11px] text-muted-foreground">
             Preview updates as you type. Formatting: <code>*bold*</code>, <code>_italic_</code>,{" "}
