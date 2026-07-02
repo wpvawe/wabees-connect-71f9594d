@@ -79,7 +79,7 @@ export function PhoneHealthCard({
       <WbCardHeader
         title="Phone health"
         subtitle="Live quality signal from Meta for this WhatsApp number"
-        actions={
+        right={
           <WbButton size="sm" variant="secondary" onClick={fetchHealth} loading={loading}>
             <FontAwesomeIcon icon={faArrowsRotate} className="h-3.5 w-3.5" /> Refresh
           </WbButton>
