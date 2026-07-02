@@ -700,6 +700,7 @@ type SavePayload = {
   company?: string;
   notes?: string;
   tags: string[];
+  group?: string;
 };
 
 function ContactDialog({
@@ -717,6 +718,7 @@ function ContactDialog({
   const [company, setCompany] = useState(contact?.company ?? "");
   const [notes, setNotes] = useState(contact?.notes ?? "");
   const [tags, setTags] = useState((contact?.tags ?? []).join(", "));
+  const [group, setGroup] = useState(contact?.group ?? "");
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -733,6 +735,7 @@ function ContactDialog({
         email: email.trim() || undefined,
         company: company.trim() || undefined,
         notes: notes.trim() || undefined,
+        group: group.trim() || undefined,
         tags: tags
           .split(/[,;]/)
           .map((s) => s.trim())
