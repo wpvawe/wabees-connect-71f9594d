@@ -469,6 +469,46 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
           )}
         </div>
       )}
+
+      {/* Error detail popup for failed outgoing messages */}
+      {errorOpen && (
+        <div
+          className={cn(
+            "absolute z-30 w-64 rounded-lg border border-destructive/40 bg-card p-3 text-xs shadow-md",
+            "top-full mt-1",
+            mine ? "right-0" : "left-0",
+          )}
+        >
+          <div className="flex items-center gap-2 text-destructive">
+            <FontAwesomeIcon icon={faCircleExclamation} className="h-3.5 w-3.5" />
+            <p className="font-semibold">Send failed</p>
+          </div>
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-muted-foreground">
+            {m.errorReason || "No error detail was returned by WhatsApp."}
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            {actions?.onResend && (
+              <button
+                type="button"
+                onClick={() => {
+                  actions.onResend?.(m);
+                  setErrorOpen(false);
+                }}
+                className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Try again
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setErrorOpen(false)}
+              className="rounded-md border border-border px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       </div>
       {!isDeleted && m.reactionEmoji && (
         <span className="-mt-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-xs shadow-soft">
