@@ -29,7 +29,17 @@ if ($expectedKey === '') {
     if (is_file($keyFile)) $expectedKey = trim((string) @file_get_contents($keyFile));
 }
 $providedKey = $_GET['key'] ?? ($_SERVER['HTTP_X_CRON_KEY'] ?? '');
-if ($expectedKey === '' || !hash_equals($expectedKey, (string) $providedKey)) {
+
+// Allow local invocations without a key: PHP-CLI (hPanel cron running
+// `/usr/bin/php .../dispatch-scheduled.php` directly) or a loopback HTTP
+// call from the same server. Shared hosts like hPanel do NOT expand
+// `$(cat ...)` in their cron UI, so requiring a key in the URL breaks.
+$isCli = (PHP_SAPI === 'cli');
+$remote = $_SERVER['REMOTE_ADDR'] ?? '';
+$isLocalHttp = in_array($remote, ['127.0.0.1', '::1', 'localhost'], true);
+$localBypass = $isCli || $isLocalHttp;
+
+if (!$localBypass && ($expectedKey === '' || !hash_equals($expectedKey, (string) $providedKey))) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
     exit;
