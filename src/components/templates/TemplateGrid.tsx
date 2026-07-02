@@ -23,7 +23,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { deleteDoc, doc } from "firebase/firestore";
 import { addDoc, collection, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { extractWamid, sendTemplateMessage } from "@/lib/wabees/api";
+import { deleteMetaTemplate, extractWamid, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { WbInput } from "@/components/wb/WbInput";
@@ -100,16 +100,44 @@ export function TemplateGrid() {
   }, [selected, vars]);
 
   async function removeTemplate(t: Template) {
-    if (!uid) return;
+    if (!uid || !selfUid) return;
     if (
       !confirm(
-        `Delete template "${t.name}" from this workspace? (Meta-approved templates can be re-synced.)`,
+        `Delete template "${t.name}" from Meta AND this workspace? This cannot be undone.`,
       )
     )
       return;
     try {
+      // 1) Meta delete — mirrors the Flutter app so the template also goes
+      //    away in Business Manager (previously the website only removed
+      //    the local Firestore row, leaving a ghost on Meta).
+      const creds = await loadWaCredentials(selfUid);
+      if (!creds) throw new Error("Connect WhatsApp first");
+      const cfg = await getDoc(doc(fbDb(), "users", selfUid, "whatsapp_config", "config"));
+      const userDoc = await getDoc(doc(fbDb(), "users", selfUid));
+      const wabaId =
+        (cfg.data()?.businessAccountId as string | undefined) ||
+        (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
+        "";
+      if (!wabaId) throw new Error("WABA ID missing — reconnect WhatsApp");
+      const metaRes = await deleteMetaTemplate({
+        business_account_id: wabaId,
+        access_token: creds.access_token,
+        name: t.name,
+        hsm_id: t.metaTemplateId ?? null,
+      });
+      const errMsg =
+        (metaRes.raw?.error && typeof metaRes.raw.error === "object"
+          ? (metaRes.raw.error as { message?: string }).message
+          : undefined) || metaRes.message;
+      const notFoundOk =
+        typeof errMsg === "string" && /not found|does not exist|no such/i.test(errMsg);
+      if (!metaRes.success && !notFoundOk) {
+        throw new Error(errMsg || "Meta delete failed");
+      }
+      // 2) Firestore delete — only after Meta confirms.
       await deleteDoc(doc(fbDb(), "users", uid, "templates", t.id));
-      toast.success("Template removed");
+      toast.success(notFoundOk ? "Removed (was already gone on Meta)" : "Template deleted from Meta");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
     }

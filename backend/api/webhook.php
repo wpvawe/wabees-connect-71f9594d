@@ -217,7 +217,7 @@ function send_message_fcm_notification($token, $contactName, $messageBody, $from
                     'tag' => $tag,
                     'renotify' => true,
                 ],
-                'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+                'fcm_options' => ['link' => isset($userData) ? get_owner_webpush_link($userData) : 'https://wabees.live/'],
             ],
             'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
         ],
@@ -236,6 +236,9 @@ function send_message_fcm_notification($token, $contactName, $messageBody, $from
 }
 
 // ============ PHONE NORMALIZATION ============
+// Web-side companion: src/lib/firebase/normalizers.ts::normalizePhone.
+// KEEP THESE IN SYNC — any change here must land in the JS file the same
+// day, or conversation docs fork into duplicates.
 // Matches Dart PhoneUtils.normalize — consistent +923xxxxxxxxx format
 function normalize_phone($phone)
 {
@@ -256,6 +259,43 @@ function normalize_phone($phone)
     }
 
     return '+' . $cleaned;
+}
+
+// ============ WA_MAP MISS LOG (B2) ============
+// Writes a lightweight doc to wa_map_misses/{phoneNumberId} whenever a
+// webhook fires for an unknown phone_number_id. Ops can query the
+// collection to spot users that need to hit Connect → Reconnect.
+function log_wa_map_miss($phoneNumberId, $wamid, $source = 'unknown')
+{
+    if (empty($phoneNumberId)) return;
+    if (!function_exists('firestore_patch')) return; // helper defined in firebase-config.php
+    $now = gmdate('Y-m-d\TH:i:s\Z');
+    $fields = [
+        'phoneNumberId' => ['stringValue' => (string)$phoneNumberId],
+        'lastMissAt'    => ['timestampValue' => $now],
+        'lastWamid'     => ['stringValue' => (string)$wamid],
+        'source'        => ['stringValue' => (string)$source],
+    ];
+    try {
+        firestore_patch("wa_map_misses/" . rawurlencode((string)$phoneNumberId), $fields);
+    } catch (\Throwable $e) {
+        webhook_log('WA_MAP_MISS_LOG_ERR: ' . $e->getMessage());
+    }
+}
+
+// ============ FCM WEBPUSH LINK (B9) ============
+// Returns the URL a webpush notification should open. Prefers the owner's
+// saved `webAppUrl` field; falls back to a build-time default so older
+// user docs still work.
+function get_owner_webpush_link($userData)
+{
+    $link = $userData['webAppUrl']['stringValue']
+        ?? $userData['websiteUrl']['stringValue']
+        ?? null;
+    if (!empty($link) && preg_match('/^https?:\/\//i', $link)) {
+        return rtrim($link, '/') . '/';
+    }
+    return defined('WEB_APP_URL') ? WEB_APP_URL : 'https://wabees.live/';
 }
 
 
@@ -339,6 +379,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 webhook_log('TIMER: resolve_owner=' . round((microtime(true) - $t0) * 1000) . 'ms' . ($owner ? ' ownerId=' . $owner['id'] . ' total=' . count($owners) : ' NOT_FOUND'));
                 if (empty($owner)) {
                     webhook_log("ERROR: No owner found for phone_number_id: $phoneNumberId");
+                    // B2 fix: surface the miss in Firestore so the UI (or an ops
+                    // dashboard) can flag stale wa_map entries. Non-fatal.
+                    $sampleWamid = $value['messages'][0]['id'] ?? '';
+                    log_wa_map_miss($phoneNumberId, $sampleWamid, 'incoming_message');
                     continue;
                 }
 
@@ -1644,7 +1688,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                     'webpush' => [
                         'headers' => ['Urgency' => 'high'],
                         'notification' => ['title' => $contactName, 'body' => $body, 'icon' => '/wabees-icon.png', 'badge' => '/favicon.ico', 'tag' => $tag, 'renotify' => true],
-                        'fcm_options' => ['link' => 'https://wabees-plus.wabees.workers.dev/'],
+                        'fcm_options' => ['link' => get_owner_webpush_link($userData)],
                     ],
                     'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'wabees_messages_v2', 'sound' => 'default', 'default_vibrate_timings' => true, 'tag' => 'new_message', 'notification_priority' => 'PRIORITY_MAX']],
                 ],

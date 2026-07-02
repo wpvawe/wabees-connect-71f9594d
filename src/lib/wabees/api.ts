@@ -325,6 +325,57 @@ export function fetchMetaTemplates(args: { business_account_id: string; access_t
 }
 
 /**
+ * Delete a WhatsApp message template from Meta.
+ *
+ * Mirrors the Flutter app's behaviour (`whatsapp_api_ds.dart::deleteTemplate`)
+ * which hits Meta Graph directly rather than routing through the PHP proxy —
+ * some hosts don't yet ship a `delete-template.php`, and the direct DELETE
+ * call needs no server changes. Access token stays scoped to the current
+ * owner (already trusted in the browser for every other WhatsApp call).
+ *
+ * Also tries the PHP proxy first when available; falls back to Meta Graph
+ * on 404 so newer backends can add auditing without breaking older ones.
+ */
+export async function deleteMetaTemplate(args: {
+  business_account_id: string;
+  access_token: string;
+  name: string;
+  hsm_id?: string | null;
+}): Promise<WabeesApiResult> {
+  // 1) PHP proxy (preferred — logs / rate-limits centrally). If it 404s
+  // (endpoint not deployed on this host), fall through to Meta Graph.
+  try {
+    const proxied = await postJson("delete-template.php", args);
+    const raw = proxied.raw ?? {};
+    const errorObj = raw.error && typeof raw.error === "object" ? (raw.error as { code?: number; message?: string }) : null;
+    const looksMissing =
+      typeof raw.php_error === "string" ||
+      (typeof raw.message === "string" && /not found|endpoint/i.test(raw.message));
+    if (!looksMissing && (proxied.success || errorObj?.code !== 404)) {
+      return proxied;
+    }
+  } catch {
+    /* fall through to direct Graph call */
+  }
+
+  // 2) Direct Meta Graph (v21.0) — matches Flutter app.
+  const q = new URLSearchParams({
+    name: args.name,
+    access_token: args.access_token,
+  });
+  if (args.hsm_id) q.set("hsm_id", args.hsm_id);
+  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(args.business_account_id)}/message_templates?${q.toString()}`;
+  const res = await fetch(url, { method: "DELETE" });
+  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const err = raw.error && typeof raw.error === "object" ? (raw.error as { message?: string; code?: number }) : null;
+  return {
+    success: res.ok && !err,
+    message: err?.message ?? (raw.success === true ? "Deleted" : undefined),
+    raw,
+  };
+}
+
+/**
  * Create a new WhatsApp message template on Meta. Mirrors
  * `backend/api/create-template.php` on wabees.live: the PHP proxy forwards
  * the payload to `POST /{waba-id}/message_templates` and returns Meta's
