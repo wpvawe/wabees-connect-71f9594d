@@ -15,6 +15,7 @@ import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { toast } from "sonner";
 import { BusinessProfileSection } from "@/components/settings/BusinessProfileSection";
+import { DeveloperApiSection } from "@/components/settings/DeveloperApiSection";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Settings — Wabees" }] }),
@@ -152,6 +153,7 @@ function SettingsPage() {
               </WbCard>
             )}
             <BusinessProfileSection />
+            <DeveloperApiSection />
           </div>
         </div>
       </div>
