@@ -27,7 +27,10 @@ export function useConvNotes(phone: string): {
       setData(
         Array.from(byId.values())
           .filter((n) => n.body)
-          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
+          .sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+          }),
       );
     };
     const unsubs = candidates.map((convId) =>
@@ -47,6 +50,7 @@ export function useConvNotes(phone: string): {
               authorEmail: strOrNull(x.authorEmail),
               createdAt: toIso(x.createdAt),
               updatedAt: toIso(x.updatedAt),
+              pinned: x.pinned === true,
             });
           }
           loaded.add(convId);
