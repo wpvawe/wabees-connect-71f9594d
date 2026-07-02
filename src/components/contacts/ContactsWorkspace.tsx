@@ -808,16 +808,22 @@ function ContactDialog({
               className="input"
             />
           </Field>
-          <div className="sm:col-span-2">
-            <Field label="Tags (comma separated)">
-              <input
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="lead, vip, karachi"
-                className="input"
-              />
-            </Field>
-          </div>
+          <Field label="Group">
+            <input
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              placeholder="Customers"
+              className="input"
+            />
+          </Field>
+          <Field label="Tags (comma separated)">
+            <input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="lead, vip, karachi"
+              className="input"
+            />
+          </Field>
           <div className="sm:col-span-2">
             <Field label="Notes">
               <textarea
