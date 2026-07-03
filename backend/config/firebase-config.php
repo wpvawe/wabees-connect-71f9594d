@@ -371,6 +371,12 @@ function find_user_by_whatsapp_config($phoneNumberId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] find_user_by_whatsapp_config auth retry phoneNumberId=$phoneNumberId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
 
     if ($httpCode >= 400) {
@@ -444,6 +450,12 @@ function find_all_users_by_whatsapp_config($phoneNumberId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] find_all_users_by_whatsapp_config auth retry phoneNumberId=$phoneNumberId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
 
     if ($httpCode >= 400) {
@@ -523,6 +535,12 @@ function get_user_access_token($userId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] get_user_access_token auth retry user=$userId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode < 400 && $httpCode > 0) {
         $doc = json_decode($response, true);
@@ -546,6 +564,12 @@ function get_user_access_token($userId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] get_user_access_token config auth retry user=$userId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] get_user_access_token: whatsapp_config query FAILED ($httpCode)");
