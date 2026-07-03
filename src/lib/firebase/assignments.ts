@@ -326,6 +326,13 @@ export function pickSkillsMatchAgent(
   const top = scored.filter((r) => r.matched === maxMatched).map((r) => r.a);
   const byLoad = (a: PickCandidate, b: PickCandidate) =>
     (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
+  // Same tiered preference as round-robin: online+in-hours → in-hours →
+  // online → any within the top-matched skills tier.
+  const now = new Date();
+  const inHours = top.filter((a) => isWithinWorkingHours(a.workingHours, now));
+  const onlineInHours = inHours.filter((a) => a.isOnline).sort(byLoad);
+  if (onlineInHours.length > 0) return onlineInHours[0];
+  if (inHours.length > 0) return [...inHours].sort(byLoad)[0];
   const online = top.filter((a) => a.isOnline).sort(byLoad);
   if (online.length > 0) return online[0];
   return [...top].sort(byLoad)[0];
