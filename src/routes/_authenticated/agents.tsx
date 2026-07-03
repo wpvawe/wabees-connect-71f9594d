@@ -50,7 +50,7 @@ import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
 import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
 import { InviteAgentDialog } from "@/components/agents/InviteAgentDialog";
 import { useAgentInvites } from "@/hooks/useAgentInvites";
-import { revokeAgentInvite } from "@/lib/firebase/agent-invites";
+import { revokeAgentInvite, createAgentInvite } from "@/lib/firebase/agent-invites";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -113,20 +113,29 @@ function AgentsPage() {
     if (!selfUid || !email.trim()) return;
     setBusy(true);
     try {
-      const idToken = await fbAuth().currentUser!.getIdToken();
-      const res = await fetch(`${WABEES_API_BASE}/add-agent.php`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner_id: selfUid, agent_email: email.trim(), id_token: idToken }),
+      // Firestore rules don't allow listing users by email from the client,
+      // and the legacy PHP `add-agent.php` shortcut is unreliable ("Owner
+      // not found"). Route this through the invite flow instead — it works
+      // whether or not the invitee already has a Wabees account, and it
+      // asks them to accept access rather than silently granting it.
+      const { link } = await createAgentInvite({
+        ownerUid: selfUid,
+        ownerEmail: currentEmail,
+        ownerBusinessName: owner?.businessName ?? owner?.displayName ?? null,
+        role: "agent",
+        email: email.trim(),
+        ttlDays: 14,
       });
-      const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
-      if (!res.ok || raw.error)
-        throw new Error(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
-      toast.success("Agent added");
+      try {
+        await navigator.clipboard.writeText(link);
+        toast.success("Invite link copied — share it with the agent to join");
+      } catch {
+        toast.success("Invite created — open Invite dialog to copy the link");
+      }
       setEmail("");
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Add failed");
+      toast.error(e instanceof Error ? e.message : "Could not create invite");
     } finally {
       setBusy(false);
     }
@@ -591,7 +600,8 @@ function AgentsPage() {
           <DialogHeader>
             <DialogTitle>Add Agent</DialogTitle>
             <DialogDescription>
-              Agent must have a Wabees account with the same email.
+              We&rsquo;ll generate an invite link scoped to this email and copy it
+              to your clipboard. The agent opens the link, signs in, and joins.
             </DialogDescription>
           </DialogHeader>
           <WbInput
@@ -606,7 +616,7 @@ function AgentsPage() {
               Cancel
             </WbButton>
             <WbButton onClick={addAgent} loading={busy}>
-              Add
+              Create invite
             </WbButton>
           </DialogFooter>
         </DialogContent>
