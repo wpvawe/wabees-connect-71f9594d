@@ -11,6 +11,9 @@ export type Agent = {
   role: string | null;
   status: string;
   revokedAt: string | null;
+  isOnline: boolean;
+  lastSeenAt: string | null;
+  activeLoad: number;
 };
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
@@ -35,6 +38,9 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
               role: strOrNull(x.role),
               status: (typeof x.status === "string" && x.status) ? x.status : "active",
               revokedAt: toIso(x.revokedAt),
+              isOnline: Boolean(x.isOnline),
+              lastSeenAt: toIso(x.lastSeenAt),
+              activeLoad: typeof x.activeLoad === "number" ? x.activeLoad : 0,
             };
           }),
         );

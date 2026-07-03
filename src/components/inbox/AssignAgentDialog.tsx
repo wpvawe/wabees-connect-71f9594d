@@ -11,10 +11,10 @@ import {
 import { useAgents } from "@/hooks/useAgents";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { assignConversation } from "@/lib/firebase/assignments";
+import { assignConversation, pickRoundRobinAgent } from "@/lib/firebase/assignments";
 import { WbButton } from "@/components/wb/WbButton";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUserCheck, faUserXmark } from "@fortawesome/free-solid-svg-icons";
+import { faUserCheck, faUserXmark, faBoltLightning } from "@fortawesome/free-solid-svg-icons";
 
 export function AssignAgentDialog({
   phone,
@@ -43,13 +43,51 @@ export function AssignAgentDialog({
         phone,
         agent,
         { uid: selfUid, email: actorEmail },
-        { reason: reason.trim() || undefined, source: "manual" },
+        {
+          reason: reason.trim() || undefined,
+          source: "manual",
+          previousAgentId: currentAgentId,
+        },
       );
       toast.success(agent ? `Assigned to ${agent.email || agent.id}` : "Unassigned");
       setReason("");
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Assign failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function autoAssign() {
+    if (!uid || !selfUid || !agents) return;
+    const eligible = agents.filter((a) => a.status !== "revoked");
+    const next = pickRoundRobinAgent(eligible, currentAgentId);
+    if (!next) {
+      toast.error("No eligible agent available");
+      return;
+    }
+    setBusy("auto");
+    try {
+      const actorEmail = fbAuth().currentUser?.email ?? null;
+      await assignConversation(
+        uid,
+        phone,
+        { id: next.id, email: next.email ?? null },
+        { uid: selfUid, email: actorEmail },
+        {
+          reason: reason.trim() || undefined,
+          source: "auto_round_robin",
+          previousAgentId: currentAgentId,
+        },
+      );
+      toast.success(
+        `Auto-assigned to ${next.email || next.id}${next.isOnline ? " (online)" : ""}`,
+      );
+      setReason("");
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Auto-assign failed");
     } finally {
       setBusy(null);
     }
@@ -75,19 +113,32 @@ export function AssignAgentDialog({
           ) : (
             agents.map((a) => {
               const active = currentAgentId === a.id;
+              const revoked = a.status === "revoked";
               return (
                 <button
                   key={a.id}
                   type="button"
-                  disabled={busy !== null}
+                  disabled={busy !== null || revoked}
                   onClick={() => pick({ id: a.id, email: a.email || null })}
                   className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted ${
                     active ? "border border-primary bg-primary/5" : ""
-                  }`}
+                  } ${revoked ? "opacity-50" : ""}`}
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{a.email || a.id}</p>
-                    <p className="text-[11px] text-muted-foreground">{a.role ?? "agent"}</p>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        title={a.isOnline ? "Online" : "Offline"}
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          a.isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                        }`}
+                      />
+                      <p className="truncate font-medium">{a.email || a.id}</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {(a.role ?? "agent")}
+                      {a.activeLoad ? ` · ${a.activeLoad} active` : ""}
+                      {revoked ? " · revoked" : ""}
+                    </p>
                   </div>
                   {active && (
                     <FontAwesomeIcon icon={faUserCheck} className="h-3.5 w-3.5 text-primary" />
@@ -113,6 +164,15 @@ export function AssignAgentDialog({
         </div>
 
         <DialogFooter className="gap-2">
+          <WbButton
+            variant="secondary"
+            onClick={autoAssign}
+            loading={busy === "auto"}
+            disabled={!agents || agents.length === 0}
+          >
+            <FontAwesomeIcon icon={faBoltLightning} className="mr-1.5 h-3.5 w-3.5" />
+            Auto-assign
+          </WbButton>
           {currentAgentId && (
             <WbButton
               variant="ghost"

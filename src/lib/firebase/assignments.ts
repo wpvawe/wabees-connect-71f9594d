@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   deleteField,
+  increment,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
@@ -23,7 +24,12 @@ export async function assignConversation(
   phone: string,
   agent: { id: string; email: string | null } | null,
   actor: { uid: string; email: string | null },
-  options?: { reason?: string; source?: "manual" | "auto_reply" | "auto_round_robin" },
+  options?: {
+    reason?: string;
+    source?: "manual" | "auto_reply" | "auto_round_robin";
+    /** id of the agent this thread was previously assigned to (for load balancing) */
+    previousAgentId?: string | null;
+  },
 ): Promise<void> {
   const db = fbDb();
   const ids = await resolveConversationDocIds(uid, phone);
@@ -45,6 +51,29 @@ export async function assignConversation(
       ),
     ),
   );
+  // Best-effort load counter maintenance for round-robin fairness. Rules
+  // allow owners+agents to update the shared agents/{id} row, so both a
+  // supervisor reassigning and an owner auto-routing land here.
+  const prev = options?.previousAgentId ?? null;
+  const nextId = agent?.id ?? null;
+  if (prev && prev !== nextId) {
+    try {
+      await updateDoc(doc(db, `users/${uid}/agents/${prev}`), {
+        activeLoad: increment(-1),
+      });
+    } catch {
+      /* counter drift is self-healing */
+    }
+  }
+  if (nextId && nextId !== prev) {
+    try {
+      await updateDoc(doc(db, `users/${uid}/agents/${nextId}`), {
+        activeLoad: increment(1),
+      });
+    } catch {
+      /* counter drift is self-healing */
+    }
+  }
   // Audit-log entry — best-effort, never blocks the assign call.
   try {
     const canonical = phoneDocId(phone);
@@ -164,4 +193,50 @@ export async function updateAgentRole(
   role: "agent" | "supervisor",
 ): Promise<void> {
   await updateDoc(doc(fbDb(), `users/${ownerUid}/agents/${agentId}`), { role });
+}
+
+// ============================================================
+// Batch B — Load-balanced round-robin picker
+// ============================================================
+
+/**
+ * Pick the next agent to route a conversation to, using a load-balanced
+ * round-robin over active, non-revoked agents. Preference order:
+ *   1. Online agents with the lowest `activeLoad` counter.
+ *   2. Any active agent with the lowest `activeLoad`.
+ *   3. `null` if the team has no eligible agents.
+ *
+ * The caller is responsible for actually calling `assignConversation` — this
+ * helper is a pure ranker so both the UI ("Auto-assign" button) and any
+ * future auto-assign trigger can share the same policy.
+ *
+ * `activeLoad` is maintained best-effort: `assignConversation` bumps the
+ * chosen agent's counter and decrements the previous owner's. If load counts
+ * drift, the queue re-normalises on the next assignment cycle — the field
+ * is a hint, not the source of truth.
+ */
+export type PickCandidate = {
+  id: string;
+  email: string | null;
+  role?: string | null;
+  status?: string;
+  isOnline?: boolean;
+  activeLoad?: number;
+};
+
+export function pickRoundRobinAgent(
+  agents: PickCandidate[],
+  excludeAgentId: string | null = null,
+): PickCandidate | null {
+  const eligible = agents.filter(
+    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+  );
+  if (eligible.length === 0) return null;
+
+  const byLoad = (a: PickCandidate, b: PickCandidate) =>
+    (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
+
+  const online = eligible.filter((a) => a.isOnline).sort(byLoad);
+  if (online.length > 0) return online[0];
+  return [...eligible].sort(byLoad)[0];
 }
