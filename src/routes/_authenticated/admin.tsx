@@ -14,6 +14,7 @@ import {
   faCircleCheck,
   faCircleNotch,
   faCircleXmark,
+  faCommentDots,
   faGaugeHigh,
   faHeadset,
   faLifeRing,
@@ -29,13 +30,14 @@ import { fbDb } from "@/integrations/firebase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { SubscriptionMessagesEditor } from "@/components/admin/SubscriptionMessagesEditor";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin — Wabees" }] }),
   component: AdminPage,
 });
 
-type Tab = "users" | "plans" | "support";
+type Tab = "users" | "plans" | "messages" | "support";
 
 type UserRow = {
   id: string;
@@ -87,11 +89,13 @@ function AdminPage() {
         <div className="flex flex-wrap gap-2">
           <TabButton current={tab} value="users" onClick={setTab} icon={faUsers} label="Users" />
           <TabButton current={tab} value="plans" onClick={setTab} icon={faGaugeHigh} label="Plans" />
+          <TabButton current={tab} value="messages" onClick={setTab} icon={faCommentDots} label="Messages" />
           <TabButton current={tab} value="support" onClick={setTab} icon={faHeadset} label="Support" />
         </div>
 
         {tab === "users" && <UsersTab />}
         {tab === "plans" && <PlansShortcut />}
+        {tab === "messages" && <SubscriptionMessagesEditor />}
         {tab === "support" && <SupportShortcut />}
       </div>
     </>
