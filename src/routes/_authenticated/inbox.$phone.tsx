@@ -445,6 +445,7 @@ function Thread({ phone }: { phone: string }) {
   const normalizedPhone = normalizePhone(phone);
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
+  const slaSettings = useSlaSettings();
   const isBlocked = !!conv?.isBlocked;
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
