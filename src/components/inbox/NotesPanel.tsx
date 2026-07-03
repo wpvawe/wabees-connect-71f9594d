@@ -176,11 +176,28 @@ export function NotesPanel({
             data.map((n) => (
               <div
                 key={n.id}
-                className={`group rounded-lg border p-3 shadow-soft ${n.pinned ? "border-primary/40 bg-primary/5" : "border-border bg-card"}`}
+                className={`group rounded-lg border p-3 shadow-soft ${
+                  n.pinned
+                    ? "border-primary/40 bg-primary/5"
+                    : n.kind === "handoff"
+                      ? "border-amber-500/40 bg-amber-500/5"
+                      : n.kind === "system"
+                        ? "border-muted-foreground/20 bg-muted/40"
+                        : "border-border bg-card"
+                }`}
               >
                 {n.pinned && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                     <FontAwesomeIcon icon={faThumbtack} className="h-2.5 w-2.5" /> Pinned
+                  </div>
+                )}
+                {n.kind !== "user" && (
+                  <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <FontAwesomeIcon
+                      icon={n.kind === "handoff" ? faRightLeft : faRobot}
+                      className="h-2.5 w-2.5"
+                    />
+                    {n.kind === "handoff" ? "Handoff" : "System"}
                   </div>
                 )}
                 <div className="flex items-start justify-between gap-2">
@@ -194,10 +211,14 @@ export function NotesPanel({
                     />
                   ) : (
                     <p className="flex-1 whitespace-pre-wrap break-words text-sm text-foreground">
-                      {n.body}
+                      {renderNoteBody(n.body)}
                     </p>
                   )}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                  <div
+                    className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 ${
+                      n.kind !== "user" ? "hidden" : ""
+                    }`}
+                  >
                     {editingId === n.id ? (
                       <button
                         type="button"
@@ -250,13 +271,41 @@ export function NotesPanel({
         </div>
 
         <div className="border-t border-border bg-card p-3">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={2}
-            placeholder="Add an internal note…"
-            className="w-full resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
-          />
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => onComposerChange(e.target.value)}
+              rows={2}
+              placeholder="Add an internal note… use @ to mention a teammate"
+              className="w-full resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            />
+            {mentionOpen && mentionMatches.length > 0 && (
+              <div className="absolute bottom-full left-0 z-20 mb-1 w-64 overflow-hidden rounded-md border border-border bg-popover shadow-lg">
+                {mentionMatches.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(a.email);
+                    }}
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted"
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        a.isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                      }`}
+                    />
+                    <span className="truncate">{a.email}</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {a.role ?? "agent"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
