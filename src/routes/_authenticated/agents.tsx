@@ -295,6 +295,16 @@ function AgentsPage() {
                           />
                           {a.role === "supervisor" ? "Supervisor" : "Agent"}
                         </span>
+                        {a.status !== "revoked" &&
+                          a.workingHours &&
+                          !isWithinWorkingHours(a.workingHours) && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-600"
+                              title="Currently outside their working hours — auto-routing will skip them"
+                            >
+                              <FontAwesomeIcon icon={faClock} className="h-2.5 w-2.5" /> Off hours
+                            </span>
+                          )}
                       </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {a.joinedAt ? `Joined ${format(new Date(a.joinedAt), "PP")}` : "—"}
