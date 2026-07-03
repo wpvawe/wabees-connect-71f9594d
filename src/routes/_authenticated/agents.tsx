@@ -542,7 +542,8 @@ function AgentsPage() {
                       </div>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </WbCardBody>
