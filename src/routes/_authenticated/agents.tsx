@@ -57,6 +57,7 @@ function AgentsPage() {
   const owner = useOwnerInfo();
 
   const [open, setOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -65,6 +66,35 @@ function AgentsPage() {
   const [savingSkills, setSavingSkills] = useState<string | null>(null);
   const [hoursFor, setHoursFor] = useState<string | null>(null);
   const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
+  const { data: invites } = useAgentInvites();
+  const pendingInvites = (invites ?? []).filter(
+    (i) => i.status === "pending" && (!i.expiresAt || i.expiresAt > Date.now()),
+  );
+  const [revokingInvite, setRevokingInvite] = useState<string | null>(null);
+
+  async function copyInviteLink(code: string) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    try {
+      await navigator.clipboard.writeText(`${origin}/join/${code}`);
+      toast.success("Invite link copied");
+    } catch {
+      toast.error("Copy failed — please copy manually");
+    }
+  }
+
+  async function handleRevokeInvite(inviteId: string, code: string) {
+    if (!selfUid || !isOwner) return;
+    if (!confirm("Revoke this invite? The link and code will stop working immediately.")) return;
+    setRevokingInvite(inviteId);
+    try {
+      await revokeAgentInvite({ ownerUid: selfUid, inviteId, code });
+      toast.success("Invite revoked");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Revoke failed");
+    } finally {
+      setRevokingInvite(null);
+    }
+  }
 
   async function addAgent() {
     if (!selfUid || !email.trim()) return;
