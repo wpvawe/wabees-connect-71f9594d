@@ -7,7 +7,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { useNotifications, type AppNotification } from "@/hooks/useNotifications";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { fbDb } from "@/integrations/firebase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ const ICONS: Record<string, string> = {
 };
 
 function NotificationsPage() {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
   const { data, error } = useNotifications();
 
   async function markOne(n: AppNotification) {
