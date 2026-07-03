@@ -21,6 +21,7 @@ import {
   faCheckDouble,
   faRotateLeft,
   faMoon,
+  faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -31,6 +32,7 @@ import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
+import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
 import { useMessages, type Message } from "@/hooks/useMessages";
@@ -98,6 +100,7 @@ function Thread({ phone }: { phone: string }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
