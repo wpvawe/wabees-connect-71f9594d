@@ -8,6 +8,7 @@ import { useFcm } from "@/hooks/useFcm";
 import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
+import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
 
 function waitForFirebaseUser(): Promise<User | null> {
   const auth = fbAuth();
@@ -33,7 +34,9 @@ export const Route = createFileRoute("/_authenticated")({
 function AppShell() {
   return (
     <FirebaseSessionProvider>
-      <AuthenticatedShell />
+      <AccountStatusGate>
+        <AuthenticatedShell />
+      </AccountStatusGate>
     </FirebaseSessionProvider>
   );
 }
