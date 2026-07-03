@@ -13,6 +13,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { useProfile } from "@/hooks/useProfile";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { useAgentRevocationGuard } from "@/hooks/useAgentRevocationGuard";
 import type { ReactNode } from "react";
 
 /**
@@ -30,6 +31,9 @@ export function AccountStatusGate({ children }: { children: ReactNode }) {
   const { data: effective, loading: effLoading } = useProfile("effective");
   const session = useFirebaseSession();
   const navigate = useNavigate();
+  // Self-heal: if this account was revoked as an agent, clear its own
+  // dataOwner so the app no longer subscribes to the revoked owner tree.
+  useAgentRevocationGuard();
 
   if (loading || !data || effLoading) {
     return (
