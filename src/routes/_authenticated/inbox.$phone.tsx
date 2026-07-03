@@ -484,6 +484,10 @@ function Thread({ phone }: { phone: string }) {
         convId,
         isResolved ? "open" : "resolved",
         { uid: selfUid, email: selfEmail },
+        {
+          assignedAgentId: conv?.assignedAgentId ?? null,
+          previousState: convState,
+        },
       );
       addSystemNote(
         uid,
