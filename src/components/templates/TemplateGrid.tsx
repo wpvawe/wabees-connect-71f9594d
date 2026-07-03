@@ -114,35 +114,45 @@ export function TemplateGrid() {
       return;
     try {
       // 1) Meta delete — mirrors the Flutter app so the template also goes
-      //    away in Business Manager (previously the website only removed
-      //    the local Firestore row, leaving a ghost on Meta).
-      const creds = await loadWaCredentials(selfUid);
-      if (!creds) throw new Error("Connect WhatsApp first");
-      const cfg = await getDoc(doc(fbDb(), "users", selfUid, "whatsapp_config", "config"));
-      const userDoc = await getDoc(doc(fbDb(), "users", selfUid));
-      const wabaId =
-        (cfg.data()?.businessAccountId as string | undefined) ||
-        (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
-        "";
-      if (!wabaId) throw new Error("WABA ID missing — reconnect WhatsApp");
-      const metaRes = await deleteMetaTemplate({
-        business_account_id: wabaId,
-        access_token: creds.access_token,
-        name: t.name,
-        hsm_id: t.metaTemplateId ?? null,
-      });
-      const errMsg =
-        (metaRes.raw?.error && typeof metaRes.raw.error === "object"
-          ? (metaRes.raw.error as { message?: string }).message
-          : undefined) || metaRes.message;
-      const notFoundOk =
-        typeof errMsg === "string" && /not found|does not exist|no such/i.test(errMsg);
-      if (!metaRes.success && !notFoundOk) {
-        throw new Error(errMsg || "Meta delete failed");
+      //    away in Business Manager. If WABA ID or creds are missing (e.g.
+      //    the account was disconnected), fall back to a local-only cleanup
+      //    so ghost rows can still be removed from this workspace.
+      let metaMessage = "Template deleted";
+      try {
+        const creds = await loadWaCredentials(selfUid);
+        const cfg = await getDoc(doc(fbDb(), "users", selfUid, "whatsapp_config", "config"));
+        const userDoc = await getDoc(doc(fbDb(), "users", selfUid));
+        const wabaId =
+          (cfg.data()?.businessAccountId as string | undefined) ||
+          (userDoc.data()?.whatsappBusinessAccountId as string | undefined) ||
+          "";
+        if (!creds || !wabaId) {
+          metaMessage = "Removed locally (WhatsApp not connected — Meta copy untouched)";
+        } else {
+          const metaRes = await deleteMetaTemplate({
+            business_account_id: wabaId,
+            access_token: creds.access_token,
+            name: t.name,
+            hsm_id: t.metaTemplateId ?? null,
+          });
+          const errMsg =
+            (metaRes.raw?.error && typeof metaRes.raw.error === "object"
+              ? (metaRes.raw.error as { message?: string }).message
+              : undefined) || metaRes.message;
+          const notFoundOk =
+            typeof errMsg === "string" && /not found|does not exist|no such/i.test(errMsg);
+          if (!metaRes.success && !notFoundOk) {
+            throw new Error(errMsg || "Meta delete failed");
+          }
+          metaMessage = notFoundOk ? "Removed (was already gone on Meta)" : "Template deleted from Meta";
+        }
+      } catch (metaErr) {
+        // Re-throw only if it's a real Meta failure; missing config already handled above.
+        throw metaErr;
       }
-      // 2) Firestore delete — only after Meta confirms.
+      // 2) Firestore delete — always attempted so the workspace stays clean.
       await deleteDoc(doc(fbDb(), "users", uid, "templates", t.id));
-      toast.success(notFoundOk ? "Removed (was already gone on Meta)" : "Template deleted from Meta");
+      toast.success(metaMessage);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
     }

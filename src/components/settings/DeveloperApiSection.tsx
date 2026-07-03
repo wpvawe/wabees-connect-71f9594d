@@ -91,7 +91,7 @@ export function DeveloperApiSection() {
             <p className="text-sm font-semibold text-foreground">API key</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Include it as the <code className="rounded bg-muted px-1 py-0.5">x-api-key</code>{" "}
-              header when calling the Wabees REST API.
+              header when calling the Wabees REST API. Rate limit: 60 requests/minute.
               {createdAt && <span className="ml-1">Created {createdAt}.</span>}
             </p>
 
