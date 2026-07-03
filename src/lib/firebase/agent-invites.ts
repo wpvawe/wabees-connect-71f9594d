@@ -48,6 +48,7 @@ export type GlobalInvite = {
   expiresAt: number | null;
   ownerEmail?: string | null;
   ownerBusinessName?: string | null;
+  acceptedBy?: string | null;
 };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -161,6 +162,7 @@ export async function lookupInviteByCode(code: string): Promise<GlobalInvite | n
     expiresAt: tsToMillis(d.expiresAt),
     ownerEmail: (d.ownerEmail as string) ?? null,
     ownerBusinessName: (d.ownerBusinessName as string) ?? null,
+    acceptedBy: typeof d.acceptedBy === "string" ? d.acceptedBy : null,
   };
 }
 
