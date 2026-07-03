@@ -195,6 +195,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       case "resolved":
         rows = rows.filter((c) => c.state === "resolved");
         break;
+      case "priority":
+        rows = rows.filter((c) => c.priority === "urgent" || c.priority === "high");
+        break;
     }
     // Hide resolved chats from every non-resolved view so the queue stays
     // focused on actionable conversations. Users can hit the "Resolved" chip
