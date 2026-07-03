@@ -347,6 +347,16 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     }
   }
 
+  async function handleSetPriority(phone: string, priority: ConvPriority) {
+    if (!uid) return;
+    try {
+      await setPriority(uid, phone, priority);
+      toast.success(`Priority: ${PRIORITY_META[priority].label}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update priority");
+    }
+  }
+
   async function handleDeleteTag(tagId: string, tagName: string) {
     if (!uid) return;
     if (!confirm(`Delete tag "${tagName}"? It will be removed from all conversations.`)) return;
