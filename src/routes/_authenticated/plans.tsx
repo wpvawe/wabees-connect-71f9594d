@@ -112,7 +112,7 @@ function PlansPage() {
         plan={dialogPlan}
         messages={messages}
         user={{
-          name: profile?.businessName || profile?.name || "",
+          name: profile?.businessName || "",
           email: profile?.email || "",
           phone: profile?.phoneNumber || "",
         }}
