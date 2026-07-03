@@ -1524,7 +1524,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         webhook_log('BOT: welcomeMessage already sent for ' . $from . ' — blocked by cache file');
     } else {
         // Layer 2: Check Firestore conversation doc
-        $convCheckPath = 'users/' . $userId . '/conversations/' . $from;
+        $convCheckPath = 'users/' . $userId . '/conversations/' . rawurlencode($from);
         $convCheckResp = firestore_get($convCheckPath);
         $convCheckCode = $convCheckResp['code'] ?? 404;
         if ($convCheckCode === 404 || !isset($convCheckResp['data']['fields'])) {
