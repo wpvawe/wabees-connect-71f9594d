@@ -10,6 +10,7 @@ import {
   faCircleCheck,
   faUserShield,
   faUser,
+  faClock,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -30,6 +31,8 @@ import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
+import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
+import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
