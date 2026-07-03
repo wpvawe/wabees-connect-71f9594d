@@ -64,7 +64,11 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
                   ? (x.availability as Availability)
                   : "available",
             };
-          }),
+          })
+          // Agents who voluntarily left the workspace disappear from the
+          // owner's list — the owner never explicitly removed them and
+          // there's no reinstate flow for `left` (only `revoked`).
+          .filter((a) => a.status !== "left"),
         );
       },
       (err) => setError(err.message),
