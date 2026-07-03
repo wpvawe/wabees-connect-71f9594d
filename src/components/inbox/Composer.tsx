@@ -758,7 +758,7 @@ export function Composer({
               }, 350);
             }}
             onKeyDown={onKey}
-            placeholder="Type a message"
+            placeholder={windowClosed ? "Reply window closed — send a template" : "Type a message"}
             rows={1}
             disabled={disabled}
             className="flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2 disabled:opacity-60"
