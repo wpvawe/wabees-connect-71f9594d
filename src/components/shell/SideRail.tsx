@@ -19,6 +19,7 @@ import {
   faHeadset,
   faLink,
   faBell,
+  faBullseye,
   faAngleDoubleLeft,
   faAngleDoubleRight,
 } from "@fortawesome/free-solid-svg-icons";
@@ -37,6 +38,7 @@ const NAV: { to: string; label: string; icon: IconDefinition; require?: Capabili
   { to: "/analytics", label: "Analytics", icon: faChartColumn },
   { to: "/inbox", label: "Inbox", icon: faComments },
   { to: "/contacts", label: "Contacts", icon: faAddressBook },
+  { to: "/leads", label: "Leads", icon: faBullseye },
   { to: "/campaigns", label: "Campaigns", icon: faBullhorn, require: "campaigns.write" },
   { to: "/bots", label: "Bots", icon: faRobot, require: "bots.write" },
   { to: "/ai-bot", label: "AI Bot", icon: faBrain, require: "aiBot.manage" },
