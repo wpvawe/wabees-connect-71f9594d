@@ -11,6 +11,7 @@ import { ensureUserDoc } from "@/lib/firebase/users";
 import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
+import { postAuthDestination } from "@/lib/auth-redirect";
 
 export function SignUpForm() {
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ export function SignUpForm() {
       }
       await ensureUserDoc(cred.user, { businessName: values.displayName });
       toast.success("Account created — welcome!");
-      navigate({ to: "/dashboard" });
+      navigate(postAuthDestination() as never);
     } catch (err) {
       toast.error(friendlyAuthError(err, "Could not create account"));
     }

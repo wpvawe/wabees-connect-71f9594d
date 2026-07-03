@@ -8,6 +8,7 @@ import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
+import { postAuthDestination } from "@/lib/auth-redirect";
 
 export function GoogleButton({ label = "Continue with Google" }: { label?: string }) {
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
       const cred = await signInWithPopup(fbAuth(), provider);
       await ensureUserDoc(cred.user);
       toast.success("Welcome");
-      navigate({ to: "/dashboard" });
+      navigate(postAuthDestination() as never);
     } catch (err) {
       toast.error(friendlyAuthError(err, "Google sign-in failed"));
       setLoading(false);

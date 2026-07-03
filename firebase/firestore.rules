@@ -203,6 +203,15 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
         allow read: if isAdmin();
       }
+
+      // ============ Agent Invites (owner's own list) ============
+      // Owner creates/revokes invite tokens; agents can read for future
+      // supervisor UI. Global mirror at /agent_invites/{code} handles the
+      // invitee's lookup after signup.
+      match /agent_invites/{inviteId} {
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update, delete: if isOwner(userId) || isAdmin();
+      }
     }
 
     // ============ PLANS (Global) ============
@@ -289,6 +298,33 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if request.auth != null;
       allow write: if isAdmin();
+    }
+
+    // ============ AGENT INVITES (global code lookup) ============
+    // Global short-code → invite metadata so an invited user can look up
+    // the owner immediately after signup. Auth required to prevent
+    // anonymous enumeration. Only the referenced owner can create/revoke,
+    // and only the accepter (writing their own uid into acceptedBy) can
+    // flip status from 'pending' → 'accepted'.
+    match /agent_invites/{code} {
+      allow read: if request.auth != null;
+      allow list: if isAdmin();
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (
+          resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.inviteId == resource.data.inviteId
+          && request.resource.data.acceptedBy == request.auth.uid
+        )
+      );
     }
   }
 }

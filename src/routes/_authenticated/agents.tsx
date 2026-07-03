@@ -11,6 +11,9 @@ import {
   faUserShield,
   faUser,
   faClock,
+  faEnvelopeOpenText,
+  faLink,
+  faCopy,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -33,6 +36,9 @@ import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/ass
 import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
 import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
+import { InviteAgentDialog } from "@/components/agents/InviteAgentDialog";
+import { useAgentInvites } from "@/hooks/useAgentInvites";
+import { revokeAgentInvite } from "@/lib/firebase/agent-invites";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -51,6 +57,7 @@ function AgentsPage() {
   const owner = useOwnerInfo();
 
   const [open, setOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -59,6 +66,35 @@ function AgentsPage() {
   const [savingSkills, setSavingSkills] = useState<string | null>(null);
   const [hoursFor, setHoursFor] = useState<string | null>(null);
   const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
+  const { data: invites } = useAgentInvites();
+  const pendingInvites = (invites ?? []).filter(
+    (i) => i.status === "pending" && (!i.expiresAt || i.expiresAt > Date.now()),
+  );
+  const [revokingInvite, setRevokingInvite] = useState<string | null>(null);
+
+  async function copyInviteLink(code: string) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    try {
+      await navigator.clipboard.writeText(`${origin}/join/${code}`);
+      toast.success("Invite link copied");
+    } catch {
+      toast.error("Copy failed — please copy manually");
+    }
+  }
+
+  async function handleRevokeInvite(inviteId: string, code: string) {
+    if (!selfUid || !isOwner) return;
+    if (!confirm("Revoke this invite? The link and code will stop working immediately.")) return;
+    setRevokingInvite(inviteId);
+    try {
+      await revokeAgentInvite({ ownerUid: selfUid, inviteId, code });
+      toast.success("Invite revoked");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Revoke failed");
+    } finally {
+      setRevokingInvite(null);
+    }
+  }
 
   async function addAgent() {
     if (!selfUid || !email.trim()) return;
@@ -187,9 +223,14 @@ function AgentsPage() {
         subtitle="Team members sharing this WhatsApp number"
         right={
           isOwner ? (
-            <WbButton size="sm" onClick={() => setOpen(true)}>
-              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add Agent
-            </WbButton>
+            <div className="flex items-center gap-2">
+              <WbButton size="sm" variant="secondary" onClick={() => setOpen(true)}>
+                <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add existing user
+              </WbButton>
+              <WbButton size="sm" onClick={() => setInviteOpen(true)}>
+                <FontAwesomeIcon icon={faEnvelopeOpenText} className="h-3.5 w-3.5" /> Invite
+              </WbButton>
+            </div>
           ) : undefined
         }
       />
@@ -245,11 +286,91 @@ function AgentsPage() {
           </WbCardBody>
         </WbCard>
 
+        {isOwner && pendingInvites.length > 0 && (
+          <WbCard>
+            <WbCardHeader
+              title="Pending invites"
+              subtitle="Invites that haven't been accepted yet."
+            />
+            <WbCardBody>
+              <ul className="divide-y divide-border">
+                {pendingInvites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {inv.email || "Anyone with the link"}
+                        </p>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                            inv.role === "supervisor"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <FontAwesomeIcon
+                            icon={inv.role === "supervisor" ? faUserShield : faUser}
+                            className="h-2.5 w-2.5"
+                          />
+                          {inv.role === "supervisor" ? "Supervisor" : "Agent"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        <span className="font-mono tracking-widest">{inv.code}</span>
+                        {inv.expiresAt
+                          ? ` · Expires ${format(new Date(inv.expiresAt), "PP")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyInviteLink(inv.code)}
+                        aria-label="Copy invite link"
+                        title="Copy invite link"
+                      >
+                        <FontAwesomeIcon icon={faLink} className="h-3.5 w-3.5" />
+                      </WbButton>
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyInviteLink(inv.code)}
+                        aria-label="Copy code"
+                        title="Copy code"
+                      >
+                        <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" />
+                      </WbButton>
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        loading={revokingInvite === inv.id}
+                        onClick={() => handleRevokeInvite(inv.id, inv.code)}
+                        aria-label="Revoke invite"
+                        title="Revoke invite"
+                      >
+                        <FontAwesomeIcon
+                          icon={faBan}
+                          className="h-3.5 w-3.5 text-destructive"
+                        />
+                      </WbButton>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </WbCardBody>
+          </WbCard>
+        )}
+
         <WbCard>
           <WbCardHeader
             title="Agents"
             subtitle="Real-time list of agents connected to this account."
           />
+
           <WbCardBody>
             {error ? (
               <p className="text-sm text-destructive">{error}</p>
@@ -452,6 +573,15 @@ function AgentsPage() {
           />
         );
       })()}
+      {isOwner && selfUid && (
+        <InviteAgentDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          ownerUid={selfUid}
+          ownerEmail={currentEmail}
+          ownerBusinessName={owner?.businessName ?? owner?.displayName ?? null}
+        />
+      )}
     </>
   );
 }
