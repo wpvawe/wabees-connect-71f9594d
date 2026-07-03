@@ -897,6 +897,23 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     const topPatch = topLevelWhatsAppPatch(data, cfgPatch);
 
     if (ownerId !== uid) {
+      // SECURITY: joining an existing owner's workspace by connecting the
+      // same WhatsApp number is NOT an implicit invite. The caller must
+      // already be an active agent under `ownerId` (i.e. accepted an invite
+      // in a prior session). If the agent doc is missing, `revoked`, or
+      // `left`, refuse the auto-join so a previously-removed user cannot
+      // silently re-gain access by reconnecting the same number.
+      const existingAgent = await getDocFields(
+        projectId,
+        accessToken,
+        `users/${ownerId}/agents/${uid}`,
+      );
+      const existingStatus = getString(existingAgent ?? undefined, "status") || (existingAgent ? "active" : "missing");
+      if (existingStatus === "revoked" || existingStatus === "left" || existingStatus === "missing") {
+        throw new Error(
+          "This WhatsApp number is already connected to another workspace. Ask that workspace's owner to send you a new invite before reconnecting.",
+        );
+      }
       await Promise.all([
         patchDoc(projectId, accessToken, `users/${uid}`, {
           ...topPatch,
