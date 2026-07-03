@@ -110,6 +110,13 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
+      // ============ Canned Responses (Quick Replies) ============
+      // Owner-managed library, agents read only (they trigger from composer).
+      match /canned/{cannedId} {
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+
       // ============ Subscription ============
       match /subscription/{docId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
