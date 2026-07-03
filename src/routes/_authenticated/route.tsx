@@ -6,6 +6,7 @@ import { MobileTabBar } from "@/components/shell/MobileTabBar";
 import { FirebaseSessionProvider } from "@/hooks/useFirebaseSession";
 import { useFcm } from "@/hooks/useFcm";
 import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
+import { useAgentPresence } from "@/hooks/useAgentPresence";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
@@ -44,6 +45,7 @@ function AppShell() {
 function AuthenticatedShell() {
   useFcm();
   useIncomingMessageAlerts();
+  useAgentPresence();
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
