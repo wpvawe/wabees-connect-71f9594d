@@ -11,6 +11,28 @@
 3. **Token waste mat karo** — Lambi research, bar bar same file padhna, ya unnecessary code generation se baccho. Focused kaam karo.
 4. **Skills use karo** — Agar koi relevant skill available hai (debugger, powershell-windows, etc.) to usko use karo.
 5. **Test checklist do** — Kaam complete hone ke baad USER ko testing checklist points de do.
+6. **KABHI Lovable Publish mat use karo** — User ne bar bar mana kiya hai. Website Cloudflare Worker pe deploy hoti hai GitHub auto-sync ke through (Lovable → GitHub → CF Worker). Bas code push karo, deploy khud ho jayega.
+
+---
+
+## 🚀 DEPLOYMENT WORKFLOW (YAAD RAKHO — user ne kai dafa bataya hai)
+
+### Website (wabees-plus.wabees.workers.dev)
+- **Lovable** me code edit → Lovable **auto-push** karta hai user ke GitHub repo pe (already connected).
+- GitHub repo **Cloudflare Worker** ke sath connected hai → push hote hi CF **auto-deploy** kar deta hai.
+- **Mujhe kuch nahi karna** — na `lovable publish`, na CF API call. Bas code likhna hai, sync automatic hai.
+- ❌ **NEVER** call `preview_ui--publish` / Lovable Publish tool for website deploy.
+
+### App (Flutter — wpvawe/wabees-plus repo)
+- Mere pas **GitHub PAT** saved hai `wpvawe` account ka.
+- App code changes ka flow:
+  1. Pehle **`wpvawe/wabees-plus` GitHub repo** pe changes push karo (git API se).
+  2. Phir agar backend PHP files change hui hain, **Hostinger** pe FTP/SSH se `wabees.live/public_html` update karo.
+  3. APK chahiye to GitHub Actions **workflow_dispatch** trigger karo (`.github/workflows/` me build workflow hai).
+- Backend PHP: mere pas **Hostinger SSH** access hai (host/port/user/password env me), direct edit kar sakta hun.
+
+### Cloudflare
+- ❌ CF API token mere pas **NAHI** hai. Website deploy khud GitHub sync se hota hai — manual CF call ki zaroorat nahi.
 
 ---
 
