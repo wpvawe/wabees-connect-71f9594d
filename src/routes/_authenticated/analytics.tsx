@@ -72,9 +72,7 @@ function AnalyticsPage() {
 
   // Build per-agent performance from live conversations + agents.
   // Owner/Supervisor only — scoped agents don't see this section.
-  const agentPerf = (() => {
-    if (!canSeeAgentPerf || !agents || !conversations) return [];
-    const byId = new Map<string, {
+  type PerfRow = {
       id: string;
       email: string;
       role: string | null;
@@ -84,7 +82,12 @@ function AnalyticsPage() {
       open: number;
       resolved: number;
       unread: number;
-    }>();
+  };
+  const { perfRows, unassignedOpen } = (() => {
+    if (!canSeeAgentPerf || !agents || !conversations) {
+      return { perfRows: [] as PerfRow[], unassignedOpen: 0 };
+    }
+    const byId = new Map<string, PerfRow>();
     for (const a of agents) {
       if (a.status !== "active") continue;
       byId.set(a.id, {
@@ -99,10 +102,10 @@ function AnalyticsPage() {
         unread: 0,
       });
     }
-    let unassignedOpen = 0;
+    let unassigned = 0;
     for (const c of conversations) {
       if (!c.assignedAgentId) {
-        if ((c.state ?? "open") !== "resolved") unassignedOpen += 1;
+        if ((c.state ?? "open") !== "resolved") unassigned += 1;
         continue;
       }
       const row = byId.get(c.assignedAgentId);
@@ -113,10 +116,8 @@ function AnalyticsPage() {
       row.unread += c.unreadCount || 0;
     }
     const list = Array.from(byId.values()).sort((a, b) => b.total - a.total);
-    return [{ unassignedOpen }, list] as const;
+    return { perfRows: list, unassignedOpen: unassigned };
   })();
-  const unassignedOpen = Array.isArray(agentPerf) ? (agentPerf[0]?.unassignedOpen ?? 0) : 0;
-  const perfRows = Array.isArray(agentPerf) ? (agentPerf[1] ?? []) : [];
 
   const totalOut = data?.outgoing ?? 0;
   const delivery = data && totalOut > 0 ? Math.round((data.delivered / totalOut) * 100) : 0;
