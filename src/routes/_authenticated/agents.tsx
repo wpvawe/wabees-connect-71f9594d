@@ -438,6 +438,20 @@ function AgentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {isOwner && hoursFor && agents && (() => {
+        const a = agents.find((x) => x.id === hoursFor);
+        if (!a) return null;
+        return (
+          <WorkingHoursDialog
+            open={true}
+            onOpenChange={(v) => !v && setHoursFor(null)}
+            ownerUid={ownerUid!}
+            agentId={a.id}
+            agentEmail={a.email || a.id}
+            initial={a.workingHours}
+          />
+        );
+      })()}
     </>
   );
 }
