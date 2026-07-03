@@ -263,6 +263,22 @@ export async function acceptAgentInvite(input: {
     { merge: true },
   );
 
+  // If the invitee was previously an agent under a DIFFERENT owner, mark
+  // that prior assignment as `left` so the old owner's team list shows an
+  // accurate state instead of a stale "active" row. Best-effort — rules
+  // allow the agent to self-set status='left' on their own agent doc.
+  if (priorOwner) {
+    try {
+      await updateDoc(doc(db, `users/${priorOwner}/agents/${input.selfUid}`), {
+        status: "left",
+        leftAt: serverTimestamp(),
+        leftReason: "switched_workspace",
+      });
+    } catch {
+      /* rules or offline — safe to skip */
+    }
+  }
+
   // Best-effort mirror update on the owner-scoped invite doc. Rules
   // reject writes from the invitee here (owner-only), so this is only
   // effective when the invitee happens to also be the owner (impossible
