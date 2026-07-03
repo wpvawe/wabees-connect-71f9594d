@@ -11,6 +11,9 @@ import {
   faUserShield,
   faUser,
   faClock,
+  faEnvelopeOpenText,
+  faLink,
+  faCopy,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -33,6 +36,10 @@ import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/ass
 import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
 import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
+import { InviteAgentDialog } from "@/components/agents/InviteAgentDialog";
+import { useAgentInvites } from "@/hooks/useAgentInvites";
+import { revokeAgentInvite } from "@/lib/firebase/agent-invites";
+import { useOwnerInfo as _unused } from "@/hooks/useOwnerInfo";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
