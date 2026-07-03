@@ -37,7 +37,11 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/ai-bot")({
   head: () => ({ meta: [{ title: "AI Bot — Wabees" }] }),
-  component: AiBotPage,
+  component: () => (
+    <RequireCapability capability="aiBot.manage">
+      <AiBotPage />
+    </RequireCapability>
+  ),
 });
 
 type Faq = { q: string; a: string };
