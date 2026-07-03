@@ -1,7 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch, faPlus, faTrash, faUsers } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleNotch,
+  faPlus,
+  faTrash,
+  faUsers,
+  faBan,
+  faCircleCheck,
+  faUserShield,
+  faUser,
+} from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -18,6 +27,7 @@ import {
 import { useAgents } from "@/hooks/useAgents";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
+import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -38,6 +48,8 @@ function AgentsPage() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
 
   async function addAgent() {
     if (!selfUid || !email.trim()) return;
@@ -64,8 +76,19 @@ function AgentsPage() {
 
   async function removeAgent(agentId: string) {
     if (!selfUid) return;
+    if (!confirm("Permanently remove this agent? Their access is revoked immediately.")) return;
     setRemoving(agentId);
     try {
+      // Instant client-side revoke first — cuts off access before the PHP
+      // delete round-trip. If PHP fails the agent is still locked out.
+      try {
+        await revokeAgent(isOwner ? selfUid : ownerUid!, agentId, {
+          uid: selfUid,
+          email: currentEmail,
+        });
+      } catch {
+        /* fall through to PHP delete */
+      }
       const idToken = await fbAuth().currentUser!.getIdToken();
       const res = await fetch(`${WABEES_API_BASE}/remove-agent.php`, {
         method: "POST",
@@ -84,6 +107,45 @@ function AgentsPage() {
       toast.error(e instanceof Error ? e.message : "Remove failed");
     } finally {
       setRemoving(null);
+    }
+  }
+
+  async function handleRevoke(agentId: string) {
+    if (!selfUid || !isOwner) return;
+    setActioning(agentId);
+    try {
+      await revokeAgent(selfUid, agentId, { uid: selfUid, email: currentEmail });
+      toast.success("Access revoked");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Revoke failed");
+    } finally {
+      setActioning(null);
+    }
+  }
+
+  async function handleReinstate(agentId: string) {
+    if (!selfUid || !isOwner) return;
+    setActioning(agentId);
+    try {
+      await reinstateAgent(selfUid, agentId);
+      toast.success("Access restored");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Reinstate failed");
+    } finally {
+      setActioning(null);
+    }
+  }
+
+  async function handleRoleChange(agentId: string, role: "agent" | "supervisor") {
+    if (!selfUid || !isOwner) return;
+    setActioning(agentId);
+    try {
+      await updateAgentRole(selfUid, agentId, role);
+      toast.success(role === "supervisor" ? "Promoted to supervisor" : "Set as agent");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Role update failed");
+    } finally {
+      setActioning(null);
     }
   }
 
@@ -151,26 +213,90 @@ function AgentsPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {agents.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {a.email || a.id}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {a.joinedAt ? `Joined ${format(new Date(a.joinedAt), "PP")}` : "—"} ·{" "}
-                        {a.role ?? "agent"}
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {a.email || a.id}
+                        </p>
+                        {a.status === "revoked" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-destructive">
+                            <FontAwesomeIcon icon={faBan} className="h-2.5 w-2.5" /> Revoked
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-600">
+                            <FontAwesomeIcon icon={faCircleCheck} className="h-2.5 w-2.5" /> Active
+                          </span>
+                        )}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                            a.role === "supervisor"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <FontAwesomeIcon
+                            icon={a.role === "supervisor" ? faUserShield : faUser}
+                            className="h-2.5 w-2.5"
+                          />
+                          {a.role === "supervisor" ? "Supervisor" : "Agent"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {a.joinedAt ? `Joined ${format(new Date(a.joinedAt), "PP")}` : "—"}
+                        {a.status === "revoked" && a.revokedAt
+                          ? ` · Revoked ${format(new Date(a.revokedAt), "PP")}`
+                          : ""}
                       </p>
                     </div>
                     {isOwner && (
-                      <WbButton
-                        variant="ghost"
-                        size="sm"
-                        loading={removing === a.id}
-                        onClick={() => removeAgent(a.id)}
-                        aria-label="Remove agent"
-                      >
-                        <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5 text-destructive" />
-                      </WbButton>
+                      <div className="flex items-center gap-1">
+                        {a.status !== "revoked" && (
+                          <select
+                            value={a.role === "supervisor" ? "supervisor" : "agent"}
+                            onChange={(e) =>
+                              handleRoleChange(a.id, e.target.value as "agent" | "supervisor")
+                            }
+                            disabled={actioning === a.id}
+                            className="h-8 rounded border border-input bg-background px-2 text-xs"
+                            aria-label="Role"
+                          >
+                            <option value="agent">Agent</option>
+                            <option value="supervisor">Supervisor</option>
+                          </select>
+                        )}
+                        {a.status === "revoked" ? (
+                          <WbButton
+                            variant="secondary"
+                            size="sm"
+                            loading={actioning === a.id}
+                            onClick={() => handleReinstate(a.id)}
+                          >
+                            Reinstate
+                          </WbButton>
+                        ) : (
+                          <WbButton
+                            variant="ghost"
+                            size="sm"
+                            loading={actioning === a.id}
+                            onClick={() => handleRevoke(a.id)}
+                            aria-label="Revoke access"
+                            title="Revoke access (keeps audit trail)"
+                          >
+                            <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
+                          </WbButton>
+                        )}
+                        <WbButton
+                          variant="ghost"
+                          size="sm"
+                          loading={removing === a.id}
+                          onClick={() => removeAgent(a.id)}
+                          aria-label="Remove agent"
+                          title="Permanently remove"
+                        >
+                          <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5 text-destructive" />
+                        </WbButton>
+                      </div>
                     )}
                   </li>
                 ))}
