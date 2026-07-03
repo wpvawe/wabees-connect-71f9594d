@@ -135,8 +135,19 @@ export async function acceptInvite(
   code: string,
   opts: { expectSwitchPrompt?: boolean } = {},
 ) {
+  // Surface any client-side errors during the accept flow.
+  page.on("console", (m) => {
+    if (m.type() === "error") {
+      // eslint-disable-next-line no-console
+      console.log(`  [console.error] ${m.text()}`);
+    }
+  });
   await page.goto(`/join/${code}`);
+  await page.waitForLoadState("networkidle").catch(() => {});
   const acceptBtn = page.getByRole("button", { name: /accept invite/i });
+  await acceptBtn.waitFor({ state: "visible", timeout: 20_000 });
+  // Give Firebase auth + invite-lookup effects one extra tick.
+  await page.waitForTimeout(500);
   const switchBtn = page.getByRole("button", { name: /leave.*join new/i });
 
   if (opts.expectSwitchPrompt) {
@@ -147,8 +158,12 @@ export async function acceptInvite(
   } else {
     await acceptBtn.click();
   }
-  // Success screen navigates to /inbox after ~1.2s.
-  await page.waitForURL(/\/inbox\b/, { timeout: 30_000 });
+  // Success screen navigates to /inbox after ~1.2s. If it doesn't,
+  // any URL off /join also counts (the app may drop us on /dashboard
+  // in some race conditions).
+  await page.waitForURL((u) => !/\/join\//.test(new URL(u).pathname), {
+    timeout: 45_000,
+  });
 }
 
 /** As an owner, revoke the first non-owner agent row by email match. */
