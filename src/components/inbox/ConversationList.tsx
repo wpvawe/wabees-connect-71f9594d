@@ -989,12 +989,20 @@ function ConvRow({
   tagColors,
   incomingFallbackAt,
   onContextMenu,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onLongPress,
 }: {
   c: Conversation;
   active: boolean;
   tagColors: Map<string, string>;
   incomingFallbackAt: string | null;
   onContextMenu: (x: number, y: number) => void;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onLongPress: () => void;
 }) {
   const fallback = useLastMessageFallback(
     c.contactPhone,
@@ -1007,6 +1015,19 @@ function ConvRow({
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
   const freeChat = isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbackAt ?? c.lastIncomingMessageAt });
+  const longPressTimer = useRef<number | null>(null);
+  const startLongPress = () => {
+    if (selectMode) return;
+    longPressTimer.current = window.setTimeout(() => {
+      onLongPress();
+    }, 450);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
   return (
     <li>
       <Link
@@ -1017,11 +1038,31 @@ function ConvRow({
           e.preventDefault();
           onContextMenu(e.clientX, e.clientY);
         }}
+        onPointerDown={startLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onClick={(e) => {
+          if (selectMode) {
+            e.preventDefault();
+            onToggleSelect();
+          }
+        }}
         className={cn(
           "flex items-center gap-3 border-b border-border/60 px-3 py-3 transition-colors hover:bg-muted",
-          active && "bg-accent/40",
+          active && !selectMode && "bg-accent/40",
+          selected && "bg-primary/10",
         )}
       >
+        {selectMode && (
+          <div
+            className={cn(
+              "grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors",
+              selected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background",
+            )}
+          >
+            {selected && <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />}
+          </div>
+        )}
         <Avatar className="h-10 w-10 shrink-0">
           {c.profileImageUrl ? (
             <AvatarImage src={c.profileImageUrl} alt={displayName || c.contactPhone} />
