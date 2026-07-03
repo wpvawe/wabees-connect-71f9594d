@@ -20,6 +20,7 @@ import {
   faBan,
   faCircleCheck,
   faMoon,
+  faFlag,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -45,6 +46,9 @@ import {
   createTag,
   deleteTag,
   updateTag,
+  setPriority,
+  PRIORITY_META,
+  type ConvPriority,
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -67,7 +71,8 @@ type Filter =
   | "free_unread"
   | "mine"
   | "unassigned"
-  | "resolved";
+  | "resolved"
+  | "priority";
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function isReplyWindowOpen(iso: string | null | undefined): boolean {
