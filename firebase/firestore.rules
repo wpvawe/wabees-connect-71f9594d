@@ -69,7 +69,14 @@ service cloud.firestore {
           && request.resource.data.inviteCode is string
           && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
           && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
-          && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid;
+          && (
+            // Either the invite is still pending (matching a same-batch
+            // CAS from pending→accepted; the invite-update rule enforces
+            // that only one such batch wins) OR the mirror already shows
+            // acceptedBy == self (single-write path).
+            get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
+            || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
+          );
         // Agent may update its OWN doc (presence, lastSeen, skills, and
         // voluntarily leave with status='left') but cannot re-activate a
         // revoked assignment or change ownership.
