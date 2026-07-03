@@ -57,6 +57,15 @@ export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   component: InboxThread,
 });
 
+function hoursUntilTomorrow9am(): number {
+  const now = new Date();
+  const t = new Date(now);
+  t.setDate(t.getDate() + 1);
+  t.setHours(9, 0, 0, 0);
+  const hours = Math.round((t.getTime() - now.getTime()) / 3600000);
+  return Math.max(1, hours);
+}
+
 function InboxThread() {
   const { phone } = Route.useParams();
   return <Thread phone={phone} />;
