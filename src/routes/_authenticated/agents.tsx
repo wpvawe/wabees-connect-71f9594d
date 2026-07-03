@@ -32,6 +32,8 @@ import { useAgents } from "@/hooks/useAgents";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
+import { fbDbOrNull } from "@/integrations/firebase/client";
+import { deleteDoc, doc } from "firebase/firestore";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
@@ -147,6 +149,18 @@ function AgentsPage() {
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
       if (!res.ok || raw.error)
         throw new Error(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
+      // Permanent delete: purge the agent document from Firestore so the
+      // row disappears from the owner's list entirely. Rules allow the
+      // owner to write/delete under users/{ownerId}/agents/{agentId}.
+      try {
+        const db = fbDbOrNull();
+        const ownerForDelete = isOwner ? selfUid : ownerUid;
+        if (db && ownerForDelete) {
+          await deleteDoc(doc(db, `users/${ownerForDelete}/agents/${agentId}`));
+        }
+      } catch {
+        /* best-effort — revoke above already cut off access */
+      }
       toast.success("Removed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Remove failed");
