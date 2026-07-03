@@ -518,6 +518,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (selectMode) clearSelection();
+              else setSelectMode(true);
+            }}
+            title={selectMode ? "Exit select mode" : "Select multiple"}
+            className={cn(
+              "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+              selectMode
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            <FontAwesomeIcon icon={faSquareCheck} className="h-2.5 w-2.5" />
+            {selectMode ? `Selected ${selection.size}` : "Select"}
+          </button>
           {isPrivileged && (
             <FilterChip
               icon={faMailBulk}
