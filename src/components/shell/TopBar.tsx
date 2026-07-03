@@ -4,6 +4,7 @@ import { faBell, faVolumeHigh, faVolumeXmark } from "@fortawesome/free-solid-svg
 import { useEffect, useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
+import { AvailabilityToggle } from "@/components/shell/AvailabilityToggle";
 import {
   installAutoplayUnlocker,
   isNotificationMuted,
@@ -83,6 +84,7 @@ export function TopBar({
       </div>
       <div className="flex items-center gap-2">
         {right}
+        <AvailabilityToggle />
         <MuteToggle />
         <NotificationBell />
       </div>
