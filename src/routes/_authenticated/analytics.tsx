@@ -15,6 +15,8 @@ import {
   faAddressBook,
   faArrowUp,
   faArrowDown,
+  faUserTie,
+  faCircle,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
@@ -39,6 +41,9 @@ import { useAnalytics, type AnalyticsRange } from "@/hooks/useAnalytics";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { useContacts } from "@/hooks/useContacts";
+import { useAgents } from "@/hooks/useAgents";
+import { useConversations } from "@/hooks/useConversations";
+import { useCanManageTeam } from "@/hooks/useAgentRole";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
