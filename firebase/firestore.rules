@@ -344,7 +344,11 @@ service cloud.firestore {
     // and only the accepter (writing their own uid into acceptedBy) can
     // flip status from 'pending' → 'accepted'.
     match /agent_invites/{code} {
-      allow read: if request.auth != null;
+      // Single-doc GET is public so an invited user can open the link in a
+      // fresh browser (signed-out) and see the invite card before signing
+      // in. Enumeration is prevented by keeping `list` admin-only and by
+      // the code being an unguessable random string.
+      allow get: if true;
       allow list: if isAdmin();
       allow create: if request.auth != null
         && request.resource.data.ownerId == request.auth.uid
