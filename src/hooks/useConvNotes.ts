@@ -51,6 +51,11 @@ export function useConvNotes(phone: string): {
               createdAt: toIso(x.createdAt),
               updatedAt: toIso(x.updatedAt),
               pinned: x.pinned === true,
+              kind:
+                x.kind === "system" || x.kind === "handoff" ? (x.kind as "system" | "handoff") : "user",
+              mentions: Array.isArray(x.mentions)
+                ? (x.mentions as unknown[]).filter((m): m is string => typeof m === "string")
+                : [],
             });
           }
           loaded.add(convId);
