@@ -21,7 +21,7 @@ import {
 } from "@/lib/firebase/agent-invites";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/join/")({
+export const Route = createFileRoute("/join/$code")({
   ssr: false,
   head: () => ({
     meta: [

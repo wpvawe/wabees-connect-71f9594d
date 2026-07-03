@@ -36,7 +36,7 @@ export function SignUpForm() {
       }
       await ensureUserDoc(cred.user, { businessName: values.displayName });
       toast.success("Account created — welcome!");
-      navigate(postAuthDestination() as never);
+      navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Could not create account"));
     }

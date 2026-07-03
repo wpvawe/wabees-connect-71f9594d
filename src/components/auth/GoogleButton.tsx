@@ -21,7 +21,7 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
       const cred = await signInWithPopup(fbAuth(), provider);
       await ensureUserDoc(cred.user);
       toast.success("Welcome");
-      navigate(postAuthDestination() as never);
+      navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Google sign-in failed"));
       setLoading(false);
