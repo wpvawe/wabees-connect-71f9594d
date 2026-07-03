@@ -716,6 +716,41 @@ function ReplyQuote({
   );
 }
 
+// Lazy-load emoji picker so its ~200KB bundle only ships when a user opens
+// the "more emojis" reaction picker.
+function ReactionEmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    onEmojiClick: (e: { emoji: string }) => void;
+    width?: number;
+    height?: number;
+    lazyLoadEmojis?: boolean;
+  }> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void import("emoji-picker-react").then((m) => {
+      if (!cancelled) setComp(() => m.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!Comp) {
+    return (
+      <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground shadow-md">
+        Loading emoji…
+      </div>
+    );
+  }
+  return (
+    <Comp
+      onEmojiClick={(e) => onSelect(e.emoji)}
+      width={300}
+      height={360}
+      lazyLoadEmojis
+    />
+  );
+}
+
 function MessageContent({
   m,
   mine,
