@@ -19,12 +19,13 @@ export function makeUser(label: string): TestUser {
 /** Sign up a fresh Firebase user through the /auth UI. Ends at /dashboard (or /join if pending). */
 export async function signUp(page: Page, user: TestUser) {
   await page.goto("/auth");
-  // Toggle to "Create account" tab.
-  await page.getByRole("button", { name: /create account/i }).first().click();
-  await page.getByLabel(/your name/i).fill(user.displayName);
-  await page.getByLabel(/work email/i).fill(user.email);
-  await page.getByLabel(/password/i).fill(user.password);
-  await page.getByRole("button", { name: /^create account$/i }).click();
+  // Toggle to the "Create account" tab (first "Create account" is the tab button).
+  await page.getByRole("button", { name: /^create account$/i }).first().click();
+  const form = page.locator("form").filter({ hasText: /create account/i }).first();
+  await form.getByLabel(/your name/i).fill(user.displayName);
+  await form.getByLabel(/work email/i).fill(user.email);
+  await form.getByLabel(/password/i).fill(user.password);
+  await form.getByRole("button", { name: /^create account$/i }).click();
   // Wait for either a toast + navigation, or an auth error.
   await page.waitForURL(/\/(dashboard|inbox|join)\b/, { timeout: 30_000 });
 }
