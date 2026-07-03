@@ -742,6 +742,7 @@ function ContextMenu({
   onAddTag: (name: string) => void | Promise<void>;
   onRemoveTag: (name: string) => void | Promise<void>;
   onCreateTag: () => void;
+  onSetPriority: (priority: ConvPriority) => void | Promise<void>;
 }) {
   const active = new Set(conv?.tags ?? []);
   const menuWidth = 240;
