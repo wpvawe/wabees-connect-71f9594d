@@ -28,6 +28,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
+import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -49,6 +50,8 @@ function AgentsPage() {
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [skillsDraft, setSkillsDraft] = useState<Record<string, string>>({});
+  const [savingSkills, setSavingSkills] = useState<string | null>(null);
   const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
 
   async function addAgent() {
@@ -146,6 +149,28 @@ function AgentsPage() {
       toast.error(e instanceof Error ? e.message : "Role update failed");
     } finally {
       setActioning(null);
+    }
+  }
+
+  async function handleSaveSkills(agentId: string, current: string[]) {
+    if (!selfUid || !isOwner) return;
+    const raw = skillsDraft[agentId] ?? current.join(", ");
+    const list = raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    setSavingSkills(agentId);
+    try {
+      await updateAgentSkills(selfUid, agentId, list);
+      toast.success("Skills updated");
+      setSkillsDraft((d) => {
+        const { [agentId]: _, ...rest } = d;
+        return rest;
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingSkills(null);
     }
   }
 
@@ -295,6 +320,38 @@ function AgentsPage() {
                           title="Permanently remove"
                         >
                           <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5 text-destructive" />
+                        </WbButton>
+                      </div>
+                    )}
+                    {isOwner && a.status !== "revoked" && (
+                      <div className="mt-2 flex w-full flex-wrap items-center gap-2">
+                        <label
+                          htmlFor={`skills-${a.id}`}
+                          className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                        >
+                          Skills
+                        </label>
+                        <input
+                          id={`skills-${a.id}`}
+                          type="text"
+                          value={skillsDraft[a.id] ?? a.skills.join(", ")}
+                          onChange={(e) =>
+                            setSkillsDraft((d) => ({ ...d, [a.id]: e.target.value }))
+                          }
+                          placeholder="sales, billing, urdu, tier-2"
+                          className="h-8 min-w-[220px] flex-1 rounded border border-input bg-background px-2 text-xs outline-none ring-ring focus-visible:ring-2"
+                        />
+                        <WbButton
+                          size="sm"
+                          variant="secondary"
+                          loading={savingSkills === a.id}
+                          disabled={
+                            skillsDraft[a.id] === undefined ||
+                            skillsDraft[a.id] === a.skills.join(", ")
+                          }
+                          onClick={() => handleSaveSkills(a.id, a.skills)}
+                        >
+                          Save
                         </WbButton>
                       </div>
                     )}

@@ -14,6 +14,7 @@ export type Agent = {
   isOnline: boolean;
   lastSeenAt: string | null;
   activeLoad: number;
+  skills: string[];
 };
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
@@ -41,6 +42,11 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
               isOnline: Boolean(x.isOnline),
               lastSeenAt: toIso(x.lastSeenAt),
               activeLoad: typeof x.activeLoad === "number" ? x.activeLoad : 0,
+              skills: Array.isArray(x.skills)
+                ? (x.skills as unknown[])
+                    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+                    .map((s) => s.trim().toLowerCase())
+                : [],
             };
           }),
         );
