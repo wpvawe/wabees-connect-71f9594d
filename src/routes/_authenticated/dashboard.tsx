@@ -37,7 +37,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardPage() {
-  const { data: wa, loading } = useWhatsAppConfig();
+  const { data: wa, loading } = useWhatsAppConfig("effective");
   const { data: profile } = useProfile("effective");
   const { data: subscription } = useSubscription();
   const { data: contacts } = useContacts();

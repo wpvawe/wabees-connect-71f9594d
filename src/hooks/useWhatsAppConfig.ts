@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 export type WhatsAppConfig = {
   phone_number_id: string | null;
@@ -14,14 +14,17 @@ export type WhatsAppConfig = {
 };
 
 /** Live WhatsApp connection status, sourced from `users/{uid}`. */
-export function useWhatsAppConfig(): {
+export function useWhatsAppConfig(scope: "self" | "effective" = "self"): {
   data: WhatsAppConfig | null;
   loading: boolean;
   error: string | null;
 } {
-  // Match Flutter whatsappConfigProvider: connection/config UI watches the
-  // signed-in user's own doc. Data lists use effective UID separately.
-  const uid = useFirebaseUid();
+  // Connection/config UI (Connect page, Settings) watches the signed-in user's
+  // own doc. Feature surfaces that an agent shares with their owner (Dashboard,
+  // Inbox, etc.) pass scope="effective" so agents see the owner's WA config.
+  const selfUid = useFirebaseUid();
+  const effectiveUid = useEffectiveUid();
+  const uid = scope === "effective" ? effectiveUid : selfUid;
   const [data, setData] = useState<WhatsAppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
