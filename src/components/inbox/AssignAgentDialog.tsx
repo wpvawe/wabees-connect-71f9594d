@@ -12,6 +12,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
 import { assignConversation, pickRoundRobinAgent } from "@/lib/firebase/assignments";
+import { addSystemNote } from "@/lib/firebase/notes";
 import { WbButton } from "@/components/wb/WbButton";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserCheck, faUserXmark, faBoltLightning } from "@fortawesome/free-solid-svg-icons";
@@ -38,6 +39,8 @@ export function AssignAgentDialog({
     setBusy(agent?.id ?? "clear");
     try {
       const actorEmail = fbAuth().currentUser?.email ?? null;
+      const prevEmail =
+        agents?.find((a) => a.id === currentAgentId)?.email ?? currentAgentId ?? "unassigned";
       await assignConversation(
         uid,
         phone,
@@ -48,6 +51,15 @@ export function AssignAgentDialog({
           source: "manual",
           previousAgentId: currentAgentId,
         },
+      );
+      // Handoff trail: drop a system note so the reason surfaces inside the
+      // notes panel too, not only the assign_log audit stream.
+      const target = agent ? (agent.email || agent.id) : "unassigned";
+      const body = reason.trim()
+        ? `Handoff: ${prevEmail} → ${target} · ${reason.trim()}`
+        : `Handoff: ${prevEmail} → ${target}`;
+      addSystemNote(uid, phone, body, { uid: selfUid, email: actorEmail }, "handoff").catch(
+        () => {},
       );
       toast.success(agent ? `Assigned to ${agent.email || agent.id}` : "Unassigned");
       setReason("");
@@ -70,6 +82,8 @@ export function AssignAgentDialog({
     setBusy("auto");
     try {
       const actorEmail = fbAuth().currentUser?.email ?? null;
+      const prevEmail =
+        agents.find((a) => a.id === currentAgentId)?.email ?? currentAgentId ?? "unassigned";
       await assignConversation(
         uid,
         phone,
@@ -80,6 +94,13 @@ export function AssignAgentDialog({
           source: "auto_round_robin",
           previousAgentId: currentAgentId,
         },
+      );
+      const target = next.email || next.id;
+      const body = reason.trim()
+        ? `Auto-handoff: ${prevEmail} → ${target} · ${reason.trim()}`
+        : `Auto-handoff: ${prevEmail} → ${target}`;
+      addSystemNote(uid, phone, body, { uid: selfUid, email: actorEmail }, "handoff").catch(
+        () => {},
       );
       toast.success(
         `Auto-assigned to ${next.email || next.id}${next.isOnline ? " (online)" : ""}`,

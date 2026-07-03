@@ -1,13 +1,31 @@
-import { useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faNoteSticky, faTrash, faXmark, faPlus, faThumbtack, faPen, faCheck } from "@fortawesome/free-solid-svg-icons";
+import {
+  faNoteSticky,
+  faTrash,
+  faXmark,
+  faPlus,
+  faThumbtack,
+  faPen,
+  faCheck,
+  faRobot,
+  faRightLeft,
+} from "@fortawesome/free-solid-svg-icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useConvNotes } from "@/hooks/useConvNotes";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { addNote, deleteNote, updateNote, pinNote } from "@/lib/firebase/notes";
+import {
+  addNote,
+  deleteNote,
+  updateNote,
+  pinNote,
+  parseMentions,
+  writeMentionNotifications,
+} from "@/lib/firebase/notes";
+import { useAgents } from "@/hooks/useAgents";
 
 export function NotesPanel({
   phone,
@@ -21,10 +39,58 @@ export function NotesPanel({
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const { data, error } = useConvNotes(phone);
+  const { data: agents } = useAgents();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const mentionMatches = useMemo(() => {
+    if (!mentionOpen || !agents) return [];
+    const q = mentionQuery.toLowerCase();
+    return agents
+      .filter((a) => a.status !== "revoked")
+      .filter((a) => !q || a.email.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [mentionOpen, mentionQuery, agents]);
+
+  function onComposerChange(next: string) {
+    setText(next);
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? next.length;
+    const before = next.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1] ?? " "))) {
+      const token = before.slice(at + 1);
+      if (!/\s/.test(token)) {
+        setMentionOpen(true);
+        setMentionQuery(token);
+        return;
+      }
+    }
+    setMentionOpen(false);
+    setMentionQuery("");
+  }
+
+  function insertMention(email: string) {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? text.length;
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return;
+    const next = `${text.slice(0, at)}@${email} ${text.slice(caret)}`;
+    setText(next);
+    setMentionOpen(false);
+    setMentionQuery("");
+    requestAnimationFrame(() => {
+      el?.focus();
+      const pos = at + email.length + 2;
+      el?.setSelectionRange(pos, pos);
+    });
+  }
 
   async function submit() {
     const body = text.trim();
@@ -32,7 +98,18 @@ export function NotesPanel({
     setBusy(true);
     try {
       const email = fbAuth().currentUser?.email ?? null;
-      await addNote(uid, phone, body, { uid: selfUid, email });
+      const mentions = parseMentions(body);
+      await addNote(uid, phone, body, { uid: selfUid, email }, { mentions });
+      if (mentions.length > 0 && agents) {
+        await writeMentionNotifications(
+          uid,
+          phone,
+          mentions,
+          agents.map((a) => ({ id: a.id, email: a.email })),
+          { uid: selfUid, email },
+          body,
+        );
+      }
       setText("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add note");
@@ -99,11 +176,28 @@ export function NotesPanel({
             data.map((n) => (
               <div
                 key={n.id}
-                className={`group rounded-lg border p-3 shadow-soft ${n.pinned ? "border-primary/40 bg-primary/5" : "border-border bg-card"}`}
+                className={`group rounded-lg border p-3 shadow-soft ${
+                  n.pinned
+                    ? "border-primary/40 bg-primary/5"
+                    : n.kind === "handoff"
+                      ? "border-amber-500/40 bg-amber-500/5"
+                      : n.kind === "system"
+                        ? "border-muted-foreground/20 bg-muted/40"
+                        : "border-border bg-card"
+                }`}
               >
                 {n.pinned && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                     <FontAwesomeIcon icon={faThumbtack} className="h-2.5 w-2.5" /> Pinned
+                  </div>
+                )}
+                {n.kind !== "user" && (
+                  <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <FontAwesomeIcon
+                      icon={n.kind === "handoff" ? faRightLeft : faRobot}
+                      className="h-2.5 w-2.5"
+                    />
+                    {n.kind === "handoff" ? "Handoff" : "System"}
                   </div>
                 )}
                 <div className="flex items-start justify-between gap-2">
@@ -117,10 +211,14 @@ export function NotesPanel({
                     />
                   ) : (
                     <p className="flex-1 whitespace-pre-wrap break-words text-sm text-foreground">
-                      {n.body}
+                      {renderNoteBody(n.body)}
                     </p>
                   )}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                  <div
+                    className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 ${
+                      n.kind !== "user" ? "hidden" : ""
+                    }`}
+                  >
                     {editingId === n.id ? (
                       <button
                         type="button"
@@ -173,13 +271,41 @@ export function NotesPanel({
         </div>
 
         <div className="border-t border-border bg-card p-3">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={2}
-            placeholder="Add an internal note…"
-            className="w-full resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
-          />
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => onComposerChange(e.target.value)}
+              rows={2}
+              placeholder="Add an internal note… use @ to mention a teammate"
+              className="w-full resize-none rounded-md border border-input bg-background p-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            />
+            {mentionOpen && mentionMatches.length > 0 && (
+              <div className="absolute bottom-full left-0 z-20 mb-1 w-64 overflow-hidden rounded-md border border-border bg-popover shadow-lg">
+                {mentionMatches.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(a.email);
+                    }}
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted"
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        a.isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                      }`}
+                    />
+                    <span className="truncate">{a.email}</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {a.role ?? "agent"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
@@ -208,4 +334,27 @@ function formatNoteTime(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "just now";
   return `${formatDistanceToNow(date)} ago`;
+}
+
+/**
+ * Render a note body with `@mention` tokens highlighted. Splits on the same
+ * regex used by parseMentions so display and persistence agree.
+ */
+function renderNoteBody(body: string): ReactNode {
+  const parts: ReactNode[] = [];
+  const re = /@([A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(body)) !== null) {
+    if (match.index > last) parts.push(body.slice(last, match.index));
+    parts.push(
+      <span key={`m${key++}`} className="rounded bg-primary/15 px-1 font-medium text-primary">
+        @{match[1]}
+      </span>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < body.length) parts.push(body.slice(last));
+  return parts;
 }
