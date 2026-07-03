@@ -20,6 +20,7 @@ import {
   faCircleCheck,
   faCheckDouble,
   faRotateLeft,
+  faMoon,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -83,6 +84,7 @@ function Thread({ phone }: { phone: string }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -484,6 +486,65 @@ function Thread({ phone }: { phone: string }) {
       setHeaderMenu(false);
     }
   }, [uid, selfUid, selfEmail, phone, isResolved]);
+
+  // ---- Snooze ----
+  const snoozeUntilIso = conv?.snoozeUntil ?? null;
+  const isSnoozed = convState === "snoozed";
+  const snoozeFor = useCallback(
+    async (hours: number) => {
+      if (!uid || !selfUid) return;
+      setStateBusy(true);
+      setSnoozeOpen(false);
+      try {
+        const until = new Date(Date.now() + hours * 3600 * 1000);
+        await setConversationState(
+          uid,
+          normalizePhone(phone),
+          "snoozed",
+          { uid: selfUid, email: selfEmail },
+          {
+            snoozeUntil: until,
+            assignedAgentId: conv?.assignedAgentId ?? null,
+            previousState: convState,
+          },
+        );
+        addSystemNote(
+          uid,
+          normalizePhone(phone),
+          `Snoozed until ${until.toLocaleString()}`,
+          { uid: selfUid, email: selfEmail },
+          "system",
+        ).catch(() => {});
+        toast.success(`Snoozed for ${hours}h`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Snooze failed");
+      } finally {
+        setStateBusy(false);
+        setHeaderMenu(false);
+      }
+    },
+    [uid, selfUid, selfEmail, phone, conv?.assignedAgentId, convState],
+  );
+
+  // Auto-wake: if snoozed and snoozeUntil is in the past, self-heal to open.
+  useEffect(() => {
+    if (!uid || !selfUid) return;
+    if (!isSnoozed || !snoozeUntilIso) return;
+    const until = Date.parse(snoozeUntilIso);
+    if (!Number.isFinite(until)) return;
+    if (until > Date.now()) return;
+    setConversationState(
+      uid,
+      normalizePhone(phone),
+      "open",
+      { uid: selfUid, email: selfEmail },
+      {
+        assignedAgentId: conv?.assignedAgentId ?? null,
+        previousState: "snoozed",
+      },
+    ).catch(() => {});
+  }, [uid, selfUid, selfEmail, phone, isSnoozed, snoozeUntilIso, conv?.assignedAgentId]);
+
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
