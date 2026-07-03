@@ -385,6 +385,35 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               {e}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setReactOpen(false);
+              setFullPickerOpen(true);
+            }}
+            className="rounded-full px-1.5 py-0.5 text-base text-muted-foreground transition-transform hover:scale-125"
+            aria-label="More emojis"
+          >
+            ➕
+          </button>
+        </div>
+      )}
+
+      {fullPickerOpen && actions?.onReact && (
+        <div
+          className={cn(
+            "absolute z-30",
+            "bottom-full mb-1",
+            mine ? "right-0" : "left-0",
+          )}
+          onMouseLeave={() => setFullPickerOpen(false)}
+        >
+          <ReactionEmojiPickerLazy
+            onSelect={(emoji) => {
+              actions.onReact?.(m, emoji);
+              setFullPickerOpen(false);
+            }}
+          />
         </div>
       )}
 
