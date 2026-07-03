@@ -338,7 +338,14 @@ function AgentsPage() {
                       <WbButton
                         variant="ghost"
                         size="sm"
-                        onClick={() => copyInviteLink(inv.code)}
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(inv.code);
+                            toast.success("Invite code copied");
+                          } catch {
+                            toast.error("Copy failed — please copy manually");
+                          }
+                        }}
                         aria-label="Copy code"
                         title="Copy code"
                       >

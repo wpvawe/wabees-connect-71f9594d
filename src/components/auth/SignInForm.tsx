@@ -27,7 +27,7 @@ export function SignInForm() {
     try {
       await signInWithEmailAndPassword(fbAuth(), values.email.trim(), values.password);
       toast.success("Welcome back");
-      navigate(postAuthDestination() as never);
+      navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Invalid email or password"));
     }

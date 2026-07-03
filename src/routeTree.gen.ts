@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
+import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
 import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
 import { Route as AuthenticatedWorkloadRouteImport } from './routes/_authenticated/workload'
@@ -33,7 +34,6 @@ import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedAiBotRouteImport } from './routes/_authenticated/ai-bot'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
-import { Route as JoinRouteImport } from './routes/join.'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates.index'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
 import { Route as AuthenticatedTemplatesNewRouteImport } from './routes/_authenticated/templates.new'
@@ -60,6 +60,11 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthRoute,
+} as any)
+const JoinCodeRoute = JoinCodeRouteImport.update({
+  id: '/join/$code',
+  path: '/join/$code',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
   id: '/reset-password',
@@ -163,11 +168,6 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const JoinRoute = JoinRouteImport.update({
-  id: '/join/',
-  path: '/join/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedTemplatesIndexRoute =
   AuthenticatedTemplatesIndexRouteImport.update({
     id: '/',
@@ -213,7 +213,6 @@ const AuthenticatedTemplatesIdEditRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
-  '/join/': typeof JoinRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/agents': typeof AuthenticatedAgentsRoute
   '/ai-bot': typeof AuthenticatedAiBotRoute
@@ -234,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/workload': typeof AuthenticatedWorkloadRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/join/$code': typeof JoinCodeRoute
   '/auth/': typeof AuthIndexRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -245,7 +245,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/join': typeof JoinRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/agents': typeof AuthenticatedAgentsRoute
   '/ai-bot': typeof AuthenticatedAiBotRoute
@@ -264,6 +263,7 @@ export interface FileRoutesByTo {
   '/workload': typeof AuthenticatedWorkloadRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/join/$code': typeof JoinCodeRoute
   '/auth': typeof AuthIndexRoute
   '/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -278,7 +278,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRouteWithChildren
-  '/join/': typeof JoinRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/agents': typeof AuthenticatedAgentsRoute
   '/_authenticated/ai-bot': typeof AuthenticatedAiBotRoute
@@ -299,6 +298,7 @@ export interface FileRoutesById {
   '/_authenticated/workload': typeof AuthenticatedWorkloadRoute
   '/auth/forgot': typeof AuthForgotRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/join/$code': typeof JoinCodeRoute
   '/auth/': typeof AuthIndexRoute
   '/_authenticated/campaigns/$id': typeof AuthenticatedCampaignsIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -313,7 +313,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
-    | '/join/'
     | '/admin'
     | '/agents'
     | '/ai-bot'
@@ -334,6 +333,7 @@ export interface FileRouteTypes {
     | '/workload'
     | '/auth/forgot'
     | '/auth/reset-password'
+    | '/join/$code'
     | '/auth/'
     | '/campaigns/$id'
     | '/campaigns/new'
@@ -345,7 +345,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/join'
     | '/admin'
     | '/agents'
     | '/ai-bot'
@@ -364,6 +363,7 @@ export interface FileRouteTypes {
     | '/workload'
     | '/auth/forgot'
     | '/auth/reset-password'
+    | '/join/$code'
     | '/auth'
     | '/campaigns/$id'
     | '/campaigns/new'
@@ -377,7 +377,6 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
-    | '/join/'
     | '/_authenticated/admin'
     | '/_authenticated/agents'
     | '/_authenticated/ai-bot'
@@ -398,6 +397,7 @@ export interface FileRouteTypes {
     | '/_authenticated/workload'
     | '/auth/forgot'
     | '/auth/reset-password'
+    | '/join/$code'
     | '/auth/'
     | '/_authenticated/campaigns/$id'
     | '/_authenticated/campaigns/new'
@@ -412,7 +412,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
-  JoinRoute: typeof JoinRoute
+  JoinCodeRoute: typeof JoinCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -444,6 +444,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth/'
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/join/$code': {
+      id: '/join/$code'
+      path: '/join/$code'
+      fullPath: '/join/$code'
+      preLoaderRoute: typeof JoinCodeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/reset-password': {
       id: '/auth/reset-password'
@@ -584,13 +591,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin'
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/join/': {
-      id: '/join/'
-      path: '/join'
-      fullPath: '/join/'
-      preLoaderRoute: typeof JoinRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/templates/': {
       id: '/_authenticated/templates/'
@@ -754,7 +754,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
-  JoinRoute: JoinRoute,
+  JoinCodeRoute: JoinCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
