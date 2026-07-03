@@ -8,11 +8,11 @@ import {
   faShieldHalved,
   faSignal,
 } from "@fortawesome/free-solid-svg-icons";
-import { getIdToken } from "firebase/auth";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
+import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { cn } from "@/lib/utils";
 
 type Health = {
@@ -48,11 +48,17 @@ export function PhoneHealthCard({
     setLoading(true);
     setError(null);
     try {
-      const idToken = await getIdToken(user);
+      const creds = await loadWaCredentials(user.uid);
+      if (!creds?.access_token) {
+        throw new Error("WhatsApp access token not available for this account");
+      }
       const res = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_token: idToken, phone_number_id: phoneNumberId }),
+        body: JSON.stringify({
+          phone_number_id: phoneNumberId || creds.phone_number_id,
+          access_token: creds.access_token,
+        }),
       });
       const json = (await res.json()) as Health & { error?: unknown };
       if (!res.ok) {
