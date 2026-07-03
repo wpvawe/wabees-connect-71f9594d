@@ -98,7 +98,7 @@ foreach ($dueDocs as $doc) {
     if (($claim['code'] ?? 0) >= 400) continue;
 
     // Load owner's WA credentials.
-    $ownerResp = firestore_get_cached("users/$uid", 60);
+    $ownerResp = firestore_get("users/$uid");
     $ownerFields = $ownerResp['data']['fields'] ?? [];
     $phoneNumberId = _fs_string($ownerFields['whatsappPhoneNumberId'] ?? null, '');
     $accessToken = _fs_string($ownerFields['whatsappAccessToken'] ?? null, '');
@@ -191,11 +191,10 @@ echo json_encode([
 // -------- helpers --------------------------------------------------------
 
 /**
- * Pull due scheduled_messages via a collection-group query. The old per-user
- * scanner could exceed the 1-minute cron window and leave the lock busy, so
- * later ticks never dispatched messages. Status is filtered in PHP to avoid a
- * composite index; the single scheduledFor inequality uses Firestore's normal
- * collection-group single-field index.
+ * Pull scheduled_messages via a collection-group query and filter due/status in
+ * PHP. We intentionally avoid a scheduledFor WHERE/ORDER BY here because shared
+ * Firestore projects often lack the COLLECTION_GROUP index, which caused cron
+ * runs to stall/fallback and miss due messages.
  */
 function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     $out = [];
@@ -204,16 +203,6 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     $q = [
         'structuredQuery' => [
             'from' => [['collectionId' => 'scheduled_messages', 'allDescendants' => true]],
-            'where' => [
-                'fieldFilter' => [
-                    'field' => ['fieldPath' => 'scheduledFor'],
-                    'op' => 'LESS_THAN_OR_EQUAL',
-                    'value' => ['timestampValue' => $nowIso],
-                ],
-            ],
-            'orderBy' => [
-                ['field' => ['fieldPath' => 'scheduledFor'], 'direction' => 'ASCENDING'],
-            ],
             'limit' => $limit,
         ],
     ];
@@ -248,6 +237,8 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
         $doc = $r['document'];
         $status = _fs_string(($doc['fields']['status'] ?? null), 'pending');
         if ($status !== 'pending' && $status !== 'sending') continue;
+        $scheduledFor = _fs_timestamp($doc['fields']['scheduledFor'] ?? null);
+        if ($scheduledFor && strtotime($scheduledFor) > strtotime($nowIso)) continue;
         $out[] = $doc;
     }
     return $out;
