@@ -286,6 +286,85 @@ function AgentsPage() {
           </WbCardBody>
         </WbCard>
 
+        {isOwner && pendingInvites.length > 0 && (
+          <WbCard>
+            <WbCardHeader
+              title="Pending invites"
+              subtitle="Invites that haven't been accepted yet."
+            />
+            <WbCardBody>
+              <ul className="divide-y divide-border">
+                {pendingInvites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {inv.email || "Anyone with the link"}
+                        </p>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                            inv.role === "supervisor"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <FontAwesomeIcon
+                            icon={inv.role === "supervisor" ? faUserShield : faUser}
+                            className="h-2.5 w-2.5"
+                          />
+                          {inv.role === "supervisor" ? "Supervisor" : "Agent"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        <span className="font-mono tracking-widest">{inv.code}</span>
+                        {inv.expiresAt
+                          ? ` · Expires ${format(new Date(inv.expiresAt), "PP")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyInviteLink(inv.code)}
+                        aria-label="Copy invite link"
+                        title="Copy invite link"
+                      >
+                        <FontAwesomeIcon icon={faLink} className="h-3.5 w-3.5" />
+                      </WbButton>
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyInviteLink(inv.code)}
+                        aria-label="Copy code"
+                        title="Copy code"
+                      >
+                        <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" />
+                      </WbButton>
+                      <WbButton
+                        variant="ghost"
+                        size="sm"
+                        loading={revokingInvite === inv.id}
+                        onClick={() => handleRevokeInvite(inv.id, inv.code)}
+                        aria-label="Revoke invite"
+                        title="Revoke invite"
+                      >
+                        <FontAwesomeIcon
+                          icon={faBan}
+                          className="h-3.5 w-3.5 text-destructive"
+                        />
+                      </WbButton>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </WbCardBody>
+          </WbCard>
+        )}
+
         <WbCard>
           <WbCardHeader
             title="Agents"
