@@ -921,6 +921,15 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       await mergeDataIsland(projectId, accessToken, uid, ownerId);
       await subscribeWebhook(data.phoneNumberId, getString(cfgPatch, "accessToken"));
       await clearRemoteCache(data.phoneNumberId);
+      // Security-alert the workspace owner that a new device joined.
+      await notifyOwnerOfAgentJoin(
+        projectId,
+        accessToken,
+        ownerId,
+        uid,
+        email,
+        data.phoneNumberId,
+      ).catch(() => undefined);
       return { ownerId, repaired: true, candidates: allIds };
     }
 
