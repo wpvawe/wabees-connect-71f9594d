@@ -44,6 +44,7 @@ import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { fbAuth } from "@/integrations/firebase/client";
 import { assignConversation } from "@/lib/firebase/assignments";
+import { markFirstResponseIfNeeded } from "@/lib/firebase/sla";
 import type { Message } from "@/hooks/useMessages";
 
 export function Composer({
@@ -268,6 +269,7 @@ export function Composer({
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
       await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
+      void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
       if (msgRef) {
         await updateDoc(msgRef, {
