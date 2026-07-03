@@ -1027,6 +1027,10 @@ function Thread({ phone }: { phone: string }) {
             data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
               ?.whatsappMessageId ?? null
           }
+          lastInboundAt={
+            data?.slice().reverse().find((m) => m.direction === "incoming")
+              ?.createdAt ?? null
+          }
         />
       )}
       {lightboxId && lightboxItems.length > 0 && (
