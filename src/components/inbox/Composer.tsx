@@ -10,6 +10,8 @@ import {
   faFaceSmile,
   faBolt,
 } from "@fortawesome/free-solid-svg-icons";
+import { faClock, faFileLines } from "@fortawesome/free-solid-svg-icons";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
 import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
@@ -55,11 +57,13 @@ export function Composer({
   replyTo,
   onClearReply,
   lastInboundWamid,
+  lastInboundAt,
 }: {
   phone: string;
   replyTo?: Message | null;
   onClearReply?: () => void;
   lastInboundWamid?: string | null;
+  lastInboundAt?: string | null;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -239,6 +243,10 @@ export function Composer({
   async function send() {
     const body = text.trim();
     if (!body || sending || !uid || !selfUid) return;
+    if (windowClosed) {
+      toast.error("Reply window closed — send an approved template instead.");
+      return;
+    }
     setSending(true);
     const normalizedPhone = normalizePhone(phone);
     const to = phoneDocId(phone);
@@ -335,6 +343,10 @@ export function Composer({
     captionOverride?: string,
   ) {
     if (!uid || !selfUid) return;
+    if (windowClosed) {
+      toast.error("Reply window closed — send an approved template instead.");
+      return;
+    }
     setUploading(true);
     const normalizedPhone = normalizePhone(phone);
     const convId = phoneDocId(phone);
@@ -571,10 +583,33 @@ export function Composer({
     }
   }
 
-  const disabled = sending || uploading || recording;
+  // WhatsApp 24-hour customer service window — derived from the last inbound
+  // message. Meta silently drops free-form outbound sends when the window is
+  // closed, so we block the composer and route the user to templates instead.
+  // Ticks every 30s to keep the countdown fresh without re-rendering per second.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const iv = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(iv);
+  }, []);
+  const windowInfo = (() => {
+    if (!lastInboundAt) {
+      return { hasInbound: false, open: false, expiresAt: 0, remainingMs: 0 };
+    }
+    const ts = new Date(lastInboundAt).getTime();
+    if (!Number.isFinite(ts)) {
+      return { hasInbound: false, open: false, expiresAt: 0, remainingMs: 0 };
+    }
+    const expiresAt = ts + 24 * 60 * 60 * 1000;
+    const remainingMs = expiresAt - nowTick;
+    return { hasInbound: true, open: remainingMs > 0, expiresAt, remainingMs };
+  })();
+  const windowClosed = !windowInfo.open;
+  const disabled = sending || uploading || recording || windowClosed;
 
   return (
     <div className="border-t border-border bg-card">
+      <WindowStatusBar info={windowInfo} />
       {replyTo && (
         <div className="flex items-start gap-2 border-b border-border bg-muted/40 px-3 py-2">
           <div className="h-full w-1 self-stretch rounded-full bg-primary" />
@@ -723,7 +758,7 @@ export function Composer({
               }, 350);
             }}
             onKeyDown={onKey}
-            placeholder="Type a message"
+            placeholder={windowClosed ? "Reply window closed — send a template" : "Type a message"}
             rows={1}
             disabled={disabled}
             className="flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2 disabled:opacity-60"
@@ -863,6 +898,46 @@ function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
  * Auto-assign a conversation to the sending user on their first outgoing
  * reply, when nobody owns the thread yet. Silent — best-effort only.
  */
+function WindowStatusBar({
+  info,
+}: {
+  info: { hasInbound: boolean; open: boolean; expiresAt: number; remainingMs: number };
+}) {
+  if (info.open) {
+    const hours = Math.floor(info.remainingMs / 3_600_000);
+    const minutes = Math.floor((info.remainingMs % 3_600_000) / 60_000);
+    // Only show the banner when the window is closing soon (< 2h) to
+    // avoid noise for the common "plenty of time left" case.
+    if (info.remainingMs > 2 * 60 * 60 * 1000) return null;
+    return (
+      <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+        <span className="flex-1">
+          Reply window closes in {hours > 0 ? `${hours}h ` : ""}{minutes}m. Send a
+          message now or use a template afterwards.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+      <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+      <span className="flex-1 min-w-[180px]">
+        {info.hasInbound
+          ? "24-hour reply window closed. WhatsApp only allows approved templates until the customer messages again."
+          : "No customer message yet. Start the conversation with an approved template."}
+      </span>
+      <Link
+        to="/templates"
+        className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+      >
+        <FontAwesomeIcon icon={faFileLines} className="h-3 w-3" />
+        Send template
+      </Link>
+    </div>
+  );
+}
+
 async function maybeAutoAssignOnReply(
   ownerUid: string,
   selfUid: string,
