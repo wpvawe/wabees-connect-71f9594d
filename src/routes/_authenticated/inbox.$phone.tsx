@@ -65,6 +65,10 @@ function Thread({ phone }: { phone: string }) {
   const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const session = (function useSess() {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return require("@/hooks/useFirebaseSession").useFirebaseSession();
+  })();
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
