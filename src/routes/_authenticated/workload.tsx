@@ -18,6 +18,8 @@ import {
   faCircleUser,
   faCircle,
   faUserSlash,
+  faStar,
+  faSmile,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -25,6 +27,7 @@ import { WbEmpty } from "@/components/wb/WbEmpty";
 import { useAgents } from "@/hooks/useAgents";
 import { useConversations } from "@/hooks/useConversations";
 import { useSlaSettings } from "@/hooks/useSlaSettings";
+import { useCsatSurveys } from "@/hooks/useCsatSurveys";
 import { useCan } from "@/lib/auth/permissions";
 import { evaluateSla, formatDuration } from "@/lib/firebase/sla";
 import { cn } from "@/lib/utils";
@@ -72,6 +75,7 @@ function WorkloadPage() {
   const { data: convs } = useConversations();
   const { data: agents } = useAgents();
   const sla = useSlaSettings();
+  const { stats: csat } = useCsatSurveys(200);
 
   const rows = useMemo<Row[]>(() => {
     if (!convs || !agents) return [];
@@ -230,6 +234,34 @@ function WorkloadPage() {
           <SummaryTile icon={faGauge} label="SLA pending" value={totals.pending} tone="default" />
         </div>
 
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <CsatTile
+            icon={faStar}
+            label="Avg CSAT"
+            value={csat.averageRating != null ? csat.averageRating.toFixed(2) : "—"}
+            hint={csat.responded > 0 ? `${csat.responded} ratings` : "No ratings yet"}
+          />
+          <CsatTile
+            icon={faSmile}
+            label="CSAT score"
+            value={csat.csatPct != null ? `${Math.round(csat.csatPct)}%` : "—"}
+            hint="% rating 4★+"
+            tone={csat.csatPct != null && csat.csatPct >= 70 ? "good" : csat.csatPct != null ? "bad" : "default"}
+          />
+          <CsatTile
+            icon={faInbox}
+            label="Surveys sent"
+            value={String(csat.sent)}
+            hint={`${csat.responded} responded`}
+          />
+          <CsatTile
+            icon={faGauge}
+            label="Response rate"
+            value={csat.sent > 0 ? `${Math.round(csat.responseRate * 100)}%` : "—"}
+            hint="Ratings / sent"
+          />
+        </div>
+
         <WbCard>
           <WbCardHeader
             title="Per-agent breakdown"
@@ -367,6 +399,37 @@ function SummaryTile({
         {label}
       </div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function CsatTile({
+  icon,
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  icon: typeof faStar;
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "good" | "bad";
+}) {
+  const toneClasses =
+    tone === "good"
+      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+      : tone === "bad"
+        ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+        : "border-border bg-card text-foreground";
+  return (
+    <div className={cn("rounded-xl border p-4 shadow-soft", toneClasses)}>
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide opacity-80">
+        <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      {hint && <div className="mt-0.5 text-xs opacity-70">{hint}</div>}
     </div>
   );
 }
