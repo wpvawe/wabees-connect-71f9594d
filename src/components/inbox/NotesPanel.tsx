@@ -335,3 +335,26 @@ function formatNoteTime(value: string | null): string {
   if (Number.isNaN(date.getTime())) return "just now";
   return `${formatDistanceToNow(date)} ago`;
 }
+
+/**
+ * Render a note body with `@mention` tokens highlighted. Splits on the same
+ * regex used by parseMentions so display and persistence agree.
+ */
+function renderNoteBody(body: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const re = /@([A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(body)) !== null) {
+    if (match.index > last) parts.push(body.slice(last, match.index));
+    parts.push(
+      <span key={`m${key++}`} className="rounded bg-primary/15 px-1 font-medium text-primary">
+        @{match[1]}
+      </span>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < body.length) parts.push(body.slice(last));
+  return parts;
+}
