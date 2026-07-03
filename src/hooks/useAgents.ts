@@ -3,6 +3,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { str, strOrNull, toIso } from "@/lib/firebase/normalizers";
+import type { WorkingHours } from "@/lib/firebase/working-hours";
 
 export type Agent = {
   id: string;
@@ -15,6 +16,7 @@ export type Agent = {
   lastSeenAt: string | null;
   activeLoad: number;
   skills: string[];
+  workingHours: WorkingHours | null;
 };
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
@@ -51,6 +53,10 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
                     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
                     .map((s) => s.trim().toLowerCase())
                 : [],
+              workingHours:
+                x.workingHours && typeof x.workingHours === "object"
+                  ? (x.workingHours as WorkingHours)
+                  : null,
             };
           }),
         );

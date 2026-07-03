@@ -10,6 +10,7 @@ import {
   faCircleCheck,
   faUserShield,
   faUser,
+  faClock,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -30,6 +31,8 @@ import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
+import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
+import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -54,6 +57,7 @@ function AgentsPage() {
   const [actioning, setActioning] = useState<string | null>(null);
   const [skillsDraft, setSkillsDraft] = useState<Record<string, string>>({});
   const [savingSkills, setSavingSkills] = useState<string | null>(null);
+  const [hoursFor, setHoursFor] = useState<string | null>(null);
   const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
 
   async function addAgent() {
@@ -291,6 +295,16 @@ function AgentsPage() {
                           />
                           {a.role === "supervisor" ? "Supervisor" : "Agent"}
                         </span>
+                        {a.status !== "revoked" &&
+                          a.workingHours &&
+                          !isWithinWorkingHours(a.workingHours) && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-600"
+                              title="Currently outside their working hours — auto-routing will skip them"
+                            >
+                              <FontAwesomeIcon icon={faClock} className="h-2.5 w-2.5" /> Off hours
+                            </span>
+                          )}
                       </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {a.joinedAt ? `Joined ${format(new Date(a.joinedAt), "PP")}` : "—"}
@@ -325,16 +339,27 @@ function AgentsPage() {
                             Reinstate
                           </WbButton>
                         ) : (
-                          <WbButton
-                            variant="ghost"
-                            size="sm"
-                            loading={actioning === a.id}
-                            onClick={() => handleRevoke(a.id)}
-                            aria-label="Revoke access"
-                            title="Revoke access (keeps audit trail)"
-                          >
-                            <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
-                          </WbButton>
+                          <>
+                            <WbButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHoursFor(a.id)}
+                              aria-label="Working hours"
+                              title="Set working hours"
+                            >
+                              <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                            </WbButton>
+                            <WbButton
+                              variant="ghost"
+                              size="sm"
+                              loading={actioning === a.id}
+                              onClick={() => handleRevoke(a.id)}
+                              aria-label="Revoke access"
+                              title="Revoke access (keeps audit trail)"
+                            >
+                              <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
+                            </WbButton>
+                          </>
                         )}
                         <WbButton
                           variant="ghost"
@@ -413,6 +438,20 @@ function AgentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {isOwner && hoursFor && agents && (() => {
+        const a = agents.find((x) => x.id === hoursFor);
+        if (!a) return null;
+        return (
+          <WorkingHoursDialog
+            open={true}
+            onOpenChange={(v) => !v && setHoursFor(null)}
+            ownerUid={ownerUid!}
+            agentId={a.id}
+            agentEmail={a.email || a.id}
+            initial={a.workingHours}
+          />
+        );
+      })()}
     </>
   );
 }

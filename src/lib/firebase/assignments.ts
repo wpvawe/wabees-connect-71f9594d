@@ -18,6 +18,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { resolveConversationDocIds } from "@/lib/firebase/conversations";
+import { isWithinWorkingHours, type WorkingHours } from "@/lib/firebase/working-hours";
 
 export async function assignConversation(
   uid: string,
@@ -251,6 +252,7 @@ export type PickCandidate = {
   isOnline?: boolean;
   activeLoad?: number;
   skills?: string[];
+  workingHours?: WorkingHours | null;
 };
 
 export function pickRoundRobinAgent(
@@ -265,8 +267,18 @@ export function pickRoundRobinAgent(
   const byLoad = (a: PickCandidate, b: PickCandidate) =>
     (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
 
-  const online = eligible.filter((a) => a.isOnline).sort(byLoad);
-  if (online.length > 0) return online[0];
+  // Batch F6: prefer agents currently within their working hours. Tiers:
+  //   1. Online AND within hours
+  //   2. Within hours (any presence)
+  //   3. Online (out of hours, but reachable)
+  //   4. Anyone eligible
+  const now = new Date();
+  const inHours = eligible.filter((a) => isWithinWorkingHours(a.workingHours, now));
+  const onlineInHours = inHours.filter((a) => a.isOnline).sort(byLoad);
+  if (onlineInHours.length > 0) return onlineInHours[0];
+  if (inHours.length > 0) return [...inHours].sort(byLoad)[0];
+  const onlineOut = eligible.filter((a) => a.isOnline).sort(byLoad);
+  if (onlineOut.length > 0) return onlineOut[0];
   return [...eligible].sort(byLoad)[0];
 }
 
@@ -314,6 +326,13 @@ export function pickSkillsMatchAgent(
   const top = scored.filter((r) => r.matched === maxMatched).map((r) => r.a);
   const byLoad = (a: PickCandidate, b: PickCandidate) =>
     (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
+  // Same tiered preference as round-robin: online+in-hours → in-hours →
+  // online → any within the top-matched skills tier.
+  const now = new Date();
+  const inHours = top.filter((a) => isWithinWorkingHours(a.workingHours, now));
+  const onlineInHours = inHours.filter((a) => a.isOnline).sort(byLoad);
+  if (onlineInHours.length > 0) return onlineInHours[0];
+  if (inHours.length > 0) return [...inHours].sort(byLoad)[0];
   const online = top.filter((a) => a.isOnline).sort(byLoad);
   if (online.length > 0) return online[0];
   return [...top].sort(byLoad)[0];
