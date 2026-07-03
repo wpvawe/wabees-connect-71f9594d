@@ -25,8 +25,12 @@ export function SignInForm() {
   async function onSubmit(values: SignInValues) {
     if (isBotSubmission(values as unknown as Record<string, unknown>)) return;
     try {
-      await signInWithEmailAndPassword(fbAuth(), values.email.trim(), values.password);
-      toast.success("Welcome back");
+      const cred = await signInWithEmailAndPassword(fbAuth(), values.email.trim(), values.password);
+      const name =
+        cred.user.displayName?.trim().split(/\s+/)[0] ||
+        cred.user.email?.split("@")[0] ||
+        "";
+      toast.success(name ? `Welcome back, ${name} 👋` : "Welcome back 👋");
       navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Invalid email or password"));
