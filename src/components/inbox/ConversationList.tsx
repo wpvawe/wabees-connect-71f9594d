@@ -65,6 +65,11 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
+import { BulkActionBar } from "@/components/inbox/BulkActionBar";
+import {
+  faCheck,
+  faSquareCheck,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Filter =
   | "all"
@@ -126,6 +131,31 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [incomingFallbacks, setIncomingFallbacks] = useState<Record<string, string | null>>({});
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const selectedList = useMemo(() => Array.from(selection), [selection]);
+  const toggleSelect = (phone: string) => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelection(new Set());
+    setSelectMode(false);
+  };
+  const enterSelect = (phone?: string) => {
+    setSelectMode(true);
+    if (phone) {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        next.add(phone);
+        return next;
+      });
+    }
+  };
   const [tagDialog, setTagDialog] = useState<{
     open: boolean;
     mode: "create" | "edit";
