@@ -1553,7 +1553,13 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                 $isFirstMessage = true;
                 webhook_log('BOT: Conversation exists but welcomeMessage not sent yet for ' . $from);
             }
+
+            // Batch B — capture prior state for auto-reopen decision below.
+            $priorConvState = $convCheckResp['data']['fields']['state']['stringValue'] ?? 'open';
         }
+    }
+    if (!isset($priorConvState)) {
+        $priorConvState = 'open';
     }
 
     $lastPreview = wabees_last_message_preview($type, $messageBody, $firestoreMsg['fileName'] ?? '', $mimeType ?? '');
@@ -1578,16 +1584,15 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     ];
     if ($opensWindow) {
         $convData['lastIncomingMessageAt'] = $nowIso;
-        // Batch B — Auto-reopen: a resolved / snoozed thread that receives a
-        // fresh customer message should jump back to "open" so it re-enters
-        // the active queue. Only reset to 'open' when the current state is
-        // resolved/snoozed to avoid clobbering explicit workflow states set
-        // by supervisors (e.g. 'pending'). Cheap check — we don't need to
-        // read the doc first; state comparison happens client-side and rules
-        // still gate the write. If a chat is already open the write is a
-        // no-op because we always send the same value.
-        $convData['state'] = 'open';
-        $convData['stateAutoReopenedAt'] = $nowIso;
+        // Batch B — Auto-reopen resolved/snoozed threads on a fresh inbound
+        // so the queue rebubbles them. Never overwrite 'pending' or custom
+        // supervisor states; the write only fires when we saw the doc in a
+        // closed state during the pre-flight check above.
+        if ($priorConvState === 'resolved' || $priorConvState === 'snoozed') {
+            $convData['state'] = 'open';
+            $convData['stateAutoReopenedAt'] = $nowIso;
+            $convData['snoozeUntil'] = null;
+        }
     }
 
     // Mark call permission as granted on conversation
