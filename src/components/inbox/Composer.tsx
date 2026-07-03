@@ -410,6 +410,12 @@ export function Composer({
     }
   }
 
+  // Prevent duplicate closer below; original body continues via helper.
+  // (no-op guard removed by patch reconciler if unused)
+  function __sla_placeholder__() {
+    void 0;
+  }
+
   async function startRecording() {
     try {
       // Dynamic import keeps the 80KB encoder out of the initial bundle.
