@@ -1,13 +1,31 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faNoteSticky, faTrash, faXmark, faPlus, faThumbtack, faPen, faCheck } from "@fortawesome/free-solid-svg-icons";
+import {
+  faNoteSticky,
+  faTrash,
+  faXmark,
+  faPlus,
+  faThumbtack,
+  faPen,
+  faCheck,
+  faRobot,
+  faRightLeft,
+} from "@fortawesome/free-solid-svg-icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useConvNotes } from "@/hooks/useConvNotes";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { addNote, deleteNote, updateNote, pinNote } from "@/lib/firebase/notes";
+import {
+  addNote,
+  deleteNote,
+  updateNote,
+  pinNote,
+  parseMentions,
+  writeMentionNotifications,
+} from "@/lib/firebase/notes";
+import { useAgents } from "@/hooks/useAgents";
 
 export function NotesPanel({
   phone,
@@ -21,10 +39,58 @@ export function NotesPanel({
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const { data, error } = useConvNotes(phone);
+  const { data: agents } = useAgents();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const mentionMatches = useMemo(() => {
+    if (!mentionOpen || !agents) return [];
+    const q = mentionQuery.toLowerCase();
+    return agents
+      .filter((a) => a.status !== "revoked")
+      .filter((a) => !q || a.email.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [mentionOpen, mentionQuery, agents]);
+
+  function onComposerChange(next: string) {
+    setText(next);
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? next.length;
+    const before = next.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1] ?? " "))) {
+      const token = before.slice(at + 1);
+      if (!/\s/.test(token)) {
+        setMentionOpen(true);
+        setMentionQuery(token);
+        return;
+      }
+    }
+    setMentionOpen(false);
+    setMentionQuery("");
+  }
+
+  function insertMention(email: string) {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? text.length;
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return;
+    const next = `${text.slice(0, at)}@${email} ${text.slice(caret)}`;
+    setText(next);
+    setMentionOpen(false);
+    setMentionQuery("");
+    requestAnimationFrame(() => {
+      el?.focus();
+      const pos = at + email.length + 2;
+      el?.setSelectionRange(pos, pos);
+    });
+  }
 
   async function submit() {
     const body = text.trim();
@@ -32,7 +98,18 @@ export function NotesPanel({
     setBusy(true);
     try {
       const email = fbAuth().currentUser?.email ?? null;
-      await addNote(uid, phone, body, { uid: selfUid, email });
+      const mentions = parseMentions(body);
+      await addNote(uid, phone, body, { uid: selfUid, email }, { mentions });
+      if (mentions.length > 0 && agents) {
+        await writeMentionNotifications(
+          uid,
+          phone,
+          mentions,
+          agents.map((a) => ({ id: a.id, email: a.email })),
+          { uid: selfUid, email },
+          body,
+        );
+      }
       setText("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add note");
