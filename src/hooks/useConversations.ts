@@ -34,6 +34,7 @@ export type Conversation = {
   snoozeUntil?: string | null;
   firstResponseAt?: string | null;
   firstResponseMs?: number | null;
+  priority?: "urgent" | "high" | "normal" | "low" | null;
 };
 
 function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -152,6 +153,10 @@ export function useConversations(): { data: Conversation[] | null; error: string
             snoozeUntil: typeof x.snoozeUntil === "string" ? x.snoozeUntil : null,
             firstResponseAt: typeof x.firstResponseAt === "string" ? x.firstResponseAt : null,
             firstResponseMs: typeof x.firstResponseMs === "number" ? x.firstResponseMs : null,
+            priority: (() => {
+              const p = typeof x.priority === "string" ? x.priority : null;
+              return p === "urgent" || p === "high" || p === "normal" || p === "low" ? p : null;
+            })(),
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
