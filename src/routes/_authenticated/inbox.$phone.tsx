@@ -463,54 +463,6 @@ function Thread({ phone }: { phone: string }) {
   const canAssign = can("conversation.assign");
   const canBlock = can("conversation.block");
 
-  // Keyboard shortcuts scoped to an open thread. All handlers no-op when
-  // the required data isn't ready yet (uid missing, conv missing, etc.),
-  // which keeps the shortcuts safe during initial hydration.
-  useHotkeys(
-    {
-      e: () => {
-        if (!stateBusy) void onToggleResolve();
-      },
-      s: () => setSnoozeOpen((v) => !v),
-      a: () => {
-        if (canAssign) setAssignOpen(true);
-      },
-      n: () => setNotesOpen(true),
-      i: () => setDetailsOpen(true),
-      t: () => setActivityOpen(true),
-      "/": () => {
-        setSearchOpen(true);
-      },
-      "?": () => setHelpOpen(true),
-      Escape: () => {
-        if (helpOpen) setHelpOpen(false);
-        else if (snoozeOpen) setSnoozeOpen(false);
-        else if (activityOpen) setActivityOpen(false);
-        else if (detailsOpen) setDetailsOpen(false);
-        else if (notesOpen) setNotesOpen(false);
-        else if (assignOpen) setAssignOpen(false);
-        else if (scheduleOpen) setScheduleOpen(false);
-        else if (searchOpen) {
-          setSearchOpen(false);
-          setSearchQuery("");
-        }
-      },
-    },
-    [
-      canAssign,
-      stateBusy,
-      onToggleResolve,
-      helpOpen,
-      snoozeOpen,
-      activityOpen,
-      detailsOpen,
-      notesOpen,
-      assignOpen,
-      scheduleOpen,
-      searchOpen,
-    ],
-  );
-
   const onToggleBlock = useCallback(async () => {
     if (!uid) return;
     setBlockBusy(true);
