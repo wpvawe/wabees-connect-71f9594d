@@ -575,8 +575,6 @@ export function Composer({
     }
   }
 
-  const disabled = sending || uploading || recording;
-
   // WhatsApp 24-hour customer service window — derived from the last inbound
   // message. Meta silently drops free-form outbound sends when the window is
   // closed, so we block the composer and route the user to templates instead.
@@ -599,7 +597,7 @@ export function Composer({
     return { hasInbound: true, open: remainingMs > 0, expiresAt, remainingMs };
   })();
   const windowClosed = !windowInfo.open;
-  const composerDisabled = disabled || windowClosed;
+  const disabled = sending || uploading || recording || windowClosed;
 
   return (
     <div className="border-t border-border bg-card">
@@ -892,6 +890,46 @@ function EmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
  * Auto-assign a conversation to the sending user on their first outgoing
  * reply, when nobody owns the thread yet. Silent — best-effort only.
  */
+function WindowStatusBar({
+  info,
+}: {
+  info: { hasInbound: boolean; open: boolean; expiresAt: number; remainingMs: number };
+}) {
+  if (info.open) {
+    const hours = Math.floor(info.remainingMs / 3_600_000);
+    const minutes = Math.floor((info.remainingMs % 3_600_000) / 60_000);
+    // Only show the banner when the window is closing soon (< 2h) to
+    // avoid noise for the common "plenty of time left" case.
+    if (info.remainingMs > 2 * 60 * 60 * 1000) return null;
+    return (
+      <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+        <span className="flex-1">
+          Reply window closes in {hours > 0 ? `${hours}h ` : ""}{minutes}m. Send a
+          message now or use a template afterwards.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+      <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+      <span className="flex-1 min-w-[180px]">
+        {info.hasInbound
+          ? "24-hour reply window closed. WhatsApp only allows approved templates until the customer messages again."
+          : "No customer message yet. Start the conversation with an approved template."}
+      </span>
+      <Link
+        to="/templates"
+        className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+      >
+        <FontAwesomeIcon icon={faFileLines} className="h-3 w-3" />
+        Send template
+      </Link>
+    </div>
+  );
+}
+
 async function maybeAutoAssignOnReply(
   ownerUid: string,
   selfUid: string,
