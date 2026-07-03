@@ -138,11 +138,12 @@ export function ManualTokenForm() {
         // credentials missing, network error), do NOT let the connect
         // proceed silently — otherwise a second account could grab a phone
         // number that already belongs to another workspace.
+        // Log the raw reason for debugging, but never surface internal
+        // infra terms (Firebase, credentials, backend) to the user.
+        if (e instanceof Error) console.warn("ownership precheck failed:", e.message);
         toast.error(
-          e instanceof Error
-            ? `Could not verify this number's ownership: ${e.message}. Try again in a moment.`
-            : "Could not verify this number's ownership. Try again in a moment.",
-          { duration: 8000 },
+          "We couldn't verify this number right now. Please try again in a moment.",
+          { duration: 6000 },
         );
         return;
       }
