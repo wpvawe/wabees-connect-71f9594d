@@ -61,19 +61,21 @@ export async function waitForApproval(page: Page, user: TestUser) {
 /** Sign in an existing user through /auth. */
 export async function signIn(page: Page, user: TestUser) {
   await page.goto("/auth");
-  await page.getByLabel(/^email$/i).fill(user.email);
-  await page.getByLabel(/password/i).fill(user.password);
-  await page.getByRole("button", { name: /^sign in$/i }).click();
+  const form = page.locator("form").filter({ hasNot: page.getByLabel(/your name/i) }).first();
+  await form.getByLabel(/^email$/i).fill(user.email);
+  await form.getByLabel(/password/i).fill(user.password);
+  await form.getByRole("button", { name: /^sign in$/i }).click();
   await waitForApproval(page, user);
 }
 
 /** Sign in if the account exists, otherwise sign up. Handles the approval gate. */
 export async function signInOrSignUp(page: Page, user: TestUser) {
   await page.goto("/auth");
-  const emailInput = page.getByLabel(/^email$/i);
-  await emailInput.fill(user.email);
-  await page.getByLabel(/password/i).fill(user.password);
-  await page.getByRole("button", { name: /^sign in$/i }).click();
+  // The Sign-in form is the one WITHOUT the "Your name" field.
+  const form = page.locator("form").filter({ hasNot: page.getByLabel(/your name/i) }).first();
+  await form.getByLabel(/^email$/i).fill(user.email);
+  await form.getByLabel(/password/i).fill(user.password);
+  await form.getByRole("button", { name: /^sign in$/i }).click();
   // Race: either we navigate away / gate appears, or a toast says invalid creds.
   const gate = page.getByRole("heading", { name: /waiting for approval/i });
   const invalid = page.getByText(/invalid email or password|user-not-found|wrong-password/i);
