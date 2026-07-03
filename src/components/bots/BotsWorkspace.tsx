@@ -260,8 +260,8 @@ export function BotsWorkspace() {
         </WbButton>
       </div>
 
-      {/* Two-column */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+      {/* Two-column — narrower list, wider editor+preview */}
+      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* LEFT — list */}
         <div className="rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
