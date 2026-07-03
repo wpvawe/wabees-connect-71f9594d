@@ -20,6 +20,7 @@ import {
   faBan,
   faCircleCheck,
   faMoon,
+  faFlag,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -45,6 +46,9 @@ import {
   createTag,
   deleteTag,
   updateTag,
+  setPriority,
+  PRIORITY_META,
+  type ConvPriority,
 } from "@/lib/firebase/conversations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -67,7 +71,8 @@ type Filter =
   | "free_unread"
   | "mine"
   | "unassigned"
-  | "resolved";
+  | "resolved"
+  | "priority";
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function isReplyWindowOpen(iso: string | null | undefined): boolean {
@@ -189,6 +194,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
         break;
       case "resolved":
         rows = rows.filter((c) => c.state === "resolved");
+        break;
+      case "priority":
+        rows = rows.filter((c) => c.priority === "urgent" || c.priority === "high");
         break;
     }
     // Hide resolved chats from every non-resolved view so the queue stays
@@ -336,6 +344,16 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       toast.success("Conversation deleted");
     } catch {
       toast.error("Could not delete");
+    }
+  }
+
+  async function handleSetPriority(phone: string, priority: ConvPriority) {
+    if (!uid) return;
+    try {
+      await setPriority(uid, phone, priority);
+      toast.success(`Priority: ${PRIORITY_META[priority].label}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update priority");
     }
   }
 
@@ -494,6 +512,16 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
               setSelectedTag(null);
             }}
           />
+          <FilterChip
+            icon={faFlag}
+            label="Priority"
+            active={filter === "priority"}
+            color="#dc2626"
+            onClick={() => {
+              setFilter(filter === "priority" ? (isPrivileged ? "all" : "mine") : "priority");
+              setSelectedTag(null);
+            }}
+          />
           {(tags ?? []).map((t) => (
             <FilterChip
               key={t.id}
@@ -565,6 +593,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           onAddTag={(t) => handleAddTag(menu.phone, t)}
           onRemoveTag={(t) => handleRemoveTag(menu.phone, t)}
           onCreateTag={() => handleCreateTag(menu.phone)}
+          onSetPriority={(p) => handleSetPriority(menu.phone, p)}
         />
       )}
       <Dialog
@@ -702,6 +731,7 @@ function ContextMenu({
   onAddTag,
   onRemoveTag,
   onCreateTag,
+  onSetPriority,
 }: {
   x: number;
   y: number;
@@ -713,6 +743,7 @@ function ContextMenu({
   onAddTag: (name: string) => void | Promise<void>;
   onRemoveTag: (name: string) => void | Promise<void>;
   onCreateTag: () => void;
+  onSetPriority: (priority: ConvPriority) => void | Promise<void>;
 }) {
   const active = new Set(conv?.tags ?? []);
   const menuWidth = 240;
@@ -747,6 +778,30 @@ function ContextMenu({
         <FontAwesomeIcon icon={faThumbtack} className="h-3.5 w-3.5" />
         {conv?.isPinned ? "Unpin" : "Pin conversation"}
       </button>
+      <div className="my-1 border-t border-border" />
+      <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Priority</p>
+      <div className="grid grid-cols-4 gap-1 px-2 pb-1">
+        {(Object.keys(PRIORITY_META) as ConvPriority[]).map((p) => {
+          const isActive = (conv?.priority ?? "normal") === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              onPointerDown={(e) => runAction(e, () => onSetPriority(p))}
+              onClick={(e) => e.preventDefault()}
+              title={PRIORITY_META[p].label}
+              className={cn(
+                "flex items-center justify-center gap-1 rounded px-1 py-1.5 text-[10px] font-semibold transition-colors",
+                isActive ? "text-white" : "text-foreground hover:bg-muted",
+              )}
+              style={isActive ? { backgroundColor: PRIORITY_META[p].color } : undefined}
+            >
+              <FontAwesomeIcon icon={faFlag} className="h-2.5 w-2.5" style={!isActive ? { color: PRIORITY_META[p].color } : undefined} />
+              {PRIORITY_META[p].label}
+            </button>
+          );
+        })}
+      </div>
       <div className="my-1 border-t border-border" />
       <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Tags</p>
       <div className="max-h-40 overflow-y-auto">
@@ -879,6 +934,14 @@ function ConvRow({
           )}
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
+          {c.priority && c.priority !== "normal" && (
+            <FontAwesomeIcon
+              icon={faFlag}
+              className="h-3 w-3"
+              style={{ color: PRIORITY_META[c.priority].color }}
+              title={`Priority: ${PRIORITY_META[c.priority].label}`}
+            />
+          )}
           {c.assignedAgentEmail && (
             <span
               title={`Assigned: ${c.assignedAgentEmail}`}

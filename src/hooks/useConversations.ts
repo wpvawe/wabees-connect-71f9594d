@@ -34,6 +34,7 @@ export type Conversation = {
   snoozeUntil?: string | null;
   firstResponseAt?: string | null;
   firstResponseMs?: number | null;
+  priority?: "urgent" | "high" | "normal" | "low" | null;
 };
 
 function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -74,6 +75,7 @@ function mergeConversation(a: Conversation, b: Conversation): Conversation {
     notesCount: Math.max(a.notesCount ?? 0, b.notesCount ?? 0),
     state: (b.state && b.state !== "open" ? b.state : a.state) ?? a.state ?? b.state,
     snoozeUntil: fresherIso(a.snoozeUntil, b.snoozeUntil),
+    priority: b.priority ?? a.priority ?? null,
   };
 }
 
@@ -97,6 +99,12 @@ function compactConversationWrite(c: Conversation): Record<string, unknown> {
   if (c.assignedAgentId) out.assignedAgentId = c.assignedAgentId;
   if (c.assignedAgentEmail) out.assignedAgentEmail = c.assignedAgentEmail;
   return out;
+}
+
+function priorityRank(p: Conversation["priority"]): number {
+  if (p === "urgent") return 3;
+  if (p === "high") return 2;
+  return 0;
 }
 
 export function useConversations(): { data: Conversation[] | null; error: string | null } {
@@ -152,6 +160,10 @@ export function useConversations(): { data: Conversation[] | null; error: string
             snoozeUntil: typeof x.snoozeUntil === "string" ? x.snoozeUntil : null,
             firstResponseAt: typeof x.firstResponseAt === "string" ? x.firstResponseAt : null,
             firstResponseMs: typeof x.firstResponseMs === "number" ? x.firstResponseMs : null,
+            priority: (() => {
+              const p = typeof x.priority === "string" ? x.priority : null;
+              return p === "urgent" || p === "high" || p === "normal" || p === "low" ? p : null;
+            })(),
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
@@ -184,6 +196,9 @@ export function useConversations(): { data: Conversation[] | null; error: string
         const rows = Array.from(grouped.values()).sort((a, b) => {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
           if ((a.pinOrder ?? 0) !== (b.pinOrder ?? 0)) return (b.pinOrder ?? 0) - (a.pinOrder ?? 0);
+          const pa = priorityRank(a.priority);
+          const pb = priorityRank(b.priority);
+          if (pa !== pb) return pb - pa;
           return (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
         });
         setData(rows);
