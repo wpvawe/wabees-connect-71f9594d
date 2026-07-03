@@ -6,7 +6,6 @@ import {
   faCircleInfo,
   faLock,
   faPhone,
-  faShieldHalved,
   faSitemap,
 } from "@fortawesome/free-solid-svg-icons";
 import { manualConnectSchema, type ManualConnectValues } from "@/lib/schemas/meta";
@@ -20,28 +19,11 @@ import { checkExistingWhatsAppOwner } from "@/lib/firebase/owner-repair.function
 import { smartConnectWhatsApp, verifyWhatsAppToken } from "@/lib/wabees/api";
 import { toast } from "sonner";
 import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 type PhoneInfo = {
   display_phone_number?: string;
   verified_name?: string;
   quality_rating?: string;
-};
-
-type ConsentPreview = {
-  ownerEmail: string | null;
-  ownerBusinessName: string | null;
-  activity: { conversations: number; messages: number; contacts: number } | null;
-  values: ManualConnectValues;
 };
 
 /**
@@ -50,13 +32,12 @@ type ConsentPreview = {
  * display phone, and quality rating, mirroring the mobile app.
  *
  * Before saving, we check if this phone_number_id is already owned by
- * another account. If so we show a consent dialog explaining that this
- * account will join the existing workspace as an agent, and the workspace
- * owner will be alerted (via server-side security notification).
+ * another account. If so we BLOCK the connect (invite-only policy) and
+ * tell the user to ask the existing owner for an invite link — matching
+ * how Wati / Interakt handle multi-tenant WhatsApp numbers.
  */
 export function ManualTokenForm() {
   const uid = useFirebaseUid();
-  const [consent, setConsent] = useState<ConsentPreview | null>(null);
   const [checking, setChecking] = useState(false);
   const {
     register,
@@ -151,12 +132,11 @@ export function ManualTokenForm() {
         data: { idToken, phoneNumberId: v.phone_number_id.trim() },
       }).catch(() => null);
       if (check?.existingOwnerId && !check.isSelf) {
-        setConsent({
-          ownerEmail: check.existingOwnerEmail,
-          ownerBusinessName: check.existingOwnerBusinessName,
-          activity: check.activity,
-          values: v,
-        });
+        const who = check.existingOwnerEmail || check.existingOwnerBusinessName || "another account";
+        toast.error(
+          `This WhatsApp number is already connected to ${who}. Ask the workspace owner to send you an invite link to join as an agent.`,
+          { duration: 8000 },
+        );
         return;
       }
     } finally {
@@ -165,16 +145,8 @@ export function ManualTokenForm() {
     m.mutate(v);
   };
 
-  const confirmJoin = () => {
-    if (!consent) return;
-    const values = consent.values;
-    setConsent(null);
-    m.mutate(values);
-  };
-
   return (
-    <>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
           <WbInput
             label="Phone Number ID"
@@ -228,62 +200,7 @@ export function ManualTokenForm() {
             Connect account
           </WbButton>
         </div>
-      </form>
-
-      <AlertDialog open={!!consent} onOpenChange={(o) => !o && !m.isPending && setConsent(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <FontAwesomeIcon icon={faShieldHalved} className="h-4 w-4 text-primary" />
-              Join an existing workspace?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  This WhatsApp number is already connected to another Wabees workspace. If you
-                  continue, you will be added as an{" "}
-                  <span className="font-medium text-foreground">agent</span> under the existing
-                  owner and will share their inbox, contacts and templates.
-                </p>
-                <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs">
-                  <div className="font-medium text-foreground">Workspace owner</div>
-                  <div className="mt-1 truncate">{consent?.ownerEmail || "—"}</div>
-                  {consent?.ownerBusinessName && (
-                    <div className="mt-0.5 truncate">
-                      Business: {consent.ownerBusinessName}
-                    </div>
-                  )}
-                  {consent?.activity && (
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-                      <Stat label="Chats" value={consent.activity.conversations} />
-                      <Stat label="Messages" value={consent.activity.messages} />
-                      <Stat label="Contacts" value={consent.activity.contacts} />
-                    </div>
-                  )}
-                </div>
-                <p className="text-[11px] leading-relaxed">
-                  The workspace owner will be notified that your account joined. If this is
-                  your own second email, continue. Otherwise cancel and contact the owner
-                  first.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={m.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmJoin();
-              }}
-              disabled={m.isPending}
-            >
-              {m.isPending ? "Joining…" : "Yes, join as agent"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    </form>
   );
 }
 
@@ -295,15 +212,6 @@ function MiniNote({ icon, title, text }: { icon: IconDefinition; title: string; 
         <p className="font-semibold text-foreground">{title}</p>
         <p className="mt-0.5 leading-relaxed">{text}</p>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-border bg-background p-2 text-center">
-      <div className="text-sm font-semibold text-foreground">{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
     </div>
   );
 }
