@@ -73,31 +73,36 @@ service cloud.firestore {
       }
 
       // ============ Contacts ============
+      // Agents may READ contacts to power inbox lookups but CANNOT create/
+      // edit/delete — that stays with the owner. Frontend hides the buttons;
+      // rules enforce it against direct REST calls.
       match /contacts/{contactId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
 
-      // ============ Bots ============
+      // ============ Bots ============ (owner-only writes)
       match /bots/{botId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
 
-      // ============ Campaigns ============
+      // ============ Campaigns ============ (owner-only writes)
       match /campaigns/{campaignId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
 
-        // Campaign execution logs subcollection
         match /logs/{logId} {
-          allow read, write: if isOwner(userId) || isAgentOf(userId);
-          allow read: if isAdmin();
+          allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+          allow write: if isOwner(userId);
         }
       }
 
       // ============ Templates ============
+      // Agents may read + send but not create/edit/delete templates.
       match /templates/{templateId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
 
       // ============ Subscription ============
