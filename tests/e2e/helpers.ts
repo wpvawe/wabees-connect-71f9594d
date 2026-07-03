@@ -189,6 +189,31 @@ export async function revokeAgentByEmail(page: Page, email: string) {
   await expect(row.getByText(/revoked|inactive/i).first()).toBeVisible({ timeout: 15_000 });
 }
 
+/**
+ * As an owner, remove any leftover agent rows (revoked / left) for the given
+ * emails so the next accept flow starts clean. Idempotent — no-ops if the
+ * rows aren't there.
+ */
+export async function purgeAgentRows(page: Page, emails: string[]) {
+  await page.goto("/agents");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  for (const email of emails) {
+    // Loop until no row for this email remains (there may be revoked + left).
+    for (let i = 0; i < 5; i++) {
+      const row = page
+        .locator("li, tr, [data-agent-row]")
+        .filter({ hasText: email })
+        .first();
+      if (!(await row.isVisible({ timeout: 1_500 }).catch(() => false))) break;
+      page.once("dialog", (d) => d.accept());
+      // Trash icon button (aria-label may be "Delete" / "Remove") — fall back to last button in row.
+      const del = row.getByRole("button").last();
+      await del.click().catch(() => {});
+      await page.waitForTimeout(800);
+    }
+  }
+}
+
 /** Fresh browser context per test user (so sessions don't collide). */
 export async function newUserContext(browser: import("@playwright/test").Browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 1800 } });
