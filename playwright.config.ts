@@ -22,6 +22,13 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "retain-on-failure",
     screenshot: "only-on-failure",
+    launchOptions: {
+      // Allow sandbox environments to override the bundled Chromium.
+      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+        ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+        : {}),
+      args: ["--no-sandbox"],
+    },
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
