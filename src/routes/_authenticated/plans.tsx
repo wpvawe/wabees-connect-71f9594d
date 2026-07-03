@@ -11,7 +11,10 @@ import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
-import { requestSubscription } from "@/lib/firebase/subscriptions";
+import {
+  requestSubscription,
+  postSubscriptionRequestToSupport,
+} from "@/lib/firebase/subscriptions";
 import { toast } from "sonner";
 import { RequireCapability } from "@/components/auth/RequireCapability";
 import { PlanCard, PlanStat } from "@/components/plans/PlanCard";
@@ -95,6 +98,11 @@ function PlansPage() {
                   if (!uid) return;
                   try {
                     await requestSubscription(uid, plan);
+                    await postSubscriptionRequestToSupport(uid, plan, messages, {
+                      name: profile?.businessName || "",
+                      email: profile?.email || "",
+                      phone: profile?.phoneNumber || "",
+                    }).catch(() => undefined);
                     toast.success("Request sent — waiting for admin approval");
                     setDialogPlan(plan);
                   } catch (e) {
