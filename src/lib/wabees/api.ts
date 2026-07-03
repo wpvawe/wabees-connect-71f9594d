@@ -159,6 +159,38 @@ export function exchangeWhatsAppCode(args: { code: string }) {
   }>("whatsapp-exchange-code.php", args);
 }
 
+export type WabaPhoneOption = {
+  id: string;
+  display_phone_number: string;
+  verified_name: string;
+  quality_rating: string;
+};
+export type WabaOption = {
+  id: string;
+  name: string;
+  phones: WabaPhoneOption[];
+};
+export type BusinessOption = {
+  id: string;
+  name: string;
+  wabas: WabaOption[];
+};
+
+/**
+ * Multi-step account picker source. Lists every Business → WABA → Phone
+ * reachable by an access token so the user can pick the right number when
+ * their token grants access to more than one.
+ */
+export async function listWhatsAppAccounts(args: {
+  access_token: string;
+}): Promise<WabeesApiResult<{ businesses: BusinessOption[] }>> {
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
+  return postJson<{ businesses: BusinessOption[] }>("whatsapp-list-accounts.php", {
+    id_token: idToken,
+    access_token: args.access_token,
+  });
+}
+
 export function sendTextMessage(args: {
   phone_number_id: string;
   access_token: string;
