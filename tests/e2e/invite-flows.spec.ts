@@ -23,6 +23,9 @@ test.describe.serial("invite / revoke / switch flows", () => {
   const ownerA = makeUser("ownerA");
   const ownerC = makeUser("ownerC");
   const agentB = makeUser("agentB");
+  // Test 3 needs a pristine agent (never revoked/reassigned) so the accept
+  // flow doesn't hit stale-workspace edge cases from earlier tests.
+  const agentB2 = makeUser("agentB2");
 
   test("owner A can invite and agent B can accept", async ({ browser }) => {
     const a = await newUserContext(browser);
@@ -81,7 +84,7 @@ test.describe.serial("invite / revoke / switch flows", () => {
       await signInOrSignUp(a.page, ownerA);
       const inviteA = await generateInvite(a.page);
 
-      await signInOrSignUp(b.page, agentB);
+      await signInOrSignUp(b.page, agentB2);
       await acceptInvite(b.page, inviteA.code);
 
       // C creates a competing invite.
@@ -93,11 +96,11 @@ test.describe.serial("invite / revoke / switch flows", () => {
 
       // C's agents page shows B.
       await c.page.goto("/agents");
-      await expect(c.page.getByText(agentB.email)).toBeVisible({ timeout: 20_000 });
+      await expect(c.page.getByText(agentB2.email)).toBeVisible({ timeout: 20_000 });
 
       // A's agents page should show B as left/revoked.
       await a.page.goto("/agents");
-      const row = a.page.locator("li, tr, [data-agent-row]").filter({ hasText: agentB.email }).first();
+      const row = a.page.locator("li, tr, [data-agent-row]").filter({ hasText: agentB2.email }).first();
       await expect(row).toBeVisible({ timeout: 20_000 });
       await expect(row.getByText(/left|revoked|inactive/i).first()).toBeVisible({
         timeout: 20_000,
