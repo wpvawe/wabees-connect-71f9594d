@@ -66,6 +66,57 @@ function AnalyticsPage() {
   const { data: templates } = useTemplates();
   const { data: campaigns } = useCampaigns();
   const { data: contacts } = useContacts();
+  const { data: agents } = useAgents();
+  const { data: conversations } = useConversations();
+  const canSeeAgentPerf = useCanManageTeam();
+
+  // Build per-agent performance from live conversations + agents.
+  // Owner/Supervisor only — scoped agents don't see this section.
+  const agentPerf = (() => {
+    if (!canSeeAgentPerf || !agents || !conversations) return [];
+    const byId = new Map<string, {
+      id: string;
+      email: string;
+      role: string | null;
+      isOnline: boolean;
+      lastSeenAt: string | null;
+      total: number;
+      open: number;
+      resolved: number;
+      unread: number;
+    }>();
+    for (const a of agents) {
+      if (a.status !== "active") continue;
+      byId.set(a.id, {
+        id: a.id,
+        email: a.email || a.id,
+        role: a.role,
+        isOnline: a.isOnline,
+        lastSeenAt: a.lastSeenAt,
+        total: 0,
+        open: 0,
+        resolved: 0,
+        unread: 0,
+      });
+    }
+    let unassignedOpen = 0;
+    for (const c of conversations) {
+      if (!c.assignedAgentId) {
+        if ((c.state ?? "open") !== "resolved") unassignedOpen += 1;
+        continue;
+      }
+      const row = byId.get(c.assignedAgentId);
+      if (!row) continue;
+      row.total += 1;
+      if ((c.state ?? "open") === "resolved") row.resolved += 1;
+      else row.open += 1;
+      row.unread += c.unreadCount || 0;
+    }
+    const list = Array.from(byId.values()).sort((a, b) => b.total - a.total);
+    return [{ unassignedOpen }, list] as const;
+  })();
+  const unassignedOpen = Array.isArray(agentPerf) ? (agentPerf[0]?.unassignedOpen ?? 0) : 0;
+  const perfRows = Array.isArray(agentPerf) ? (agentPerf[1] ?? []) : [];
 
   const totalOut = data?.outgoing ?? 0;
   const delivery = data && totalOut > 0 ? Math.round((data.delivered / totalOut) * 100) : 0;
