@@ -28,6 +28,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useAiBotConfig, EMPTY_AI_CONFIG, type AiBotConfig } from "@/hooks/useAiBotConfig";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { fbDb } from "@/integrations/firebase/client";
