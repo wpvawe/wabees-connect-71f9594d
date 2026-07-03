@@ -27,6 +27,7 @@ import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
 import { useBots } from "@/hooks/useBots";
 import { useAgents } from "@/hooks/useAgents";
+import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,30 @@ function DashboardPage() {
   const { data: conversations } = useConversations();
   const { data: bots } = useBots();
   const { data: agents } = useAgents();
+  const { data: usageCounts } = useUsageCounts();
+
+  const messagesUsed = Math.max(
+    subscription?.messagesUsed ?? 0,
+    profile?.totalMessages ?? 0,
+    usageCounts.messages,
+  );
+  const contactsUsed = Math.max(
+    subscription?.contactsUsed ?? 0,
+    profile?.totalContacts ?? 0,
+    usageCounts.contacts,
+    contacts?.length ?? 0,
+  );
+  const campaignsUsed = Math.max(
+    subscription?.campaignsUsed ?? 0,
+    profile?.totalCampaigns ?? 0,
+    usageCounts.campaigns,
+  );
+  const botsUsed = Math.max(
+    subscription?.botsUsed ?? 0,
+    profile?.totalBots ?? 0,
+    usageCounts.bots,
+    bots?.length ?? 0,
+  );
 
   return (
     <>
@@ -116,28 +141,25 @@ function DashboardPage() {
               <UsageStat
                 icon={faPaperPlane}
                 label="Messages"
-                used={Math.max(
-                  subscription?.messagesUsed ?? 0,
-                  profile?.totalMessages ?? 0,
-                )}
+                used={messagesUsed}
                 max={subscription?.maxMessages ?? 0}
               />
               <UsageStat
                 icon={faAddressBook}
                 label="Contacts"
-                used={subscription?.contactsUsed ?? profile?.totalContacts ?? 0}
+                used={contactsUsed}
                 max={subscription?.maxContacts ?? 0}
               />
               <UsageStat
                 icon={faBullhorn}
                 label="Campaigns"
-                used={subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0}
+                used={campaignsUsed}
                 max={subscription?.maxCampaigns ?? 0}
               />
               <UsageStat
                 icon={faRobot}
                 label="Bots"
-                used={subscription?.botsUsed ?? profile?.totalBots ?? 0}
+                used={botsUsed}
                 max={subscription?.maxBots ?? 0}
               />
             </div>
