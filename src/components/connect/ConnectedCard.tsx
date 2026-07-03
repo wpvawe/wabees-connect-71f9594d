@@ -124,12 +124,11 @@ export function ConnectedCard({ row }: { row: Row }) {
                 </span>
                 <div>
                   <h4 className="text-sm font-semibold text-foreground">
-                    WABA ID optional hai, lekin important hai
+                    WABA ID is optional, but strongly recommended
                   </h4>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    WABA ID add karne se templates sync, account quality, limits aur business-level
-                    details available ho jati hain. Phone send/receive basic credentials se chal
-                    sakta hai.
+                    Adding a WABA ID enables template sync, account quality, limits and
+                    business-level details. Basic send/receive works without it.
                   </p>
                 </div>
               </div>
