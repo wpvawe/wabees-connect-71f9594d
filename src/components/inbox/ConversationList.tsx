@@ -65,6 +65,11 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
+import { BulkActionBar } from "@/components/inbox/BulkActionBar";
+import {
+  faCheck,
+  faSquareCheck,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Filter =
   | "all"
@@ -126,6 +131,31 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [incomingFallbacks, setIncomingFallbacks] = useState<Record<string, string | null>>({});
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const selectedList = useMemo(() => Array.from(selection), [selection]);
+  const toggleSelect = (phone: string) => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelection(new Set());
+    setSelectMode(false);
+  };
+  const enterSelect = (phone?: string) => {
+    setSelectMode(true);
+    if (phone) {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        next.add(phone);
+        return next;
+      });
+    }
+  };
   const [tagDialog, setTagDialog] = useState<{
     open: boolean;
     mode: "create" | "edit";
@@ -488,6 +518,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (selectMode) clearSelection();
+              else setSelectMode(true);
+            }}
+            title={selectMode ? "Exit select mode" : "Select multiple"}
+            className={cn(
+              "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+              selectMode
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            <FontAwesomeIcon icon={faSquareCheck} className="h-2.5 w-2.5" />
+            {selectMode ? `Selected ${selection.size}` : "Select"}
+          </button>
           {isPrivileged && (
             <FilterChip
               icon={faMailBulk}
@@ -616,6 +663,30 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           </div>
         ) : (
           <ul>
+            {selectMode && filtered && filtered.length > 0 && (
+              <li className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const all = filtered.map((c) => c.contactPhone);
+                    const allSelected = all.every((p) => selection.has(p));
+                    setSelection(allSelected ? new Set() : new Set(all));
+                  }}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  {filtered.every((c) => selection.has(c.contactPhone))
+                    ? "Deselect all"
+                    : `Select all ${filtered.length}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-muted-foreground hover:underline"
+                >
+                  Cancel
+                </button>
+              </li>
+            )}
             {filtered.map((c) => (
               <ConvRow
                 key={c.contactPhone}
@@ -624,11 +695,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 tagColors={tagColorMap(tags)}
                 incomingFallbackAt={incomingFallbacks[c.contactPhone] ?? null}
                 onContextMenu={(x, y) => setMenu({ phone: c.contactPhone, x, y })}
+                selectMode={selectMode}
+                selected={selection.has(c.contactPhone)}
+                onToggleSelect={() => toggleSelect(c.contactPhone)}
+                onLongPress={() => enterSelect(c.contactPhone)}
               />
             ))}
           </ul>
         )}
       </div>
+      {selectMode && selection.size > 0 && merged && (
+        <BulkActionBar
+          selected={selectedList}
+          conversations={merged}
+          tags={tags ?? []}
+          onClear={clearSelection}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -906,12 +989,20 @@ function ConvRow({
   tagColors,
   incomingFallbackAt,
   onContextMenu,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onLongPress,
 }: {
   c: Conversation;
   active: boolean;
   tagColors: Map<string, string>;
   incomingFallbackAt: string | null;
   onContextMenu: (x: number, y: number) => void;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onLongPress: () => void;
 }) {
   const fallback = useLastMessageFallback(
     c.contactPhone,
@@ -924,6 +1015,19 @@ function ConvRow({
   const displayName = c.contactName && c.contactName !== c.contactPhone ? c.contactName : "";
   const initials = (displayName || c.contactPhone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
   const freeChat = isConvInFreeWindow({ ...c, lastIncomingMessageAt: incomingFallbackAt ?? c.lastIncomingMessageAt });
+  const longPressTimer = useRef<number | null>(null);
+  const startLongPress = () => {
+    if (selectMode) return;
+    longPressTimer.current = window.setTimeout(() => {
+      onLongPress();
+    }, 450);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
   return (
     <li>
       <Link
@@ -934,11 +1038,31 @@ function ConvRow({
           e.preventDefault();
           onContextMenu(e.clientX, e.clientY);
         }}
+        onPointerDown={startLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onClick={(e) => {
+          if (selectMode) {
+            e.preventDefault();
+            onToggleSelect();
+          }
+        }}
         className={cn(
           "flex items-center gap-3 border-b border-border/60 px-3 py-3 transition-colors hover:bg-muted",
-          active && "bg-accent/40",
+          active && !selectMode && "bg-accent/40",
+          selected && "bg-primary/10",
         )}
       >
+        {selectMode && (
+          <div
+            className={cn(
+              "grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors",
+              selected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background",
+            )}
+          >
+            {selected && <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />}
+          </div>
+        )}
         <Avatar className="h-10 w-10 shrink-0">
           {c.profileImageUrl ? (
             <AvatarImage src={c.profileImageUrl} alt={displayName || c.contactPhone} />
