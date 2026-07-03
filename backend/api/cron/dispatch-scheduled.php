@@ -19,6 +19,8 @@
 require_once __DIR__ . '/../../config/firebase-config.php';
 
 header('Content-Type: application/json');
+ignore_user_abort(true);
+if (function_exists('set_time_limit')) @set_time_limit(55);
 
 // ---- Auth ---------------------------------------------------------------
 $expectedKey = getenv('WABEES_CRON_KEY') ?: '';
@@ -58,6 +60,11 @@ $nowIso = $now->format('Y-m-d\TH:i:s.v\Z');
 
 // ---- Query: due pending/sending globally -------------------------------
 $dueDocs = _fetch_due_scheduled_global($nowIso, 50);
+if (empty($dueDocs) && !empty($GLOBALS['_wabees_cron_global_query_failed'])) {
+    // If a Firestore project is missing the scheduled_messages collection-group
+    // index, fall back to a bounded per-user scan instead of doing nothing.
+    $dueDocs = _fetch_due_scheduled_per_user($nowIso, 10);
+}
 $processed = [];
 $staleWindowSec = 5 * 60;
 
