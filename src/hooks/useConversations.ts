@@ -30,6 +30,8 @@ export type Conversation = {
   assignedAgentEmail?: string | null;
   isDeleted?: boolean;
   notesCount?: number;
+  state?: "open" | "pending" | "resolved" | "snoozed";
+  snoozeUntil?: string | null;
 };
 
 function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -68,6 +70,8 @@ function mergeConversation(a: Conversation, b: Conversation): Conversation {
     assignedAgentEmail: firstNonEmpty(a.assignedAgentEmail, b.assignedAgentEmail),
     isDeleted: Boolean(a.isDeleted || b.isDeleted),
     notesCount: Math.max(a.notesCount ?? 0, b.notesCount ?? 0),
+    state: (b.state && b.state !== "open" ? b.state : a.state) ?? a.state ?? b.state,
+    snoozeUntil: fresherIso(a.snoozeUntil, b.snoozeUntil),
   };
 }
 
@@ -139,6 +143,11 @@ export function useConversations(): { data: Conversation[] | null; error: string
             assignedAgentEmail: strOrNull(x.assignedAgentEmail),
             isDeleted: x.isDeleted === true,
             notesCount: typeof x.notesCount === "number" ? Math.max(0, x.notesCount) : 0,
+            state: (() => {
+              const s = typeof x.state === "string" ? x.state : "open";
+              return s === "pending" || s === "resolved" || s === "snoozed" ? s : "open";
+            })(),
+            snoozeUntil: typeof x.snoozeUntil === "string" ? x.snoozeUntil : null,
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
