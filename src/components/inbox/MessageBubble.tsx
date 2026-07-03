@@ -194,6 +194,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
+  const [fullPickerOpen, setFullPickerOpen] = useState(false);
   const [errorOpen, setErrorOpen] = useState(false);
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
   // H-3 helper: reactions need a wamid to forward to Meta. Pending outgoing
@@ -385,6 +386,35 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               {e}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setReactOpen(false);
+              setFullPickerOpen(true);
+            }}
+            className="rounded-full px-1.5 py-0.5 text-base text-muted-foreground transition-transform hover:scale-125"
+            aria-label="More emojis"
+          >
+            ➕
+          </button>
+        </div>
+      )}
+
+      {fullPickerOpen && actions?.onReact && (
+        <div
+          className={cn(
+            "absolute z-30",
+            "bottom-full mb-1",
+            mine ? "right-0" : "left-0",
+          )}
+          onMouseLeave={() => setFullPickerOpen(false)}
+        >
+          <ReactionEmojiPickerLazy
+            onSelect={(emoji) => {
+              actions.onReact?.(m, emoji);
+              setFullPickerOpen(false);
+            }}
+          />
         </div>
       )}
 
@@ -683,6 +713,41 @@ function ReplyQuote({
         <p className="line-clamp-2 break-words opacity-90">{text}</p>
       </div>
     </div>
+  );
+}
+
+// Lazy-load emoji picker so its ~200KB bundle only ships when a user opens
+// the "more emojis" reaction picker.
+function ReactionEmojiPickerLazy({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    onEmojiClick: (e: { emoji: string }) => void;
+    width?: number;
+    height?: number;
+    lazyLoadEmojis?: boolean;
+  }> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void import("emoji-picker-react").then((m) => {
+      if (!cancelled) setComp(() => m.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!Comp) {
+    return (
+      <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground shadow-md">
+        Loading emoji…
+      </div>
+    );
+  }
+  return (
+    <Comp
+      onEmojiClick={(e) => onSelect(e.emoji)}
+      width={300}
+      height={360}
+      lazyLoadEmojis
+    />
   );
 }
 
