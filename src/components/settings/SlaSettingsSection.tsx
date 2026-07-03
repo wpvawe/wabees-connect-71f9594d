@@ -4,8 +4,6 @@
  * badge across the app.
  */
 import { useEffect, useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGaugeHigh } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
@@ -48,7 +46,6 @@ export function SlaSettingsSection() {
   return (
     <WbCard>
       <WbCardHeader
-        icon={<FontAwesomeIcon icon={faGaugeHigh} className="h-4 w-4" />}
         title="Response SLA"
         subtitle="Targets for first response and resolution. Zero disables the badge."
       />
