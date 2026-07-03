@@ -226,10 +226,12 @@ export function ContactsWorkspace() {
             <FontAwesomeIcon icon={faFileImport} className="h-3.5 w-3.5" />
             Import CSV
           </WbButton>)}
-          <WbButton variant="secondary" size="sm" onClick={onExport}>
-            <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5" />
-            Export
-          </WbButton>
+          {canWrite && (
+            <WbButton variant="secondary" size="sm" onClick={onExport}>
+              <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5" />
+              Export
+            </WbButton>
+          )}
           {canWrite && (<WbButton size="sm" onClick={() => setEditor({ open: true, contact: null })}>
             <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
             New contact
