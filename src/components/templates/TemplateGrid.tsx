@@ -234,7 +234,14 @@ export function TemplateGrid() {
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+    <div
+      className={cn(
+        "grid gap-5",
+        showSend && selected
+          ? "lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]"
+          : "lg:grid-cols-[minmax(0,1fr)_420px]",
+      )}
+    >
       {/* LEFT — searchable template list */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -288,19 +295,28 @@ export function TemplateGrid() {
         )}
       </div>
 
-      {/* RIGHT — sticky preview + actions */}
-      <div className="lg:sticky lg:top-4 lg:self-start space-y-4">
+      {/* RIGHT — sticky preview + actions. When Send Test is open, splits
+          into two columns so the preview stays visible next to the form. */}
+      <div className="lg:sticky lg:top-4 lg:self-start">
         {selected ? (
-          <>
-            <WhatsAppPreview
-              header={previewHeader}
-              headerFormat={selected.headerFormat ?? (selected.header ? "TEXT" : null)}
-              headerMediaUrl={selected.headerMediaUrl ?? null}
-              body={previewBody}
-              footer={selected.footer || null}
-              buttons={selected.buttons ?? []}
-              title={selected.name}
-            />
+          <div
+            className={cn(
+              "grid gap-4",
+              showSend ? "md:grid-cols-2" : "grid-cols-1",
+            )}
+          >
+            <div className="space-y-4">
+              <WhatsAppPreview
+                header={previewHeader}
+                headerFormat={selected.headerFormat ?? (selected.header ? "TEXT" : null)}
+                headerMediaUrl={selected.headerMediaUrl ?? null}
+                body={previewBody}
+                footer={selected.footer || null}
+                buttons={selected.buttons ?? []}
+                title={selected.name}
+              />
+            </div>
+            <div className="space-y-4">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Details
@@ -391,7 +407,8 @@ export function TemplateGrid() {
                 </div>
               </div>
             )}
-          </>
+            </div>
+          </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
             Select a template to preview it.
