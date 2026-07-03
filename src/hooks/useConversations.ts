@@ -75,6 +75,7 @@ function mergeConversation(a: Conversation, b: Conversation): Conversation {
     notesCount: Math.max(a.notesCount ?? 0, b.notesCount ?? 0),
     state: (b.state && b.state !== "open" ? b.state : a.state) ?? a.state ?? b.state,
     snoozeUntil: fresherIso(a.snoozeUntil, b.snoozeUntil),
+    priority: b.priority ?? a.priority ?? null,
   };
 }
 
