@@ -2372,6 +2372,12 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
     $userId = $user['id'];
 
     $triggered = false;
+    // Tracks whether ANY manual-text keyword matched (even if the bot was
+    // ultimately suppressed by cooldown / maxTriggersPerContact). Callers
+    // use this to decide whether the AI bot should also reply — a matched
+    // keyword ALWAYS wins over the AI bot, otherwise the second "Welcome"
+    // to the same contact would still trigger the AI and confuse the user.
+    $keywordMatched = false;
     foreach ($documents as $doc) {
         $fields = $doc['fields'] ?? [];
         // Handle isActive: Firestore REST returns booleanValue, JSON cache may vary
@@ -2559,6 +2565,13 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
 
         if (!$shouldTrigger)
             continue;
+
+        // Note keyword-based match up front so per-contact throttling below
+        // can still short-circuit `continue`, but the AI-bot suppression
+        // signal survives.
+        if (in_array($triggerType, ['exactMatch', 'startsWith', 'keyword', 'regex'], true)) {
+            $keywordMatched = true;
+        }
 
         // ============ PER-CONTACT LIMITS: maxTriggersPerContact & cooldownMinutes ============
         if ($maxTriggersPerContact > 0 || $cooldownMinutes > 0) {
@@ -2820,7 +2833,10 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
         break;
     }
 
-    return $triggered;
+    // Return true if a keyword matched at all — the AI bot must stand down
+    // even when the keyword bot was throttled, so the user's configured
+    // keyword reply always wins for its own trigger words.
+    return $triggered || $keywordMatched;
 }
 
 // ================================================================
