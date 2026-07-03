@@ -173,6 +173,14 @@ service cloud.firestore {
         allow read: if isAdmin();
       }
 
+      // ============ CSAT Surveys ============
+      // Owner + agents create surveys on resolve. Reads shared with team.
+      match /csat_surveys/{surveyId} {
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow delete: if isOwner(userId);
+      }
+
       // ============ Calls (active/signaling) ============
       match /calls/{callId} {
         allow read, write: if isOwner(userId) || isAgentOf(userId);

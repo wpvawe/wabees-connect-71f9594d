@@ -831,6 +831,35 @@ function Thread({ phone }: { phone: string }) {
                 />
                 {isResolved ? "Reopen conversation" : "Mark as resolved"}
               </button>
+              {csatSettings.enabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!uid || !selfUid) return;
+                    setHeaderMenu(false);
+                    void sendCsatSurvey({
+                      ownerUid: uid,
+                      phone: normalizePhone(phone),
+                      settings: csatSettings,
+                      actor: { uid: selfUid, email: selfEmail },
+                      assignedAgentId: conv?.assignedAgentId ?? null,
+                      assignedAgentEmail: conv?.assignedAgentEmail ?? null,
+                    })
+                      .then((id) =>
+                        id
+                          ? toast.success("CSAT survey sent")
+                          : toast.error("Could not send CSAT survey"),
+                      )
+                      .catch((e: unknown) =>
+                        toast.error(e instanceof Error ? e.message : "Send failed"),
+                      );
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-amber-600 hover:bg-muted"
+                >
+                  <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+                  Send CSAT survey now
+                </button>
+              )}
               <div className="relative" data-header-menu>
                 <button
                   type="button"
