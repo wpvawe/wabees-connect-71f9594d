@@ -1164,6 +1164,29 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // Normalize phone number: consistent +923xxxxxxxxx format
     $from = normalize_phone($from);
 
+    // ============ EARLY BLOCK CHECK (runs BEFORE any Firestore writes / FCM) ============
+    // The block flag lives on `users/{uid}/conversations/{+E164}.isBlocked`. If the
+    // owner (or an agent) toggled block from the app or website, drop the message
+    // completely — no message doc, no unread bump, no FCM, no bot reply.
+    // This check runs UNCONDITIONALLY (welcome-cache path used to skip it, which
+    // is why blocked contacts still delivered after the first message).
+    try {
+        $blockCheck = firestore_get("users/$userId/conversations/$from");
+        $blockCode  = $blockCheck['code'] ?? 404;
+        if ($blockCode === 200) {
+            $blkFields = $blockCheck['data']['fields'] ?? [];
+            $blkRaw = $blkFields['isBlocked']['booleanValue'] ?? false;
+            if ($blkRaw === true || $blkRaw === 'true') {
+                webhook_log("BLOCKED_EARLY: Dropping message from $from — contact is blocked by $userId (wamid=$messageId)");
+                if (!empty($lockFile)) @unlink($lockFile);
+                return true;
+            }
+        }
+    } catch (\Throwable $e) {
+        // Never let the block check break normal delivery on transient errors.
+        webhook_log('BLOCK_CHECK_ERR: ' . $e->getMessage());
+    }
+
     // Get contact name from webhook data
     $contactName = $from;
     foreach ($contacts as $contact) {
