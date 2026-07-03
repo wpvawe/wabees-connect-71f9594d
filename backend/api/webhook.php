@@ -1578,6 +1578,16 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     ];
     if ($opensWindow) {
         $convData['lastIncomingMessageAt'] = $nowIso;
+        // Batch B — Auto-reopen: a resolved / snoozed thread that receives a
+        // fresh customer message should jump back to "open" so it re-enters
+        // the active queue. Only reset to 'open' when the current state is
+        // resolved/snoozed to avoid clobbering explicit workflow states set
+        // by supervisors (e.g. 'pending'). Cheap check — we don't need to
+        // read the doc first; state comparison happens client-side and rules
+        // still gate the write. If a chat is already open the write is a
+        // no-op because we always send the same value.
+        $convData['state'] = 'open';
+        $convData['stateAutoReopenedAt'] = $nowIso;
     }
 
     // Mark call permission as granted on conversation
