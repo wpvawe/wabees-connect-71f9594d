@@ -57,7 +57,25 @@ service cloud.firestore {
       // ============ Agents ============
       match /agents/{agentId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId) || request.auth.uid == agentId || isAdmin();
+        // Owner or admin can freely manage agents.
+        allow write: if isOwner(userId) || isAdmin();
+        // Invitee may create their OWN agent doc only when a matching
+        // invite exists in the global mirror with acceptedBy == self and
+        // ownerId == this workspace owner. This closes the C-2 escalation
+        // where any signed-in user could create an agent doc under any
+        // owner just because request.auth.uid == agentId.
+        allow create: if request.auth != null
+          && request.auth.uid == agentId
+          && request.resource.data.inviteCode is string
+          && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
+          && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
+          && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid;
+        // Agent may update its OWN doc (presence, lastSeen, skills) but
+        // cannot re-activate a revoked assignment or change ownership.
+        allow update: if request.auth != null
+          && request.auth.uid == agentId
+          && resource.data.get('status', 'active') != 'revoked'
+          && request.resource.data.get('status', 'active') != 'revoked';
       }
 
       // ============ Messages ============
