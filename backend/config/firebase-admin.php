@@ -37,7 +37,7 @@ function get_firebase_admin_token()
     $t = microtime(true);
 
     // 1. In-memory cache (same request only — fastest)
-    if (!empty($GLOBALS['_fb_admin_token']) && time() < ($GLOBALS['_fb_admin_token_exp'] ?? 0)) {
+    if (!empty($GLOBALS['_fb_admin_token']) && time() < (($GLOBALS['_fb_admin_token_exp'] ?? 0) - 30)) {
         return $GLOBALS['_fb_admin_token'];
     }
 
@@ -173,9 +173,14 @@ function _get_token_from_jwt_exchange($timeout = 10)
  */
 function _store_token_all_caches($token, $expiresAt)
 {
+    $ttl = (int) $expiresAt - time();
+    if ($ttl <= 30) {
+        clear_firebase_admin_token_cache();
+        return;
+    }
+
     // APCu (persists across PHP-FPM requests, ~0ms access)
     if (function_exists('apcu_store')) {
-        $ttl = max(0, $expiresAt - time());
         apcu_store(APCU_TOKEN_KEY, $token, $ttl);
         apcu_store(APCU_TOKEN_EXP_KEY, $expiresAt, $ttl);
     }
@@ -186,6 +191,23 @@ function _store_token_all_caches($token, $expiresAt)
 
     // File cache (survives worker restarts)
     _save_cached_token($token, $expiresAt);
+}
+
+/**
+ * Clear all admin-token caches. Firestore helpers call this before retrying a
+ * 401 so cron/webhook can self-heal without waiting for PHP/APCu expiry.
+ */
+function clear_firebase_admin_token_cache()
+{
+    unset($GLOBALS['_fb_admin_token'], $GLOBALS['_fb_admin_token_exp']);
+    if (function_exists('apcu_delete')) {
+        @apcu_delete(APCU_TOKEN_KEY);
+        @apcu_delete(APCU_TOKEN_EXP_KEY);
+        // Best-effort cleanup for the legacy keys too.
+        @apcu_delete('wabees_fb_admin_token');
+        @apcu_delete('wabees_fb_admin_token_exp');
+    }
+    @unlink(TOKEN_CACHE_PATH);
 }
 
 /**
