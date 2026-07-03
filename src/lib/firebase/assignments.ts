@@ -222,6 +222,7 @@ export type PickCandidate = {
   status?: string;
   isOnline?: boolean;
   activeLoad?: number;
+  skills?: string[];
 };
 
 export function pickRoundRobinAgent(
@@ -239,4 +240,71 @@ export function pickRoundRobinAgent(
   const online = eligible.filter((a) => a.isOnline).sort(byLoad);
   if (online.length > 0) return online[0];
   return [...eligible].sort(byLoad)[0];
+}
+
+// ============================================================
+// Batch E — Skills-based routing
+// ============================================================
+
+/**
+ * Pick an agent whose declared skills best cover the required skills for a
+ * conversation (typically its tags). Ranking:
+ *   1. Highest number of matched skills (must be > 0 to be considered a match).
+ *   2. Online agents preferred within the top match tier.
+ *   3. Lowest `activeLoad` inside the tier (load-balanced round-robin).
+ *
+ * If no eligible agent has any skill overlap, falls back to plain
+ * round-robin — never blocks routing.
+ */
+export function pickSkillsMatchAgent(
+  agents: PickCandidate[],
+  requiredSkills: string[],
+  excludeAgentId: string | null = null,
+): PickCandidate | null {
+  const eligible = agents.filter(
+    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+  );
+  if (eligible.length === 0) return null;
+
+  const req = Array.from(
+    new Set(
+      requiredSkills
+        .map((s) => (typeof s === "string" ? s.trim().toLowerCase() : ""))
+        .filter(Boolean),
+    ),
+  );
+  if (req.length === 0) return pickRoundRobinAgent(eligible, excludeAgentId);
+
+  const scored = eligible.map((a) => {
+    const s = new Set((a.skills ?? []).map((x) => x.toLowerCase()));
+    const matched = req.reduce((n, k) => n + (s.has(k) ? 1 : 0), 0);
+    return { a, matched };
+  });
+  const maxMatched = scored.reduce((m, r) => (r.matched > m ? r.matched : m), 0);
+  if (maxMatched === 0) return pickRoundRobinAgent(eligible, excludeAgentId);
+
+  const top = scored.filter((r) => r.matched === maxMatched).map((r) => r.a);
+  const byLoad = (a: PickCandidate, b: PickCandidate) =>
+    (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
+  const online = top.filter((a) => a.isOnline).sort(byLoad);
+  if (online.length > 0) return online[0];
+  return [...top].sort(byLoad)[0];
+}
+
+/** Owner-only: update an agent's skills catalog. */
+export async function updateAgentSkills(
+  ownerUid: string,
+  agentId: string,
+  skills: string[],
+): Promise<void> {
+  const normalized = Array.from(
+    new Set(
+      skills
+        .map((s) => (typeof s === "string" ? s.trim().toLowerCase() : ""))
+        .filter(Boolean),
+    ),
+  );
+  await updateDoc(doc(fbDb(), `users/${ownerUid}/agents/${agentId}`), {
+    skills: normalized,
+  });
 }
