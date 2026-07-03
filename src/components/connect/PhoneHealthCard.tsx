@@ -12,7 +12,7 @@ import { getIdToken } from "firebase/auth";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { fbAuth } from "@/integrations/firebase/client";
+import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
 
 type Health = {
@@ -25,7 +25,7 @@ type Health = {
   throughput_level: string;
 };
 
-const ENDPOINT = "https://api.wabees.live/api/phone-health.php";
+const ENDPOINT = `${WABEES_API_BASE}/phone-health.php`;
 
 export function PhoneHealthCard({
   phoneNumberId,
