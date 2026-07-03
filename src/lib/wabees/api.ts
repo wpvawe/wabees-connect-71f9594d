@@ -6,6 +6,7 @@
  */
 import { WABEES_API_BASE } from "@/integrations/firebase/client";
 import { fbAuth } from "@/integrations/firebase/client";
+import { META_GRAPH_BASE_URL } from "@/lib/constants/meta";
 
 export type WabeesApiResult<T = unknown> = {
   success: boolean;
@@ -390,13 +391,13 @@ export async function deleteMetaTemplate(args: {
     /* fall through to direct Graph call */
   }
 
-  // 2) Direct Meta Graph (v21.0) — matches Flutter app.
+  // 2) Direct Meta Graph (version from central constant) — matches Flutter app.
   const q = new URLSearchParams({
     name: args.name,
     access_token: args.access_token,
   });
   if (args.hsm_id) q.set("hsm_id", args.hsm_id);
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(args.business_account_id)}/message_templates?${q.toString()}`;
+  const url = `${META_GRAPH_BASE_URL}/${encodeURIComponent(args.business_account_id)}/message_templates?${q.toString()}`;
   const res = await fetch(url, { method: "DELETE" });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   const err = raw.error && typeof raw.error === "object" ? (raw.error as { message?: string; code?: number }) : null;
@@ -467,7 +468,7 @@ export async function editMetaTemplate(args: {
   const body: Record<string, unknown> = {};
   if (args.category) body.category = args.category;
   if (args.components) body.components = args.components;
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(args.hsm_id)}`;
+  const url = `${META_GRAPH_BASE_URL}/${encodeURIComponent(args.hsm_id)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
