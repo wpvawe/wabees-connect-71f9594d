@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faNoteSticky,
@@ -340,8 +340,8 @@ function formatNoteTime(value: string | null): string {
  * Render a note body with `@mention` tokens highlighted. Splits on the same
  * regex used by parseMentions so display and persistence agree.
  */
-function renderNoteBody(body: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
+function renderNoteBody(body: string): ReactNode {
+  const parts: ReactNode[] = [];
   const re = /@([A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g;
   let last = 0;
   let match: RegExpExecArray | null;
