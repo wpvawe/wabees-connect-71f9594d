@@ -27,6 +27,16 @@ export type Plan = {
   isPopular: boolean;
   isWelcomePlan: boolean;
   createdAt: string | null;
+  showOnPublic: boolean;
+  offer: PlanOffer | null;
+};
+
+export type PlanOffer = {
+  active: boolean;
+  label: string;
+  discountPct: number | null;
+  priceOverride: number | null;
+  endsAt: string | null;
 };
 
 function str(x: unknown, fallback = ""): string {
@@ -39,6 +49,21 @@ function num(x: unknown, fallback = 0): number {
 
 function bool(x: unknown, fallback = false): boolean {
   return typeof x === "boolean" ? x : fallback;
+}
+
+function parseOffer(x: unknown): PlanOffer | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  const active = bool(o.active);
+  const label = str(o.label);
+  if (!active && !label) return null;
+  return {
+    active,
+    label: label || "Special offer",
+    discountPct: typeof o.discountPct === "number" ? o.discountPct : null,
+    priceOverride: typeof o.priceOverride === "number" ? o.priceOverride : null,
+    endsAt: toIso(o.endsAt),
+  };
 }
 
 export function usePlans(): { data: Plan[] | null; error: string | null } {
@@ -80,6 +105,8 @@ export function usePlans(): { data: Plan[] | null; error: string | null } {
               isPopular: bool(x.isPopular),
               isWelcomePlan: bool(x.isWelcomePlan),
               createdAt: toIso(x.createdAt),
+              showOnPublic: x.showOnPublic !== false,
+              offer: parseOffer(x.offer),
             };
           })
           .filter((p) => p.isActive)
