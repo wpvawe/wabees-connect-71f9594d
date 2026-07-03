@@ -16,8 +16,14 @@
 define('SERVICE_ACCOUNT_PATH', __DIR__ . '/service-account.json');
 
 // Cache keys
-define('APCU_TOKEN_KEY', 'wabees_fb_admin_token');
-define('APCU_TOKEN_EXP_KEY', 'wabees_fb_admin_token_exp');
+// v2 intentionally ignores older APCu/file entries because the old loader
+// re-saved cached tokens with a fresh `time() + 300` expiry. A cron/webhook
+// hit every minute could therefore keep an already-expired Google OAuth token
+// alive forever, causing Firestore 401 ACCESS_TOKEN_EXPIRED and breaking both
+// incoming-message writes and scheduled-message dispatch.
+define('TOKEN_CACHE_VERSION', 2);
+define('APCU_TOKEN_KEY', 'wabees_fb_admin_token_v2');
+define('APCU_TOKEN_EXP_KEY', 'wabees_fb_admin_token_exp_v2');
 define('TOKEN_CACHE_PATH', __DIR__ . '/../logs/token-cache.json');
 
 /**
@@ -31,7 +37,7 @@ function get_firebase_admin_token()
     $t = microtime(true);
 
     // 1. In-memory cache (same request only — fastest)
-    if (!empty($GLOBALS['_fb_admin_token']) && time() < ($GLOBALS['_fb_admin_token_exp'] ?? 0)) {
+    if (!empty($GLOBALS['_fb_admin_token']) && time() < (($GLOBALS['_fb_admin_token_exp'] ?? 0) - 30)) {
         return $GLOBALS['_fb_admin_token'];
     }
 
@@ -49,8 +55,9 @@ function get_firebase_admin_token()
     // 3. File cache (PRIMARY on shared hosting — survives across requests)
     $cached = _load_cached_token();
     if ($cached) {
-        _store_token_all_caches($cached, time() + 300);
-        return $cached;
+        // Preserve the real OAuth expiry. Never extend a cached token's life.
+        _store_token_all_caches($cached['token'], $cached['expires_at']);
+        return $cached['token'];
     }
 
     // 4. JWT exchange using wabees-app service account
@@ -166,9 +173,14 @@ function _get_token_from_jwt_exchange($timeout = 10)
  */
 function _store_token_all_caches($token, $expiresAt)
 {
+    $ttl = (int) $expiresAt - time();
+    if ($ttl <= 30) {
+        clear_firebase_admin_token_cache();
+        return;
+    }
+
     // APCu (persists across PHP-FPM requests, ~0ms access)
     if (function_exists('apcu_store')) {
-        $ttl = max(0, $expiresAt - time());
         apcu_store(APCU_TOKEN_KEY, $token, $ttl);
         apcu_store(APCU_TOKEN_EXP_KEY, $expiresAt, $ttl);
     }
@@ -179,6 +191,23 @@ function _store_token_all_caches($token, $expiresAt)
 
     // File cache (survives worker restarts)
     _save_cached_token($token, $expiresAt);
+}
+
+/**
+ * Clear all admin-token caches. Firestore helpers call this before retrying a
+ * 401 so cron/webhook can self-heal without waiting for PHP/APCu expiry.
+ */
+function clear_firebase_admin_token_cache()
+{
+    unset($GLOBALS['_fb_admin_token'], $GLOBALS['_fb_admin_token_exp']);
+    if (function_exists('apcu_delete')) {
+        @apcu_delete(APCU_TOKEN_KEY);
+        @apcu_delete(APCU_TOKEN_EXP_KEY);
+        // Best-effort cleanup for the legacy keys too.
+        @apcu_delete('wabees_fb_admin_token');
+        @apcu_delete('wabees_fb_admin_token_exp');
+    }
+    @unlink(TOKEN_CACHE_PATH);
 }
 
 /**
@@ -193,10 +222,18 @@ function _load_cached_token()
     if (!$cache || empty($cache['token']) || empty($cache['expires_at']))
         return null;
 
+    // Do not trust legacy cache files that may contain an artificially
+    // extended expiry from the previous cache refresh bug.
+    if (($cache['cache_version'] ?? 0) !== TOKEN_CACHE_VERSION)
+        return null;
+
     if (time() >= ($cache['expires_at'] - 30))
         return null;
 
-    return $cache['token'];
+    return [
+        'token' => $cache['token'],
+        'expires_at' => (int) $cache['expires_at'],
+    ];
 }
 
 /**
@@ -209,6 +246,7 @@ function _save_cached_token($token, $expiresAt)
         @mkdir($dir, 0755, true);
     }
     @file_put_contents(TOKEN_CACHE_PATH, json_encode([
+        'cache_version' => TOKEN_CACHE_VERSION,
         'token' => $token,
         'expires_at' => $expiresAt,
         'created_at' => date('Y-m-d H:i:s'),

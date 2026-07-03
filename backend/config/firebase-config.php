@@ -47,6 +47,27 @@ function _firestore_curl()
 }
 
 /**
+ * Google occasionally returns 401 when an OAuth token has expired but a shared
+ * Hostinger cache still serves it. Clear every token cache and retry once.
+ */
+function _firestore_should_retry_auth($httpCode, $response)
+{
+    if ((int) $httpCode === 401) return true;
+    if (!is_string($response) || $response === '') return false;
+    return stripos($response, 'ACCESS_TOKEN_EXPIRED') !== false
+        || stripos($response, 'UNAUTHENTICATED') !== false
+        || stripos($response, 'invalid_token') !== false;
+}
+
+function _firestore_refresh_auth_headers()
+{
+    if (function_exists('clear_firebase_admin_token_cache')) {
+        clear_firebase_admin_token_cache();
+    }
+    return get_firebase_auth_headers();
+}
+
+/**
  * Firestore REST API helper
  * Write/overwrite a document to Firestore via REST API (authenticated)
  * Defaults to MERGE behavior to prevent data loss.
@@ -76,6 +97,13 @@ function firestore_set($path, $data, $merge = true)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_set auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_set FAILED ($httpCode) path=$path err=" . curl_error($ch));
@@ -119,6 +147,13 @@ function firestore_update($path, $data, $updateMask = [])
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_update auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_update FAILED ($httpCode) path=$path err=" . curl_error($ch));
     }
@@ -146,6 +181,13 @@ function firestore_commit($writes)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log('[WABEES] firestore_commit auth retry');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         $curlError = curl_error($ch);
@@ -242,6 +284,13 @@ function firestore_query($collectionPath, $field, $op, $value)
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_query auth retry path=$collectionPath");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_query FAILED ($httpCode) path=$collectionPath err=" . curl_error($ch));
     }
@@ -322,6 +371,12 @@ function find_user_by_whatsapp_config($phoneNumberId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] find_user_by_whatsapp_config auth retry phoneNumberId=$phoneNumberId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
 
     if ($httpCode >= 400) {
@@ -395,6 +450,12 @@ function find_all_users_by_whatsapp_config($phoneNumberId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] find_all_users_by_whatsapp_config auth retry phoneNumberId=$phoneNumberId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
 
     if ($httpCode >= 400) {
@@ -474,6 +535,12 @@ function get_user_access_token($userId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] get_user_access_token auth retry user=$userId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode < 400 && $httpCode > 0) {
         $doc = json_decode($response, true);
@@ -497,6 +564,12 @@ function get_user_access_token($userId)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] get_user_access_token config auth retry user=$userId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] get_user_access_token: whatsapp_config query FAILED ($httpCode)");
@@ -534,6 +607,13 @@ function firestore_get($path)
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_get auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_get FAILED ($httpCode) path=$path err=" . curl_error($ch));
     }
@@ -570,6 +650,20 @@ function convert_single_value($value)
         }
         return ['stringValue' => $value];
     } elseif (is_array($value)) {
+        // Allow callers to pass raw Firestore REST value objects, e.g.
+        // ['timestampValue' => '...'] or ['increment' => ...]. Without this,
+        // helper timestamps were accidentally written as mapValue.timestampValue,
+        // which breaks scheduled-message queries and chronological sorting.
+        $rawValueKeys = [
+            'nullValue', 'booleanValue', 'integerValue', 'doubleValue',
+            'timestampValue', 'stringValue', 'bytesValue', 'referenceValue',
+            'geoPointValue', 'arrayValue', 'mapValue',
+        ];
+        foreach ($rawValueKeys as $rawKey) {
+            if (array_key_exists($rawKey, $value)) {
+                return $value;
+            }
+        }
         if (empty($value)) {
             return ['arrayValue' => ['values' => []]];
         }
