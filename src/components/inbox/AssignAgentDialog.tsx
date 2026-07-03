@@ -206,6 +206,11 @@ export function AssignAgentDialog({
                       {(a.role ?? "agent")}
                       {a.activeLoad ? ` · ${a.activeLoad} active` : ""}
                       {revoked ? " · revoked" : ""}
+                      {a.availability === "dnd"
+                        ? " · DND (skipped by auto-route)"
+                        : a.availability === "away"
+                        ? " · away"
+                        : ""}
                       {skills.length > 0 ? ` · ${skills.slice(0, 4).join(", ")}${skills.length > 4 ? "…" : ""}` : ""}
                     </p>
                   </div>
