@@ -573,6 +573,15 @@ function AgentsPage() {
           />
         );
       })()}
+      {isOwner && selfUid && (
+        <InviteAgentDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          ownerUid={selfUid}
+          ownerEmail={currentEmail}
+          ownerBusinessName={owner?.businessName ?? owner?.displayName ?? null}
+        />
+      )}
     </>
   );
 }
