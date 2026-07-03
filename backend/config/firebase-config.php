@@ -47,6 +47,27 @@ function _firestore_curl()
 }
 
 /**
+ * Google occasionally returns 401 when an OAuth token has expired but a shared
+ * Hostinger cache still serves it. Clear every token cache and retry once.
+ */
+function _firestore_should_retry_auth($httpCode, $response)
+{
+    if ((int) $httpCode === 401) return true;
+    if (!is_string($response) || $response === '') return false;
+    return stripos($response, 'ACCESS_TOKEN_EXPIRED') !== false
+        || stripos($response, 'UNAUTHENTICATED') !== false
+        || stripos($response, 'invalid_token') !== false;
+}
+
+function _firestore_refresh_auth_headers()
+{
+    if (function_exists('clear_firebase_admin_token_cache')) {
+        clear_firebase_admin_token_cache();
+    }
+    return get_firebase_auth_headers();
+}
+
+/**
  * Firestore REST API helper
  * Write/overwrite a document to Firestore via REST API (authenticated)
  * Defaults to MERGE behavior to prevent data loss.
