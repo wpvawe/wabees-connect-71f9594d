@@ -23,6 +23,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
+import { useCan } from "@/lib/auth/permissions";
 import { Composer } from "@/components/inbox/Composer";
 import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightbox";
 import { ForwardDialog } from "@/components/inbox/ForwardDialog";
