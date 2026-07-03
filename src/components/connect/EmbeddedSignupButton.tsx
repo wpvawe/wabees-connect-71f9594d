@@ -5,8 +5,13 @@ import { faFacebook } from "@fortawesome/free-brands-svg-icons";
 import { toast } from "sonner";
 import { WbButton } from "@/components/wb/WbButton";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
-import { exchangeWhatsAppCode } from "@/lib/wabees/api";
+import {
+  exchangeWhatsAppCode,
+  listWhatsAppAccounts,
+  type BusinessOption,
+} from "@/lib/wabees/api";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { AccountPickerDialog, type PickedAccount } from "./AccountPickerDialog";
 
 /**
  * Meta Embedded Signup — fully-auto WhatsApp Business onboarding.
@@ -90,6 +95,10 @@ function loadFbSdk(): Promise<FBStatic> {
 export function EmbeddedSignupButton() {
   const uid = useFirebaseUid();
   const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerBusinesses, setPickerBusinesses] = useState<BusinessOption[]>([]);
+  const pendingTokenRef = useRef<string | null>(null);
   // Capture the WA_EMBEDDED_SIGNUP postMessage (carries phone_number_id +
   // waba_id even before our server-side discovery runs). Useful for logging
   // / fallback, not required for success.
@@ -171,6 +180,30 @@ export function EmbeddedSignupButton() {
         throw new Error(ex.message ?? "Token exchange failed");
       }
       const d = ex.data;
+
+      // Discover every business/WABA/phone the token can see. If there is
+      // more than one phone total, open the multi-step picker so the user
+      // chooses which number to link.
+      let totalPhones = 0;
+      let businesses: BusinessOption[] = [];
+      try {
+        const list = await listWhatsAppAccounts({ access_token: d.access_token });
+        if (list.success && list.data?.businesses) {
+          businesses = list.data.businesses;
+          for (const b of businesses)
+            for (const w of b.wabas) totalPhones += w.phones.length;
+        }
+      } catch {
+        /* fall through to single-phone save */
+      }
+
+      if (totalPhones > 1) {
+        pendingTokenRef.current = d.access_token;
+        setPickerBusinesses(businesses);
+        setPickerOpen(true);
+        return; // save happens after the user picks
+      }
+
       await saveWhatsAppConfig({
         uid,
         phone_number_id: d.phone_number_id,
@@ -188,6 +221,35 @@ export function EmbeddedSignupButton() {
     }
   }
 
+  async function handlePick(a: PickedAccount) {
+    if (!uid) return;
+    const token = pendingTokenRef.current;
+    if (!token) {
+      toast.error("Session expired, please retry");
+      setPickerOpen(false);
+      return;
+    }
+    setPickerBusy(true);
+    try {
+      await saveWhatsAppConfig({
+        uid,
+        phone_number_id: a.phone.id,
+        access_token: token,
+        waba_id: a.waba.id,
+        display_phone: a.phone.display_phone_number || undefined,
+        business_name: a.phone.verified_name || a.business.name || undefined,
+        quality_rating: a.phone.quality_rating || undefined,
+      });
+      toast.success(`Connected ${a.phone.display_phone_number || a.phone.id}`);
+      setPickerOpen(false);
+      pendingTokenRef.current = null;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save selected number");
+    } finally {
+      setPickerBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <WbButton onClick={start} loading={busy} className="w-full">
@@ -202,6 +264,16 @@ export function EmbeddedSignupButton() {
         One popup — select your business, pick a phone number, done. No tokens to copy, no IDs to
         find. Same auto-flow as the mobile app.
       </p>
+      <AccountPickerDialog
+        open={pickerOpen}
+        onOpenChange={(v) => {
+          setPickerOpen(v);
+          if (!v) pendingTokenRef.current = null;
+        }}
+        businesses={pickerBusinesses}
+        onPick={handlePick}
+        busy={pickerBusy}
+      />
     </div>
   );
 }
