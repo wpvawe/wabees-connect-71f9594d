@@ -3147,22 +3147,34 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
 
     // 1. Check admin + user AI bot toggles (both cached)
     $userDoc = firestore_get_cached("users/$userId", 600);
-    if (($userDoc['code'] ?? 404) !== 200)
+    if (($userDoc['code'] ?? 404) !== 200) {
+        webhook_log("AI_BOT: SKIP — users/$userId doc missing (code=" . ($userDoc['code'] ?? 'n/a') . ")");
         return;
+    }
     $userDocFields = $userDoc['data']['fields'] ?? [];
     $aiBotEnabled = ($userDocFields['aiBotEnabled']['booleanValue'] ?? false);
-    if ($aiBotEnabled === false || $aiBotEnabled === 'false')
+    if ($aiBotEnabled === false || $aiBotEnabled === 'false') {
+        webhook_log("AI_BOT: SKIP — admin has not enabled AI bot for user $userId (aiBotEnabled=false)");
         return;
+    }
 
     $configResp = firestore_get_cached("users/$userId/bot_config/settings", 300);
-    if (($configResp['code'] ?? 404) !== 200)
+    if (($configResp['code'] ?? 404) !== 200) {
+        webhook_log("AI_BOT: SKIP — bot_config/settings missing for $userId (user has not configured AI bot yet)");
         return;
+    }
     $configFields = $configResp['data']['fields'] ?? [];
     $enabled = ($configFields['enabled']['booleanValue'] ?? false);
-    if ($enabled === false || $enabled === 'false')
+    if ($enabled === false || $enabled === 'false') {
+        webhook_log("AI_BOT: SKIP — user $userId has AI bot toggle OFF in settings");
         return;
+    }
 
-    // 2. Per-contact cooldown — prevent rapid-fire/duplicate AI replies
+    webhook_log("AI_BOT: gates passed for user=$userId contact=$clientPhone — proceeding");
+
+    // 2. Per-contact cooldown — prevent rapid-fire/duplicate AI replies.
+    // Check BEFORE writing so a cooldown hit doesn't waste disk I/O; write
+    // only after we're committed to processing this message.
     $cooldownFile = sys_get_temp_dir() . '/wabees_ai_cd_' . md5($userId . '_' . $clientPhone) . '.lock';
     if (file_exists($cooldownFile) && (time() - filemtime($cooldownFile)) < AI_BOT_COOLDOWN_SECONDS) {
         webhook_log("AI_BOT: COOLDOWN active for $clientPhone — skipping");
