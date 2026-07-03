@@ -101,6 +101,12 @@ function compactConversationWrite(c: Conversation): Record<string, unknown> {
   return out;
 }
 
+function priorityRank(p: Conversation["priority"]): number {
+  if (p === "urgent") return 3;
+  if (p === "high") return 2;
+  return 0;
+}
+
 export function useConversations(): { data: Conversation[] | null; error: string | null } {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Conversation[] | null>(null);
