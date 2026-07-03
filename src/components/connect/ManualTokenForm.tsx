@@ -6,7 +6,6 @@ import {
   faCircleInfo,
   faLock,
   faPhone,
-  faShieldHalved,
   faSitemap,
 } from "@fortawesome/free-solid-svg-icons";
 import { manualConnectSchema, type ManualConnectValues } from "@/lib/schemas/meta";
