@@ -34,7 +34,7 @@ import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import {
   sendReactionMessage,
@@ -65,6 +65,8 @@ function Thread({ phone }: { phone: string }) {
   const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const session = useFirebaseSession();
+  const selfEmail = session.status === "ready" ? session.user.email ?? null : null;
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
@@ -460,7 +462,7 @@ function Thread({ phone }: { phone: string }) {
         uid,
         convId,
         isResolved ? "open" : "resolved",
-        { uid: selfUid },
+        { uid: selfUid, email: selfEmail },
       );
       toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
     } catch (e) {
@@ -469,7 +471,7 @@ function Thread({ phone }: { phone: string }) {
       setStateBusy(false);
       setHeaderMenu(false);
     }
-  }, [uid, selfUid, phone, isResolved]);
+  }, [uid, selfUid, selfEmail, phone, isResolved]);
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
