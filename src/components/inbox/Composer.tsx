@@ -10,6 +10,8 @@ import {
   faFaceSmile,
   faBolt,
 } from "@fortawesome/free-solid-svg-icons";
+import { faClock, faFileLines } from "@fortawesome/free-solid-svg-icons";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
 import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
@@ -55,11 +57,13 @@ export function Composer({
   replyTo,
   onClearReply,
   lastInboundWamid,
+  lastInboundAt,
 }: {
   phone: string;
   replyTo?: Message | null;
   onClearReply?: () => void;
   lastInboundWamid?: string | null;
+  lastInboundAt?: string | null;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -573,8 +577,33 @@ export function Composer({
 
   const disabled = sending || uploading || recording;
 
+  // WhatsApp 24-hour customer service window — derived from the last inbound
+  // message. Meta silently drops free-form outbound sends when the window is
+  // closed, so we block the composer and route the user to templates instead.
+  // Ticks every 30s to keep the countdown fresh without re-rendering per second.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const iv = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(iv);
+  }, []);
+  const windowInfo = (() => {
+    if (!lastInboundAt) {
+      return { hasInbound: false, open: false, expiresAt: 0, remainingMs: 0 };
+    }
+    const ts = new Date(lastInboundAt).getTime();
+    if (!Number.isFinite(ts)) {
+      return { hasInbound: false, open: false, expiresAt: 0, remainingMs: 0 };
+    }
+    const expiresAt = ts + 24 * 60 * 60 * 1000;
+    const remainingMs = expiresAt - nowTick;
+    return { hasInbound: true, open: remainingMs > 0, expiresAt, remainingMs };
+  })();
+  const windowClosed = !windowInfo.open;
+  const composerDisabled = disabled || windowClosed;
+
   return (
     <div className="border-t border-border bg-card">
+      <WindowStatusBar info={windowInfo} />
       {replyTo && (
         <div className="flex items-start gap-2 border-b border-border bg-muted/40 px-3 py-2">
           <div className="h-full w-1 self-stretch rounded-full bg-primary" />
