@@ -8,8 +8,6 @@
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { toast } from "sonner";
-import { playNotificationChime } from "@/lib/notification-sound";
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -107,38 +105,11 @@ export async function initFcm(input: InitFcmInput): Promise<void> {
       }
     }
     if (listening) return;
-    onMessage(messaging, (payload) => {
-      const title =
-        payload.notification?.title ||
-        (payload.data?.title as string | undefined) ||
-        "New message";
-      const body =
-        payload.notification?.body || (payload.data?.body as string | undefined) || "";
-      toast(title, { description: body });
-      // Only fire the system-level Notification when the tab is hidden.
-      // Otherwise the user sees BOTH a toast and an OS popup for the same
-      // message — jarring and easy to mis-click.
-      const hidden =
-        typeof document !== "undefined" && document.visibilityState === "hidden";
-      if (hidden && Notification.permission === "granted") {
-        try {
-          new Notification(title, {
-            body,
-            icon: "/wabees-icon.png",
-            badge: "/wabees-icon.png",
-            tag: (payload.data?.tag as string | undefined) || "wabees-message",
-            data: payload.data || {},
-          });
-        } catch {
-          /* ignore */
-        }
-      }
-      // Play a short ping for new-message feel. Uses the WebAudio-based
-      // notification chime so we never depend on a real audio source (the old
-      // inline base64 MP3 was an empty ID3 header that some browsers reject
-      // with NotSupportedError, polluting the console).
-      playNotificationChime();
-    });
+    // Foreground push handler is a no-op. Sound + in-app toast come from the
+    // single Firestore listener in `useIncomingMessageAlerts` (which knows
+    // when the user is already viewing the thread and can suppress noise).
+    // Background OS notifications are drawn by the service worker.
+    onMessage(messaging, () => {});
     listening = true;
   } catch {
     /* swallow — push is best-effort */
