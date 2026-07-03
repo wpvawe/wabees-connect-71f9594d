@@ -7,6 +7,7 @@ import { FirebaseSessionProvider } from "@/hooks/useFirebaseSession";
 import { useFcm } from "@/hooks/useFcm";
 import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
 import { useAgentPresence } from "@/hooks/useAgentPresence";
+import { useAgentAvailability } from "@/hooks/useAgentAvailability";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
@@ -46,6 +47,9 @@ function AuthenticatedShell() {
   useFcm();
   useIncomingMessageAlerts();
   useAgentPresence();
+  // Mirror the current user's availability preference to their agent doc so
+  // the routing picker (round-robin / skills) can skip DND teammates.
+  useAgentAvailability();
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
