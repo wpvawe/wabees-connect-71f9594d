@@ -247,13 +247,26 @@ service cloud.firestore {
     // ============ WA_MAP (WhatsApp phone_number_id → userId for webhook routing) ============
     match /wa_map/{phoneNumberId} {
       // Backend service account reads/writes via admin SDK (bypasses rules)
-      // Client: user can only read/write their OWN mapping
+      // Client reads: user reads only their OWN mapping. The consent-flow
+      // pre-check runs through the server function (service account) so it
+      // does not need public read access here.
       allow read: if request.auth != null && (
         resource == null || resource.data.userId == request.auth.uid
       );
-      allow write: if request.auth != null && (
-        request.resource.data.userId == request.auth.uid
-      );
+      // CREATE: only when no mapping exists AND caller claims themselves.
+      // Prevents a second account from silently overwriting an existing
+      // owner's phone_number_id → userId mapping via direct Firestore write.
+      allow create: if request.auth != null
+        && resource == null
+        && request.resource.data.userId == request.auth.uid;
+      // UPDATE: only the current owner may mutate their own mapping and
+      // may NOT re-assign it to another uid.
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      // DELETE: only the current owner.
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
       // Admin can manage all mappings
       allow read, write, list: if isAdmin();
     }
