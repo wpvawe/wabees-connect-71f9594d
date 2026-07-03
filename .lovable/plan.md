@@ -1,108 +1,123 @@
-# Wabees — Website ↔ App Parity & Bug-Fix Plan
+# De-Hardcoding Plan — Batch Wise
 
-Dono codebases ka deep audit complete. Yeh unified plan hai. Har batch ek turn me deliver hoga, TypeScript clean + Flutter compile clean, dono taraf.
+Aap ke 3 points + audit se mili aur hardcoded cheezen — sab ek jagah, batches me. Har batch independently ship ho sakta hai.
 
----
+## Extra Hardcoded Cheezen Jo Mujhe Aur Mili
 
-## 1. Common Features (dono me already hain — parity OK)
+**Website / Frontend**
+- `PhoneHealthCard.tsx` me `https://api.wabees.live/api/phone-health.php` — env base ignore.
+- `DeveloperApiSection.tsx` curl examples me full URL hardcoded (env base use nahi hota).
+- Currency fallback `"PKR"` `usePlans.ts` me hardcoded — admin-level default hona chahiye.
+- Contacts sample CSV, leads CSV filenames me `wabees-` prefix hardcoded (chalne do, minor).
+- Graph API version `v21.0` 30+ jaghon pe scattered — koi central `META_GRAPH_VERSION` nahi.
 
-Auth (email/google/forgot/reset), Dashboard, Analytics, Inbox list, Chat bubbles, Text/media/voice send, Templates list + create (advanced) + sync, Campaigns list + create + logs, Contacts CRUD + CSV, Bots, AI Bot, Agents, Connect (embedded + manual), Business Profile, Message Links, Notifications (in-app + FCM), Plans/Subscriptions, Support chat, Media upload/proxy.
+**Backend (PHP)**
+- `VERIFY_TOKEN = 'wabees_webhook_verify_2024'` `backend/api/webhook.php:17` — plain constant. Per-user rotate karne ka koi tareeqa nahi.
+- CORS allowlist 4 files me duplicate hardcoded (`send-message.php`, `edit-template.php`, `delete-template.php`, etc.) — ek shared config chahiye.
+- `WEB_APP_URL` / `PUBLIC_HOST` fallback `wabees.live` inline.
+- `media-proxy.php` full URL `webhook.php` me 2 jagah literal.
+- FCM webpush link fallback `https://wabees.live/` literal.
+- JWT secret plain-text committed (`backend/config/jwt-secret.php`) — env-based hona chahiye.
+- Firebase project id `wabees-app` 5 files me literal.
+- `v22.0` `cron/dispatch-scheduled.php` me — baaqi codebase se mismatch.
+- AI cooldown / max tokens / history `ai-config.php` me hardcoded, admin edit nahi kar sakta.
+- DeepSeek endpoint `triage.functions.ts` me literal.
 
----
-
-## 2. Website me hai, App me nahi (App me add karna hai)
-
-| # | Feature | Website file (ref) |
-|---|---|---|
-| W1 | **Forward message** dialog | `ForwardDialog.tsx` |
-| W2 | **Assign agent** to conversation | `AssignAgentDialog.tsx`, `assignments.ts` |
-| W3 | **Conversation notes** panel | `NotesPanel.tsx` |
-| W4 | **Interactive composer** (reply buttons / list / CTA URL) | `InteractiveDialog.tsx` |
-| W5 | **Scheduled messages from chat** | `ScheduleDialog.tsx` |
-| W6 | **Drag-drop files** + **emoji picker** in composer | `Composer.tsx` |
-| W7 | **Media lightbox** full-screen viewer | `MediaLightbox.tsx` |
-| W8 | **Reply-to quoting** UI in composer | `Composer.tsx` (`replyTo` prop) |
-
-## 3. App me hai, Website me nahi (Website me add karna hai)
-
-| # | Feature | Flutter file (ref) |
-|---|---|---|
-| A1 | **Template EDIT** (body/header/footer/category → Meta) | `template_repository.dart` + `/edit-template.php` |
-| A2 | **Unsend (delete for everyone)** message | `MessageRepository.deleteMessage` + `/delete-message.php` |
-| A3 | **Campaign Pause / Resume / Restart / Cancel** controls | `CampaignRepository` |
-| A4 | **Anti-ban rate-limiter** in campaign runner (2 msg/s + 3 s pause per 80) | `AntiBanService`, `CampaignExecutionService` |
-| A5 | **Meta multi-step account picker** (Business → WABA → Phone) | `meta_account_picker.dart` + 3 detect-*.php endpoints |
-| A6 | **Contact groups** (in addition to tags) + **sample CSV download** | `contacts_screen.dart`, `contact_import_export.dart` |
-| A7 | **Phone health check** UI (quality rating history) | `/phone-health.php` |
-| A8 | **Developer API key** section (settings) | `settings_screen.dart` |
-| A9 | **Bot advanced fields** — CTA button, additional multi-message sequences, response header/footer | `bot_builder_screen.dart` |
-| A10 | **Long-press message actions** (React emoji picker, resend on failed, view error, download) | `chat_screen.dart` |
-
-## 4. Critical Bugs (dono taraf ke)
-
-| # | Where | Bug | Fix |
-|---|---|---|---|
-| B1 | **Website** `TemplateGrid.tsx:110` | Template DELETE only calls `deleteDoc(...)`, Meta pe rehta hai | Add `/delete-template.php` PHP proxy → Meta Graph `DELETE /{waba-id}/message_templates?name=...&access_token=...`, only then Firestore delete |
-| B2 | **Backend** `webhook.php` owner-resolve | Stale APCu / file cache → `NOT_FOUND` → message drop, kabhi Firestore me nahi likha | Fallback: if wa_map miss, ALWAYS scan `whatsapp_config` subcollection once and warm cache; log all drops to a `wa_map_misses` Firestore collection for visibility |
-| B3 | **Backend** `webhook.php` phone normalize | PHP `normalize_phone` aur JS `normalizePhone` diverge — conversation doc ID mismatch | Ek canonical `normalize_phone_e164()` function dono me: strip non-digits, prepend `+`, always store as `+E164`. Client `useConversations` self-heal already fits |
-| B4 | **App** `analytics_screen.dart` `_changeRange` | Date range chips visually update but `whatsappAnalyticsProvider` par pass nahi hote — data hamesha same | Pass `startDate`/`endDate` params to provider, invalidate on range change |
-| B5 | **App** `inbox_screen.dart` swipe-dismiss | Sirf local Set me hide hota hai, restart pe wapas | Firestore `conversations/{phone}.isDeleted = true` set karo (website already reads this field) |
-| B6 | **App** `chat_screen.dart` unsend UI | `_unsendMessage` implemented but ListTile commented `// ignore: unused_element` | Enable ListTile (only for outgoing < 15 min per Meta rule) |
-| B7 | **Website** Campaign runner | Sirf tab-open pe chalta hai, `sent/delivered/read` counters webhook se update nahi hote | Anti-ban limiter add + webhook `handle_status_update` me `campaigns/{id}/logs` matching wamid pe deliveredCount/readCount increment |
-| B8 | **Website** Scheduled messages | Batch 13 me fix ho gaya (txn claim + stuck-recovery). ✅ | — |
-| B9 | **Both** FCM webpush link | Hardcoded to `wabees-plus.wabees.workers.dev`, actual URL alag | Owner ke saved domain se link banayen (env) |
-| B10 | **App** template edit | Website me edit nahi (A1), app me hai — parity fix via A1 |
-
-## 5. Batch Rollout (order matters — koi build error na aae)
-
-### Batch 14 — Critical Bug Fixes (server + client, no new UI)
-- B1 website template delete → Meta (add `backend/api/delete-template.php` + `deleteMetaTemplate()` in `templates.ts` + wire into `TemplateGrid.tsx`)
-- B2 webhook owner-resolve fallback + miss logging
-- B3 phone normalizer canonicalization audit (JS + PHP diff)
-- B9 FCM link derived from config
-
-### Batch 15 — App Bug Fixes (Flutter, wabees-plus repo)
-- B4 analytics date range wire
-- B5 swipe-dismiss → Firestore isDeleted
-- B6 enable unsend ListTile
-
-### Batch 16 — Template Edit + Unsend on Website (A1 + A2)
-- Add website Template edit page (`/templates/$id/edit`) reusing `TemplateComposer` in edit mode → `/edit-template.php`
-- Add "Unsend" action on outgoing message bubbles (< 15 min) → `/delete-message.php`
-
-### Batch 17 — Campaign Parity Website (A3 + A4 + B7)
-- Pause/Resume/Restart/Cancel buttons + `campaigns.ts` methods
-- Anti-ban limiter in client runner (2 msg/s, 3 s / 80 msgs)
-- Webhook status-update → campaign log delivered/read counter bump
-
-### Batch 18 — App Chat Composer Parity (W1–W8)
-Add Flutter equivalents: Forward dialog, Assign agent, Notes panel, Interactive composer, Schedule from chat, Reply-to UI (already partial), Media lightbox (partial), Emoji picker + drag-drop (mobile share intent).
-
-### Batch 19 — Website Advanced Additions (A5 + A6 + A7 + A9)
-- Multi-step Meta account picker (Business → WABA → Phone) reusing existing 3 detect-*.php endpoints
-- Contact groups + sample CSV download
-- Phone health card in Connect page
-- Bot advanced: CTA button, multi-message sequences, header/footer
-
-### Batch 20 — Developer API + Admin Panel (A8 + admin)
-- `settings` → API key section (generate `wbk_...`, store `users/{uid}.apiKey`)
-- Admin panel (approve users, plans CRUD, support inbox) — behind `isAdmin` flag
-
-### Batch 21 — Long-press actions + Polish (A10 + housekeeping)
-- Website bubble long-press → React emoji, Resend failed, View error, Download
-- Fix all hydration warnings (current `/auth` mismatch)
-- Final tsgo + Flutter analyze clean
+**Content / UX**
+- `/download` page (PHP landing) me purana webhook callback URL. Multiple docs pages me purane URLs.
+- "Contact admin for payment" auto-reply message app me hardcoded — admin edit nahi kar sakta.
+- Welcome plan flag Firestore me hai lekin default plan settings admin UI se editable nahi (sirf `isWelcomePlan` boolean).
+- Public landing pe plans hardcoded (wabees.live PHP side) — Firestore `plans` se sync nahi.
+- Offer / discount ka koi field hi nahi Plan schema me.
 
 ---
 
-## 6. Technical Notes
+## Batch 1 — Connect Page + Webhook Guide (aap ka Point 1)
 
-- **Backend**: All new PHP endpoints under `backend/api/` (auth via existing Firebase ID-token verification).
-- **Firestore paths**: reuse existing (`users/{uid}/…`); no new top-level collections except `wa_map_misses` (debug-only).
-- **Sync**: Har website change ke baad wabees-plus repo me equivalent Flutter change bhi push karunga (dono repos ka sync maintain).
-- **Build safety**: har batch ke end me `bunx tsgo --noEmit` (website) + `flutter analyze` (app). GitHub Actions APK build sirf batch 15/18/19 ke baad trigger.
-- **Verification**: Batch 14 done hone ke baad ek test template create → website se delete → Meta pe confirm gone (browser Playwright ya PHP curl).
+**Goal:** User connect page pe hi callback URL + verify token dekhe, copy kare, aur step-by-step guide (permanent token wala) follow kare. Purane callback URLs har jagah update.
+
+- `src/routes/_authenticated/connect.tsx`: naya "Webhook Setup" card add karein — Callback URL (`https://api.wabees.live/webhook.php`) + Verify Token (`wabees_webhook_verify_2024`) with Copy buttons + external "Open Meta App Dashboard" link + numbered steps (App create → WhatsApp product → Configure webhook → Subscribe fields → Generate permanent System User token → Add phone number → Paste here).
+- Verify token ko `VITE_META_VERIFY_TOKEN` env se read + fallback current value. Doc me bhi env constant use ho.
+- Manual token form ke upar collapsible "How to get a permanent access token?" guide (System User → Assign asset → Generate token → never expires) with Meta doc links.
+- Backend PHP `download/index.php` + landing (wabees-plus repo `backend/`) me purane callback URLs (agar `/api/webhook.php` ya kuch aur) → `/webhook.php` update. SSH deploy live server bhi.
+- `DeveloperApiSection.tsx` + `PhoneHealthCard.tsx` — env base use karein (`VITE_WABEES_API_BASE`).
+
+## Batch 2 — Dynamic Welcome Plan + Public Plans + Offers (Point 2)
+
+**Goal:** Welcome plan admin-editable. Public landing plans Firestore se aayen. Har plan pe optional "Offer" badge/discount.
+
+Schema (Firestore `plans` doc, additive fields — koi migration break nahi):
+- `offer: { active: boolean, label: string, discountPct?: number, priceOverride?: number, endsAt?: Timestamp }`
+- `showOnPublic: boolean` (public landing pe dikhana hai ya nahi)
+- Existing `isWelcomePlan` — sirf ek plan pe true rahe (admin app already handle karta hai, hum sirf UI-level guard add karenge).
+
+Frontend:
+- `usePlans.ts` me `offer` + `showOnPublic` parse.
+- `plans.tsx` (auth) + naya public plans component: Offer badge, strikethrough original price, "Ends in X days" agar `endsAt`.
+- Public landing PHP page (`backend/index.php` on wabees.live) → Firestore REST API se `plans` fetch (server-side, cached 5 min). Hardcoded plan cards remove.
+- Welcome plan auto-assign flow `src/lib/firebase/users.ts:73` already dynamic hai — sirf verify + fallback message dynamic karo.
+
+## Batch 3 — Dynamic Subscription Request Message (Point 3)
+
+**Goal:** App aur website dono ek hi Firestore config se message padhen. Admin admin panel se edit kare.
+
+Firestore path: `settings/subscription_messages` (single doc):
+- `requestNotificationTemplate` (admin ko jane wala) — placeholders: `{userName}`, `{planName}`, `{price}`.
+- `userReplyTemplate` (auto-reply user ko) — placeholders: `{planName}`, `{price}`, `{adminPhone}`, `{paymentInstructions}`.
+- `paymentInstructions` (rich text / markdown).
+- `adminContactPhone`, `adminContactEmail`.
+
+Code:
+- Naya hook `useSubscriptionMessages.ts`.
+- `subscriptions.ts` `requestSubscription()` me hardcoded strings hata ke template rendering.
+- App side (Flutter) already yahi doc padhega — schema Flutter ke sath finalize karna hoga (aap confirm karo doc path).
+- Naya admin section `AdminSubscriptionSettings.tsx` (admin route pe) — editable form.
+
+## Batch 4 — Central Constants (Meta version, URLs, CORS)
+
+- `src/lib/constants.ts` — `META_GRAPH_VERSION = "v21.0"`, `WABEES_API_BASE`, `WEB_APP_URL`. Sab TS files ko is se import karayen.
+- `backend/config/constants.php` — same PHP side (`META_GRAPH_VERSION`, `WEB_APP_URL`, `PUBLIC_HOST`, `MEDIA_PROXY_URL`, `CORS_ALLOWLIST`).
+- Sab `graph.facebook.com/v21.0` literals refactor.
+- `cron/dispatch-scheduled.php` `v22.0` → constant.
+- 4 CORS-wale PHP files ek `cors.php` require karen.
+
+## Batch 5 — Security & Sensitive Hardcoding
+
+- `backend/config/jwt-secret.php` → `getenv('PHP_BACKEND_JWT_SECRET')` with commit-safe fallback removal. Secret Hostinger env pe set karo (SSH), file me sirf `getenv`.
+- Firebase project id `wabees-app` — `getenv('FIREBASE_PROJECT_ID')` centralize (`firebase-config.php`).
+- Verify token per-workspace: `whatsapp_config.verify_token` field. `webhook.php` incoming request pe token match per-user (fallback global for legacy).
+- AI defaults (`AI_BOT_COOLDOWN_SECONDS`, `MAX_TOKENS`, `MAX_HISTORY`) → Firestore `settings/ai_defaults`, admin editable.
+
+## Batch 6 — Content / Docs Cleanup
+
+- `/download` PHP page: purane webhook URL, purane plan cards, purani tagline — sab refresh.
+- `DeveloperApiSection.tsx` curl examples env-driven.
+- Sample CSV / export filenames as-is (chalne do).
+- Docs (`docs/RULES.md`, `PHASE3-SMOKE-TEST.md`) me purane URLs update.
 
 ---
 
-**Aap approve karo to Batch 14 se shuru karta hun** (critical bugs pehle, feature parity baad me). Ya order badalna ho to bata do — e.g. "pehle A1 (template edit) chahiye" ya "pehle B1 (delete bug) fix karo" — hisaab se re-order kar dunga.
+## Execution Order (Recommendation)
+
+1. **Batch 1** (fastest visible win, no schema change).
+2. **Batch 4** (foundation — baaqi batches is pe depend karengi).
+3. **Batch 2** (schema additive, safe).
+4. **Batch 3** (needs Flutter side confirmation on doc path).
+5. **Batch 5** (server SSH deploy needed, careful).
+6. **Batch 6** (content polish).
+
+---
+
+## Technical Details (dev reference)
+
+- Firestore rules: `settings/*` doc → read: public/authenticated, write: admin only. `plans/*` already so.
+- Verify token per-user migration: `whatsapp_config` me nullable `verify_token`. Webhook.php pehle query params se uid → verify_token lookup, warna global VERIFY_TOKEN.
+- Public landing Firestore REST: `https://firestore.googleapis.com/v1/projects/wabees-app/databases/(default)/documents/plans` — cached in PHP APCu 5 min.
+- Placeholder rendering helper: simple `{key}` string replace (no template engine).
+
+---
+
+**Aap batao:**
+1. Kya sequence theek hai ya kisi batch ko pehle chahiye?
+2. Batch 3 ke liye Flutter app me exact Firestore doc path kya hai (agar already hai to woh use kar lete hain, warna naya `settings/subscription_messages` bana lete hain)?
+3. Verify token per-user (Batch 5) chahiye ya global rakhna theek hai?

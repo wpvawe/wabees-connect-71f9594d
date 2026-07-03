@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { fbDb } from "@/integrations/firebase/client";
+import { fbDb, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 
 /**
@@ -134,17 +134,17 @@ export function DeveloperApiSection() {
             <FontAwesomeIcon icon={faCode} className="h-3 w-3 text-primary" /> Example
           </p>
           <pre className="overflow-x-auto whitespace-pre text-[11px] leading-relaxed text-muted-foreground">
-{`curl -X POST https://api.wabees.live/public-send.php \\
+{`curl -X POST ${WABEES_API_BASE}/public-send.php \\
   -H "x-api-key: ${apiKey ?? "wbk_your_key_here"}" \\
   -H "Content-Type: application/json" \\
   -d '{"to":"923001234567","type":"text","message":"Hello from API"}'
 
 # List approved templates
-curl https://api.wabees.live/public-templates.php \\
+curl ${WABEES_API_BASE}/public-templates.php \\
   -H "x-api-key: ${apiKey ?? "wbk_your_key_here"}"
 
 # Send a template
-curl -X POST https://api.wabees.live/public-send.php \\
+curl -X POST ${WABEES_API_BASE}/public-send.php \\
   -H "x-api-key: ${apiKey ?? "wbk_your_key_here"}" \\
   -H "Content-Type: application/json" \\
   -d '{"to":"923001234567","type":"template","template_name":"hello_world","language_code":"en_US"}'`}
