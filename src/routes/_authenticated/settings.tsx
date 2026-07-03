@@ -16,6 +16,7 @@ import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { toast } from "sonner";
 import { BusinessProfileSection } from "@/components/settings/BusinessProfileSection";
 import { DeveloperApiSection } from "@/components/settings/DeveloperApiSection";
+import { Gated } from "@/components/auth/OwnerOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Settings — Wabees" }] }),
@@ -152,8 +153,12 @@ function SettingsPage() {
                 </WbCardBody>
               </WbCard>
             )}
-            <BusinessProfileSection />
-            <DeveloperApiSection />
+            <Gated capability="business.profile.edit">
+              <BusinessProfileSection />
+            </Gated>
+            <Gated capability="developer.api">
+              <DeveloperApiSection />
+            </Gated>
           </div>
         </div>
       </div>
