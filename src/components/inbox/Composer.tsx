@@ -397,6 +397,7 @@ export function Composer({
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
       await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
+      void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
       if (msgRef) {
         await updateDoc(msgRef, {
@@ -408,12 +409,6 @@ export function Composer({
     } finally {
       setUploading(false);
     }
-  }
-
-  // Prevent duplicate closer below; original body continues via helper.
-  // (no-op guard removed by patch reconciler if unused)
-  function __sla_placeholder__() {
-    void 0;
   }
 
   async function startRecording() {
