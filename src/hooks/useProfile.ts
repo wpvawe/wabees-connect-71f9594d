@@ -16,6 +16,7 @@ export type Profile = {
   totalBots: number;
   totalCampaigns: number;
   aiBotEnabled: boolean;
+  whatsappConnected: boolean;
 };
 
 export function useProfile(scope: "self" | "effective" = "self"): {
@@ -58,6 +59,7 @@ export function useProfile(scope: "self" | "effective" = "self"): {
           totalBots: (d.totalBots as number) ?? 0,
           totalCampaigns: (d.totalCampaigns as number) ?? 0,
           aiBotEnabled: Boolean(d.aiBotEnabled),
+          whatsappConnected: d.whatsappConnected === true,
         });
       },
       (err) => {

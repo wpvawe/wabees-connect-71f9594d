@@ -6,9 +6,12 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
@@ -377,10 +380,70 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
   if (isAgent) {
     await deleteDoc(doc(db, "users", dataOwner, "agents", uid)).catch(() => {});
   } else if (phoneId) {
+    // Owner disconnect: cancel pending scheduled messages and pause any
+    // currently-running campaigns so the cron does not keep retrying against
+    // a revoked access token, and the user sees clear "cancelled — WhatsApp
+    // disconnected" state instead of a silent retry loop.
+    await pauseOutboundWorkOnDisconnect(uid).catch(() => undefined);
     const agents = await getDocs(collection(db, "users", uid, "agents")).catch(() => null);
     if (!agents || agents.empty) {
       await deleteDoc(doc(db, "wa_map", phoneId)).catch(() => {});
     }
+  }
+}
+
+/**
+ * Owner-side cleanup when the WhatsApp account is disconnected. Cancels any
+ * `pending` scheduled messages and pauses any `running` campaigns so the
+ * server cron does not keep retrying with a revoked token. Best-effort —
+ * per-doc failures never block the disconnect itself.
+ */
+async function pauseOutboundWorkOnDisconnect(ownerUid: string): Promise<void> {
+  const db = fbDb();
+  const reason = "WhatsApp disconnected";
+  const nowStamp = serverTimestamp();
+
+  // Scheduled messages — mark pending as cancelled.
+  try {
+    const pending = await getDocs(
+      query(
+        collection(db, "users", ownerUid, "scheduled_messages"),
+        where("status", "==", "pending"),
+      ),
+    );
+    if (!pending.empty) {
+      const batch = writeBatch(db);
+      pending.docs.forEach((d) =>
+        batch.update(d.ref, {
+          status: "cancelled",
+          errorReason: reason,
+          updatedAt: nowStamp,
+        }),
+      );
+      await batch.commit();
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // Campaigns — pause any running campaign.
+  try {
+    const running = await getDocs(
+      query(collection(db, "users", ownerUid, "campaigns"), where("status", "==", "running")),
+    );
+    if (!running.empty) {
+      const batch = writeBatch(db);
+      running.docs.forEach((d) =>
+        batch.update(d.ref, {
+          status: "paused",
+          pauseReason: reason,
+          pausedAt: nowStamp,
+        }),
+      );
+      await batch.commit();
+    }
+  } catch {
+    /* non-fatal */
   }
 }
 

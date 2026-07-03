@@ -672,6 +672,143 @@ async function subscribeWebhook(phoneNumberId: string, accessToken: string) {
   }).catch(() => undefined);
 }
 
+/**
+ * Post an in-app notification to the workspace owner when a new email joins
+ * their WhatsApp workspace as an agent via the connect flow. This is a
+ * security signal — the owner should always know when a second account is
+ * given access. Written from the server with admin credentials because
+ * Firestore rules do not let the joining agent write to the owner tree yet.
+ */
+async function notifyOwnerOfAgentJoin(
+  projectId: string,
+  accessToken: string,
+  ownerId: string,
+  agentUid: string,
+  agentEmail: string | null,
+  phoneNumberId: string,
+): Promise<void> {
+  const displayEmail = agentEmail || agentUid;
+  const body =
+    `${displayEmail} connected the same WhatsApp number to your workspace and now has agent access. ` +
+    `If you did not authorize this, remove them from Team settings and rotate your WhatsApp access token.`;
+  const notifId = `agent_join_${agentUid}_${Date.now()}`;
+  const res = await firestoreFetch(
+    projectId,
+    accessToken,
+    `/${encodePath(`users/${ownerId}/notifications/${notifId}`)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        fields: {
+          type: { stringValue: "security_agent_joined" },
+          title: { stringValue: "New device joined your WhatsApp workspace" },
+          body: { stringValue: body },
+          read: boolValue(false),
+          createdAt: timestampValue(),
+          data: {
+            mapValue: {
+              fields: {
+                agentUid: { stringValue: agentUid },
+                agentEmail: stringValue(agentEmail),
+                phoneNumberId: { stringValue: phoneNumberId },
+              },
+            },
+          },
+        },
+      }),
+    },
+  );
+  if (!res.ok) {
+    // Non-fatal — log to console only. Never surface to caller.
+    console.warn(
+      "[owner-repair] failed to write owner notification",
+      res.status,
+      await res.text().catch(() => ""),
+    );
+  }
+}
+
+// ==================== check-only preview (consent screen) ====================
+
+type CheckInput = { idToken: string; phoneNumberId: string };
+type CheckResult = {
+  existingOwnerId: string | null;
+  existingOwnerEmail: string | null;
+  existingOwnerBusinessName: string | null;
+  isSelf: boolean;
+  activity: { conversations: number; messages: number; contacts: number } | null;
+};
+
+function parseCheckInput(raw: unknown): CheckInput {
+  const data = raw as Partial<CheckInput> | null;
+  const idToken = typeof data?.idToken === "string" ? data.idToken.trim() : "";
+  const phoneNumberId = typeof data?.phoneNumberId === "string" ? data.phoneNumberId.trim() : "";
+  if (!idToken || !phoneNumberId) throw new Error("Missing session or phone number id");
+  return { idToken, phoneNumberId };
+}
+
+export const checkExistingWhatsAppOwner = createServerFn({ method: "POST" })
+  .inputValidator(parseCheckInput)
+  .handler(async ({ data }): Promise<CheckResult> => {
+    const account = readServiceAccount();
+    const projectId = account.project_id!;
+    const [{ uid }, accessToken] = await Promise.all([
+      verifyFirebaseUser(data.idToken),
+      getAccessToken(account),
+    ]);
+
+    const candidates = new Map<string, Candidate>();
+    const [topLevelMatches, configMatches, waMapFields] = await Promise.all([
+      queryUsersByTopLevelPhone(projectId, accessToken, data.phoneNumberId),
+      queryUsersByConfigPhone(projectId, accessToken, data.phoneNumberId),
+      getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
+    ]);
+    for (const row of topLevelMatches) {
+      const id = uidFromUserDocName(row.name);
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromTopLevel: true });
+    }
+    for (const row of configMatches) {
+      const id = uidFromConfigDocName(row.name);
+      if (id) mergeCandidate(candidates, id, { fromConfig: true });
+    }
+    const mapIds = mapUserIds(waMapFields);
+    for (const id of mapIds.owners) mergeCandidate(candidates, id, { fromMapOwner: true });
+    for (const id of mapIds.users) mergeCandidate(candidates, id, { fromMapUsers: true });
+
+    if (candidates.size === 0) {
+      return {
+        existingOwnerId: null,
+        existingOwnerEmail: null,
+        existingOwnerBusinessName: null,
+        isSelf: false,
+        activity: null,
+      };
+    }
+    await enrichCandidates(projectId, accessToken, candidates);
+    const owner = chooseOwner(candidates, uid);
+    if (!owner) {
+      return {
+        existingOwnerId: null,
+        existingOwnerEmail: null,
+        existingOwnerBusinessName: null,
+        isSelf: false,
+        activity: null,
+      };
+    }
+    const samples = owner.samples ?? {};
+    return {
+      existingOwnerId: owner.id,
+      existingOwnerEmail: getString(owner.fields, "email") || null,
+      existingOwnerBusinessName: getString(owner.fields, "businessName") || null,
+      isSelf: owner.id === uid,
+      activity: {
+        conversations: samples.conversations ?? 0,
+        messages: samples.messages ?? 0,
+        contacts: samples.contacts ?? 0,
+      },
+    };
+  });
+
 export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
   .inputValidator(parseInput)
   .handler(async ({ data }): Promise<RepairResult> => {
@@ -784,6 +921,15 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       await mergeDataIsland(projectId, accessToken, uid, ownerId);
       await subscribeWebhook(data.phoneNumberId, getString(cfgPatch, "accessToken"));
       await clearRemoteCache(data.phoneNumberId);
+      // Security-alert the workspace owner that a new device joined.
+      await notifyOwnerOfAgentJoin(
+        projectId,
+        accessToken,
+        ownerId,
+        uid,
+        email,
+        data.phoneNumberId,
+      ).catch(() => undefined);
       return { ownerId, repaired: true, candidates: allIds };
     }
 
