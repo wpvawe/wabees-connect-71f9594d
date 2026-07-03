@@ -16,6 +16,8 @@ import {
   faNoteSticky,
   faUserPlus,
   faClock,
+  faBan,
+  faCircleCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -72,6 +74,7 @@ function Thread({ phone }: { phone: string }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -416,7 +419,31 @@ function Thread({ phone }: { phone: string }) {
   const normalizedPhone = normalizePhone(phone);
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
+  const isBlocked = !!conv?.isBlocked;
   const displayName = contact?.name || (name !== phone ? name : "");
+
+  const onToggleBlock = useCallback(async () => {
+    if (!uid) return;
+    setBlockBusy(true);
+    try {
+      const convId = normalizePhone(phone);
+      await setDoc(
+        doc(fbDb(), `users/${uid}/conversations/${convId}`),
+        {
+          isBlocked: !isBlocked,
+          blockedAt: !isBlocked ? serverTimestamp() : null,
+          contactPhone: convId,
+        },
+        { merge: true },
+      );
+      toast.success(isBlocked ? "Contact unblocked" : "Contact blocked");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBlockBusy(false);
+      setHeaderMenu(false);
+    }
+  }, [uid, phone, isBlocked]);
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
