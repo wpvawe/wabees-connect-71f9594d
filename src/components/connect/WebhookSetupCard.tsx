@@ -46,7 +46,7 @@ export function WebhookSetupCard() {
           <p className="text-sm font-semibold text-foreground">Setup steps</p>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-xs leading-relaxed text-muted-foreground">
             <li>
-              Open{" "}
+              Go to the{" "}
               <a
                 href="https://developers.facebook.com/apps/"
                 target="_blank"
@@ -55,32 +55,36 @@ export function WebhookSetupCard() {
               >
                 Meta App Dashboard
               </a>{" "}
-              and create (or open) your Business-type app.
+              and open your app (create a new <strong>Business</strong> app if you don't have one).
             </li>
             <li>
-              In the left sidebar, add the <strong>WhatsApp</strong> product and open{" "}
-              <strong>Configuration</strong>.
+              From the left sidebar, add the <strong>WhatsApp</strong> product, then open{" "}
+              <strong>WhatsApp → Configuration</strong>.
             </li>
             <li>
-              Under <strong>Webhook</strong> click <em>Edit</em>, paste the Callback URL and
-              Verify Token above, then press <em>Verify and save</em>.
+              In the <strong>Webhook</strong> section, click <em>Edit</em>, paste the
+              Callback URL and Verify Token shown above, and click <em>Verify and save</em>.
             </li>
             <li>
-              Click <em>Manage</em> next to Webhook fields and subscribe to:{" "}
+              Next to <strong>Webhook fields</strong>, click <em>Manage</em> and subscribe to
+              these fields:{" "}
               <code className="rounded bg-muted px-1 text-[11px]">
                 {META_WEBHOOK_SUBSCRIBE_FIELDS.join(", ")}
               </code>
               .
             </li>
             <li>
-              Under <strong>Phone numbers</strong>, add / verify your business number and
-              copy the <strong>Phone Number ID</strong>.
+              Open <strong>WhatsApp → API Setup</strong>, add or verify your business phone
+              number, and copy its <strong>Phone Number ID</strong>.
             </li>
             <li>
-              Generate a <strong>permanent access token</strong> (see guide below) — the
-              default temporary token expires in 24 hours.
+              Generate a <strong>permanent access token</strong> using the guide below —
+              the temporary token on this page expires in 24 hours.
             </li>
-            <li>Paste the Phone Number ID + permanent token in the form below.</li>
+            <li>
+              Paste the Phone Number ID and permanent token in the connection form below and
+              click <em>Connect account</em>.
+            </li>
           </ol>
         </div>
 
@@ -142,15 +146,15 @@ export function WebhookSetupCard() {
                   Copy the token immediately (Meta shows it only once) and paste it below.
                 </li>
               </ol>
-              <a
-                href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started/#get-system-user-access-token"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-primary hover:underline"
-              >
-                Meta official guide
-                <FontAwesomeIcon icon={faExternalLinkAlt} className="h-3 w-3" />
-              </a>
+          <a
+            href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            Meta official guide
+            <FontAwesomeIcon icon={faExternalLinkAlt} className="h-3 w-3" />
+          </a>
             </div>
           )}
         </div>
@@ -168,7 +172,7 @@ export function WebhookSetupCard() {
             </WbButton>
           </a>
           <a
-            href="https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/get-started"
+            href="https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview"
             target="_blank"
             rel="noreferrer"
             className="inline-flex"

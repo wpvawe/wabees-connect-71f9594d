@@ -49,7 +49,7 @@ function ConnectPage() {
                     Business API connection
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Website ab app ke same backend flow aur Firestore schema use karti hai.
+                    The website uses the same backend flow and Firestore schema as the mobile app.
                   </p>
                 </div>
               </div>
@@ -57,22 +57,22 @@ function ConnectPage() {
                 <FlowItem
                   icon={faKey}
                   title="Manual credentials"
-                  text="Phone Number ID + permanent token save hota hai."
+                  text="Your Phone Number ID and permanent access token are saved securely."
                 />
                 <FlowItem
                   icon={faRoute}
                   title="Webhook routing"
-                  text="wa_map owner routing doc auto-create hota hai."
+                  text="A wa_map owner routing document is created automatically."
                 />
                 <FlowItem
                   icon={faCloudArrowDown}
                   title="Template sync"
-                  text="WABA ID ho to templates PHP backend se sync hoti hain."
+                  text="If a WABA ID is provided, templates sync from the PHP backend."
                 />
                 <FlowItem
                   icon={faFileLines}
                   title="Shared data"
-                  text="Contacts, inbox, bots effective owner UID se read hote hain."
+                  text="Contacts, inbox and bots are read using the effective owner UID."
                 />
               </div>
             </div>
