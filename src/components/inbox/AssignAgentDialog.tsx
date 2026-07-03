@@ -11,8 +11,13 @@ import {
 import { useAgents } from "@/hooks/useAgents";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { assignConversation, pickRoundRobinAgent } from "@/lib/firebase/assignments";
+import {
+  assignConversation,
+  pickRoundRobinAgent,
+  pickSkillsMatchAgent,
+} from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
+import { useConversations } from "@/hooks/useConversations";
 import { WbButton } from "@/components/wb/WbButton";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserCheck, faUserXmark, faBoltLightning } from "@fortawesome/free-solid-svg-icons";
@@ -31,8 +36,17 @@ export function AssignAgentDialog({
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const { data: agents } = useAgents();
+  const { data: conversations } = useConversations();
   const [busy, setBusy] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+
+  const requiredSkills = (() => {
+    const conv = conversations?.find((c) => c.contactPhone === phone);
+    const tags = conv?.tags ?? [];
+    return Array.from(
+      new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean)),
+    );
+  })();
 
   async function pick(agent: { id: string; email: string | null } | null) {
     if (!uid || !selfUid) return;
@@ -74,7 +88,10 @@ export function AssignAgentDialog({
   async function autoAssign() {
     if (!uid || !selfUid || !agents) return;
     const eligible = agents.filter((a) => a.status !== "revoked");
-    const next = pickRoundRobinAgent(eligible, currentAgentId);
+    const next =
+      requiredSkills.length > 0
+        ? pickSkillsMatchAgent(eligible, requiredSkills, currentAgentId)
+        : pickRoundRobinAgent(eligible, currentAgentId);
     if (!next) {
       toast.error("No eligible agent available");
       return;
@@ -96,9 +113,13 @@ export function AssignAgentDialog({
         },
       );
       const target = next.email || next.id;
+      const skillNote =
+        requiredSkills.length > 0
+          ? ` · skills: ${requiredSkills.join(", ")}`
+          : "";
       const body = reason.trim()
-        ? `Auto-handoff: ${prevEmail} → ${target} · ${reason.trim()}`
-        : `Auto-handoff: ${prevEmail} → ${target}`;
+        ? `Auto-handoff: ${prevEmail} → ${target} · ${reason.trim()}${skillNote}`
+        : `Auto-handoff: ${prevEmail} → ${target}${skillNote}`;
       addSystemNote(uid, phone, body, { uid: selfUid, email: actorEmail }, "handoff").catch(
         () => {},
       );
@@ -124,6 +145,22 @@ export function AssignAgentDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {requiredSkills.length > 0 && (
+          <div className="rounded-md bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
+            <span className="mr-1 font-semibold uppercase tracking-wide text-primary">
+              Required skills
+            </span>
+            {requiredSkills.map((s) => (
+              <span
+                key={s}
+                className="ml-1 inline-flex rounded-full bg-primary/10 px-1.5 py-0.5 font-medium text-primary"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="max-h-[50vh] space-y-1 overflow-y-auto">
           {agents === null ? (
             <p className="p-3 text-sm text-muted-foreground">Loading…</p>
@@ -135,6 +172,11 @@ export function AssignAgentDialog({
             agents.map((a) => {
               const active = currentAgentId === a.id;
               const revoked = a.status === "revoked";
+              const skills = a.skills ?? [];
+              const matched =
+                requiredSkills.length > 0
+                  ? requiredSkills.filter((r) => skills.includes(r)).length
+                  : 0;
               return (
                 <button
                   key={a.id}
@@ -154,11 +196,17 @@ export function AssignAgentDialog({
                         }`}
                       />
                       <p className="truncate font-medium">{a.email || a.id}</p>
+                      {matched > 0 && (
+                        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                          {matched}/{requiredSkills.length} skills
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       {(a.role ?? "agent")}
                       {a.activeLoad ? ` · ${a.activeLoad} active` : ""}
                       {revoked ? " · revoked" : ""}
+                      {skills.length > 0 ? ` · ${skills.slice(0, 4).join(", ")}${skills.length > 4 ? "…" : ""}` : ""}
                     </p>
                   </div>
                   {active && (
