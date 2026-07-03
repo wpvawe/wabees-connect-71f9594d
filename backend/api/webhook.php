@@ -1171,7 +1171,9 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // This check runs UNCONDITIONALLY (welcome-cache path used to skip it, which
     // is why blocked contacts still delivered after the first message).
     try {
-        $blockCheck = firestore_get("users/$userId/conversations/$from");
+        // Doc IDs contain a literal `+` (E.164). Firestore REST treats an
+        // unencoded `+` in the URL path inconsistently, so encode explicitly.
+        $blockCheck = firestore_get("users/$userId/conversations/" . rawurlencode($from));
         $blockCode  = $blockCheck['code'] ?? 404;
         if ($blockCode === 200) {
             $blkFields = $blockCheck['data']['fields'] ?? [];
@@ -1522,7 +1524,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         webhook_log('BOT: welcomeMessage already sent for ' . $from . ' — blocked by cache file');
     } else {
         // Layer 2: Check Firestore conversation doc
-        $convCheckPath = 'users/' . $userId . '/conversations/' . $from;
+        $convCheckPath = 'users/' . $userId . '/conversations/' . rawurlencode($from);
         $convCheckResp = firestore_get($convCheckPath);
         $convCheckCode = $convCheckResp['code'] ?? 404;
         if ($convCheckCode === 404 || !isset($convCheckResp['data']['fields'])) {
