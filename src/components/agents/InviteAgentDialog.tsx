@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faCircleCheck, faEnvelope, faLink } from "@fortawesome/free-solid-svg-icons";
+import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import {
   Dialog,
   DialogContent,
@@ -75,27 +76,44 @@ export function InviteAgentDialog({
     }
   }
 
+  function buildMail() {
+    const subject = `You're invited to join ${ownerBusinessName || ownerEmail || "our"} Wabees workspace`;
+    const body = [
+      `Hi,`,
+      ``,
+      `You've been invited to join our Wabees workspace as a ${role}.`,
+      ``,
+      `Accept the invite here:`,
+      link ?? "",
+      ``,
+      `Or enter this code after signing in: ${code ?? ""}`,
+      ``,
+      `This link expires in ${ttlDays} day${ttlDays === 1 ? "" : "s"}.`,
+    ].join("\n");
+    return { subject, body };
+  }
   function openMail() {
     if (!link) return;
-    const subject = encodeURIComponent(
-      `You're invited to join ${ownerBusinessName || ownerEmail || "our"} Wabees workspace`,
-    );
-    const body = encodeURIComponent(
-      [
-        `Hi,`,
-        ``,
-        `You've been invited to join our Wabees workspace as a ${role}.`,
-        ``,
-        `Accept the invite here:`,
-        link,
-        ``,
-        `Or enter this code after signing in: ${code}`,
-        ``,
-        `This link expires in ${ttlDays} day${ttlDays === 1 ? "" : "s"}.`,
-      ].join("\n"),
-    );
-    const to = encodeURIComponent(email || "");
-    window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_blank");
+    const { subject, body } = buildMail();
+    // mailto: only works if the user has a default mail client. Many
+    // browsers silently ignore it — Gmail fallback below always works.
+    window.location.href = `mailto:${encodeURIComponent(email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+  function openGmail() {
+    if (!link) return;
+    const { subject, body } = buildMail();
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email || "")}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+  async function copyEmail() {
+    if (!link) return;
+    const { subject, body } = buildMail();
+    try {
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+      toast.success("Invite email copied — paste into any email app");
+    } catch {
+      toast.error("Copy failed — please copy manually");
+    }
   }
 
   return (
@@ -236,9 +254,20 @@ export function InviteAgentDialog({
               {" · "} Expires in {ttlDays} day{ttlDays === 1 ? "" : "s"}
             </div>
 
-            <WbButton variant="secondary" onClick={openMail}>
-              <FontAwesomeIcon icon={faEnvelope} className="mr-1.5 h-3.5 w-3.5" /> Send via email
-            </WbButton>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <WbButton variant="secondary" onClick={openGmail} title="Open in Gmail (web)">
+                <FontAwesomeIcon icon={faGoogle} className="mr-1.5 h-3.5 w-3.5" /> Gmail
+              </WbButton>
+              <WbButton variant="secondary" onClick={openMail} title="Open your default mail app">
+                <FontAwesomeIcon icon={faEnvelope} className="mr-1.5 h-3.5 w-3.5" /> Mail app
+              </WbButton>
+              <WbButton variant="secondary" onClick={copyEmail} title="Copy subject + body to clipboard">
+                <FontAwesomeIcon icon={faCopy} className="mr-1.5 h-3.5 w-3.5" /> Copy email
+              </WbButton>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Gmail opens a compose window in your browser (works everywhere). Use "Mail app" if you have Outlook / Apple Mail configured on this device.
+            </p>
           </div>
         )}
 
