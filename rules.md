@@ -88,3 +88,21 @@ bun run test:e2e
 Full suite ~6 min. Har test ke start mein `purgeAgentRows` chalta hai
 jo pichhle run se bache huve revoked/left rows delete kar deta hai — tests
 idempotent hain.
+
+## Revoked agent — expected flow
+
+1. Owner "Revoke" karta hai → `users/{owner}/agents/{agent}.status = 'revoked'`.
+2. Rules (`isAgentOf`) revoked ko block karti hain → agent ki reads/writes owner tree pe fail (permission denied).
+3. Agent ke browser me `useAgentRevocationGuard` khud `users/{agent}.dataOwner` clear kar deta hai + notification banata hai.
+4. Agent apne empty workspace pe chala jata hai (owner of self).
+5. Wohi banda same WhatsApp reconnect karega to `owner-repair` server function line ~899 pe throw karta hai (`revoked/left/missing` agent doc → "ask owner for fresh invite").
+6. Fresh invite accept karne ke baad agent doc `active` ban jata hai, reads/writes phir se allow.
+
+## Same-phone connect from a brand-new email
+
+Precheck `checkExistingWhatsAppOwner` MUST be fail-closed in
+`src/components/connect/ManualTokenForm.tsx` — agar server function error de
+to connect abort karo. Warna precheck silently skip ho jata hai aur 2nd email
+phone hijack kar sakti hai. Agar precheck kehta hai "no existing owner" to
+wo legit hai (matlab pehla owner disconnect kar chuka hai; wa_map delete ho
+chuka hai) — ye by design hai.

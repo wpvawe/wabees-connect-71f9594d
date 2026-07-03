@@ -128,9 +128,24 @@ export function ManualTokenForm() {
         toast.error("Please sign in again");
         return;
       }
-      const check = await checkExistingWhatsAppOwner({
-        data: { idToken, phoneNumberId: v.phone_number_id.trim() },
-      }).catch(() => null);
+      let check: Awaited<ReturnType<typeof checkExistingWhatsAppOwner>> | null = null;
+      try {
+        check = await checkExistingWhatsAppOwner({
+          data: { idToken, phoneNumberId: v.phone_number_id.trim() },
+        });
+      } catch (e) {
+        // Fail-closed: if the security precheck cannot run (backend down,
+        // credentials missing, network error), do NOT let the connect
+        // proceed silently — otherwise a second account could grab a phone
+        // number that already belongs to another workspace.
+        toast.error(
+          e instanceof Error
+            ? `Could not verify this number's ownership: ${e.message}. Try again in a moment.`
+            : "Could not verify this number's ownership. Try again in a moment.",
+          { duration: 8000 },
+        );
+        return;
+      }
       if (check?.existingOwnerId && !check.isSelf) {
         const who = check.existingOwnerEmail || check.existingOwnerBusinessName || "another account";
         toast.error(
