@@ -26,23 +26,26 @@ import { useEffect, useState } from "react";
 import { fbAuth } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
 import { useProfile } from "@/hooks/useProfile";
+import { useCan } from "@/lib/auth/permissions";
 import wbIcon from "@/assets/wabees-icon.png";
 
-const NAV: { to: string; label: string; icon: IconDefinition }[] = [
+import type { Capability } from "@/lib/auth/permissions";
+
+const NAV: { to: string; label: string; icon: IconDefinition; require?: Capability }[] = [
   { to: "/dashboard", label: "Dashboard", icon: faChartLine },
   { to: "/analytics", label: "Analytics", icon: faChartColumn },
   { to: "/inbox", label: "Inbox", icon: faComments },
   { to: "/contacts", label: "Contacts", icon: faAddressBook },
-  { to: "/campaigns", label: "Campaigns", icon: faBullhorn },
-  { to: "/bots", label: "Bots", icon: faRobot },
-  { to: "/ai-bot", label: "AI Bot", icon: faBrain },
+  { to: "/campaigns", label: "Campaigns", icon: faBullhorn, require: "campaigns.write" },
+  { to: "/bots", label: "Bots", icon: faRobot, require: "bots.write" },
+  { to: "/ai-bot", label: "AI Bot", icon: faBrain, require: "aiBot.manage" },
   { to: "/templates", label: "Templates", icon: faFileLines },
-  { to: "/plans", label: "Plans", icon: faCrown },
-  { to: "/connect", label: "Connect", icon: faPlug },
-  { to: "/message-links", label: "Links", icon: faLink },
+  { to: "/plans", label: "Plans", icon: faCrown, require: "billing.manage" },
+  { to: "/connect", label: "Connect", icon: faPlug, require: "whatsapp.connect" },
+  { to: "/message-links", label: "Links", icon: faLink, require: "billing.manage" },
   { to: "/agents", label: "Agents", icon: faUsers },
   { to: "/notifications", label: "Alerts", icon: faBell },
-  { to: "/support", label: "Support", icon: faHeadset },
+  { to: "/support", label: "Support", icon: faHeadset, require: "support.chat" },
 ];
 
 const COLLAPSE_KEY = "wb_sidebar_collapsed";
@@ -51,6 +54,7 @@ export function SideRail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: profile } = useProfile("effective");
   const aiBotVisible = Boolean(profile?.aiBotEnabled);
+  const can = useCan();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return window.localStorage.getItem(COLLAPSE_KEY) !== "0";
@@ -98,7 +102,9 @@ export function SideRail() {
         </button>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-        {NAV.filter((n) => n.to !== "/ai-bot" || aiBotVisible).map((n) => {
+        {NAV.filter((n) => n.to !== "/ai-bot" || aiBotVisible)
+          .filter((n) => !n.require || can(n.require))
+          .map((n) => {
           const active = pathname.startsWith(n.to);
           return (
             <Link
