@@ -8,7 +8,8 @@
  * numbers update in realtime as agents work.
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUsers,
@@ -20,16 +21,20 @@ import {
   faUserSlash,
   faStar,
   faSmile,
+  faRotate,
 } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
+import { WbButton } from "@/components/wb/WbButton";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { useAgents } from "@/hooks/useAgents";
 import { useConversations } from "@/hooks/useConversations";
 import { useSlaSettings } from "@/hooks/useSlaSettings";
 import { useCsatSurveys } from "@/hooks/useCsatSurveys";
+import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useCan } from "@/lib/auth/permissions";
 import { evaluateSla, formatDuration } from "@/lib/firebase/sla";
+import { backfillResponseTimes } from "@/lib/firebase/response-time-backfill";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/workload")({
@@ -72,10 +77,12 @@ function median(nums: number[]): number | null {
 
 function WorkloadPage() {
   const isAllowed = useCan()("team.manage");
+  const uid = useFirebaseUid();
   const { data: convs } = useConversations();
   const { data: agents } = useAgents();
   const sla = useSlaSettings();
   const { stats: csat } = useCsatSurveys(200);
+  const [backfilling, setBackfilling] = useState(false);
 
   const rows = useMemo<Row[]>(() => {
     if (!convs || !agents) return [];
@@ -269,6 +276,31 @@ function WorkloadPage() {
               sla.firstResponseMinutes
                 ? `First-response SLA target: ${sla.firstResponseMinutes}m`
                 : "SLA target not configured — set one in Settings to enable breach tracking."
+            }
+            right={
+              <WbButton
+                size="sm"
+                variant="ghost"
+                loading={backfilling}
+                onClick={async () => {
+                  if (!uid) return;
+                  setBackfilling(true);
+                  try {
+                    const r = await backfillResponseTimes(uid);
+                    toast.success(
+                      `Recomputed response times — ${r.updated} updated, ${r.skipped} skipped`,
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Backfill failed");
+                  } finally {
+                    setBackfilling(false);
+                  }
+                }}
+                title="Fill in Avg/Median reply for older conversations"
+              >
+                <FontAwesomeIcon icon={faRotate} className="mr-1.5 h-3 w-3" />
+                Recompute reply times
+              </WbButton>
             }
           />
           <WbCardBody>
