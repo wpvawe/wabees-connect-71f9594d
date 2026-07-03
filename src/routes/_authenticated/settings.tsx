@@ -16,6 +16,7 @@ import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { toast } from "sonner";
 import { BusinessProfileSection } from "@/components/settings/BusinessProfileSection";
 import { DeveloperApiSection } from "@/components/settings/DeveloperApiSection";
+import { CannedResponsesSection } from "@/components/settings/CannedResponsesSection";
 import { Gated } from "@/components/auth/OwnerOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -161,6 +162,10 @@ function SettingsPage() {
             </Gated>
           </div>
         </div>
+
+        <Gated capability="canned.write">
+          <CannedResponsesSection />
+        </Gated>
       </div>
     </>
   );
