@@ -30,6 +30,7 @@ import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { setConversationState } from "@/lib/firebase/assignments";
+import { addSystemNote } from "@/lib/firebase/notes";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -464,6 +465,13 @@ function Thread({ phone }: { phone: string }) {
         isResolved ? "open" : "resolved",
         { uid: selfUid, email: selfEmail },
       );
+      addSystemNote(
+        uid,
+        convId,
+        isResolved ? "Conversation reopened" : "Marked as resolved",
+        { uid: selfUid, email: selfEmail },
+        "system",
+      ).catch(() => {});
       toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Action failed");
