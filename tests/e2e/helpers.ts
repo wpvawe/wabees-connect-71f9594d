@@ -64,7 +64,39 @@ export async function signIn(page: Page, user: TestUser) {
   await page.getByLabel(/^email$/i).fill(user.email);
   await page.getByLabel(/password/i).fill(user.password);
   await page.getByRole("button", { name: /^sign in$/i }).click();
-  await page.waitForURL(/\/(dashboard|inbox|join|agents)\b/, { timeout: 30_000 });
+  await waitForApproval(page, user);
+}
+
+/** Sign in if the account exists, otherwise sign up. Handles the approval gate. */
+export async function signInOrSignUp(page: Page, user: TestUser) {
+  await page.goto("/auth");
+  const emailInput = page.getByLabel(/^email$/i);
+  await emailInput.fill(user.email);
+  await page.getByLabel(/password/i).fill(user.password);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
+  // Race: either we navigate away / gate appears, or a toast says invalid creds.
+  const gate = page.getByRole("heading", { name: /waiting for approval/i });
+  const invalid = page.getByText(/invalid email or password|user-not-found|wrong-password/i);
+  const raced = await Promise.race([
+    page
+      .waitForURL((u) => !/\/auth\/?$/.test(new URL(u).pathname), { timeout: 8_000 })
+      .then(() => "in" as const)
+      .catch(() => null),
+    gate
+      .waitFor({ state: "visible", timeout: 8_000 })
+      .then(() => "gate" as const)
+      .catch(() => null),
+    invalid
+      .first()
+      .waitFor({ state: "visible", timeout: 8_000 })
+      .then(() => "missing" as const)
+      .catch(() => null),
+  ]);
+  if (raced === "missing" || raced === null) {
+    await signUp(page, user);
+    return;
+  }
+  await waitForApproval(page, user);
 }
 
 /** As an owner already signed in, generate an agent invite and return its code + link. */
