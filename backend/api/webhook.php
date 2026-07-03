@@ -1607,10 +1607,6 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     $docNameConv = "projects/" . FIREBASE_PROJECT_ID . "/databases/(default)/documents/" . $convPath;
     $docNameUser = "projects/" . FIREBASE_PROJECT_ID . "/databases/(default)/documents/users/$userId";
 
-    $notifId = 'notif_msg_' . time() . '_' . rand(1000, 9999);
-    $notifPath = "users/$userId/notifications/$notifId";
-    $docNameNotif = "projects/" . FIREBASE_PROJECT_ID . "/databases/(default)/documents/" . $notifPath;
-
     $writes = [
         [
             'update' => [
@@ -1642,20 +1638,11 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                 ],
             ],
         ],
-        [
-            'update' => [
-                'name' => $docNameNotif,
-                'fields' => convert_to_firestore_fields([
-                    'title' => "New message from $contactName",
-                    'body' => mb_substr($messageBody, 0, 120),
-                    'type' => 'new_message',
-                    'data' => ['contactPhone' => $from, 'whatsappMessageId' => $messageId],
-                    'read' => false,
-                    'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
-                ]),
-            ],
-        ],
     ];
+    // NOTE: per-message notification docs intentionally NOT written here.
+    // Toast + chime come from the messages collection via
+    // useIncomingMessageAlerts. Only meaningful events (lead capture, hot
+    // lead, plan changes, warnings, etc.) create /notifications entries.
 
     // ============ STEP 1: COMMIT FIRST — Store message before any slow work ============
     // Meta webhooks must finish quickly. Push notifications, bot fetches and AI
@@ -2795,22 +2782,9 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
             ],
         ];
 
-        // 3. Create notification
-        $writes[] = [
-            'update' => [
-                'name' => "$dbPrefix/users/$userId/notifications/$notifId",
-                'fields' => convert_to_firestore_fields([
-                    'title' => "🤖 Bot Triggered: $botName",
-                    'body' => "Auto-replied to $from",
-                    'type' => 'bot_triggered',
-                    'data' => ['botName' => $botName, 'contactPhone' => $from],
-                    'read' => false,
-                    'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
-                ]),
-            ],
-        ];
-
-        // 4. Increment bot trigger count
+        // 3. Increment bot trigger count
+        // (Bot-triggered notifications intentionally omitted — noise. Only
+        // meaningful events like hot leads, plan changes, warnings persist.)
         $writes[] = [
             'transform' => [
                 'document' => "$dbPrefix/users/$userId/bots/$botId",

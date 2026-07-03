@@ -35,6 +35,7 @@ export function useNotifications(): {
     const unsub = onSnapshot(
       q,
       (snap) => {
+        const HIDE_TYPES = new Set(["new_message", "bot_triggered"]);
         const list = snap.docs.map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
@@ -49,6 +50,9 @@ export function useNotifications(): {
                 typeof x.targetAgentId === "string" ? (x.targetAgentId as string) : null,
             };
           })
+          // Hide legacy noise: every message / every bot trigger used to
+          // write a notification doc. We now only persist meaningful events.
+          .filter((n) => !HIDE_TYPES.has(n.type))
           // Owner (uid == selfUid) sees everything; agents only see items
           // targeted at them or with no target (broadcast).
           .filter((n) =>
