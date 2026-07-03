@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAgents } from "@/hooks/useAgents";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
@@ -44,6 +45,7 @@ function AgentsPage() {
   const dataOwner = session.status === "ready" ? session.dataOwner : null;
   const { data: agents, error } = useAgents();
   const isOwner = !dataOwner && selfUid === ownerUid;
+  const owner = useOwnerInfo();
 
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -197,10 +199,33 @@ function AgentsPage() {
               </p>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-foreground">
-                  You are an <strong>agent</strong> connected to owner{" "}
-                  <span className="font-mono text-xs">{dataOwner}</span>.
-                </p>
+                <div className="flex items-start gap-3">
+                  {owner?.profileImageUrl ? (
+                    <img
+                      src={owner.profileImageUrl}
+                      alt=""
+                      className="h-11 w-11 rounded-full border border-border object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-11 w-11 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                      {((owner?.businessName || owner?.displayName || owner?.email || "?")
+                        .trim()
+                        .charAt(0)
+                        .toUpperCase()) || "?"}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground">
+                      You are an <strong>agent</strong> connected to:
+                    </p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                      {owner?.businessName || owner?.displayName || owner?.email || "Owner"}
+                    </p>
+                    {owner?.email && (
+                      <p className="truncate text-xs text-muted-foreground">{owner.email}</p>
+                    )}
+                  </div>
+                </div>
                 {selfUid && (
                   <WbButton
                     variant="danger"
