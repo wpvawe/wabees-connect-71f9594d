@@ -43,7 +43,7 @@ import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/use
 import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { deleteDoc, doc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
@@ -145,6 +145,31 @@ function AgentsPage() {
     if (!selfUid) return;
     setRemoving(agentId);
     try {
+      // Agent self-disconnect path: the signed-in user is leaving their
+      // owner's workspace. Firestore rules don't let an agent mutate the
+      // owner's tree, but they DO allow the agent to self-set
+      // status='left' on their own agent doc — the owner's list then
+      // filters `status === "left"` rows out automatically.
+      if (!isOwner && agentId === selfUid && ownerUid && ownerUid !== selfUid) {
+        const db = fbDbOrNull();
+        if (!db) throw new Error("Offline — cannot disconnect right now");
+        await updateDoc(doc(db, `users/${ownerUid}/agents/${selfUid}`), {
+          status: "left",
+          leftAt: serverTimestamp(),
+          leftReason: "self_disconnect",
+        });
+        // Clear own dataOwner so the app immediately shows the user's
+        // own (empty) workspace instead of the ex-owner's tree.
+        await updateDoc(doc(db, `users/${selfUid}`), {
+          dataOwner: deleteField(),
+          dataOwnerJoinedAt: deleteField(),
+          dataOwnerJoinedVia: deleteField(),
+          dataOwnerClearedAt: serverTimestamp(),
+          dataOwnerClearedReason: "self_disconnect",
+        }).catch(() => undefined);
+        toast.success("Disconnected from workspace");
+        return;
+      }
       // Instant client-side revoke first — cuts off access before the PHP
       // delete round-trip. If PHP fails the agent is still locked out.
       try {
