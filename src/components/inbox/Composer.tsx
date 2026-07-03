@@ -83,6 +83,8 @@ export function Composer({
   const emojiWrapRef = useRef<HTMLDivElement | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [interactiveOpen, setInteractiveOpen] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const plusWrapRef = useRef<HTMLDivElement | null>(null);
   // Canned-response picker: opens when the textarea value starts with "/".
   const { data: cannedList } = useCannedResponses();
   const [cannedOpen, setCannedOpen] = useState(false);
@@ -122,6 +124,16 @@ export function Composer({
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [emojiOpen]);
+
+  useEffect(() => {
+    if (!plusOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!plusWrapRef.current) return;
+      if (!plusWrapRef.current.contains(e.target as Node)) setPlusOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [plusOpen]);
 
   function insertEmoji(emoji: string) {
     const ta = textareaRef.current;
