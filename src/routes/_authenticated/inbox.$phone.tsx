@@ -707,15 +707,21 @@ function Thread({ phone }: { phone: string }) {
           )}
         </button>
       )}
-      <Composer
-        phone={phone}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-        lastInboundWamid={
-          data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
-            ?.whatsappMessageId ?? null
-        }
-      />
+      {isBlocked ? (
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+          Unblock this contact to resume the conversation.
+        </div>
+      ) : (
+        <Composer
+          phone={phone}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+          lastInboundWamid={
+            data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
+              ?.whatsappMessageId ?? null
+          }
+        />
+      )}
       {lightboxId && lightboxItems.length > 0 && (
         <MediaLightbox
           items={lightboxItems}
