@@ -26,8 +26,36 @@ export async function signUp(page: Page, user: TestUser) {
   await form.getByLabel(/work email/i).fill(user.email);
   await form.getByLabel(/password/i).fill(user.password);
   await form.getByRole("button", { name: /^create account$/i }).click();
-  // Wait for either a toast + navigation, or an auth error.
-  await page.waitForURL(/\/(dashboard|inbox|join)\b/, { timeout: 30_000 });
+  // Sign-up succeeded — now wait past the "Waiting for approval" gate.
+  await waitForApproval(page, user);
+}
+
+/**
+ * Poll the "Waiting for approval" gate until the platform owner approves
+ * the account (manual step). Clicks "Check again" every 5s for up to 10 min.
+ */
+export async function waitForApproval(page: Page, user: TestUser) {
+  const deadline = Date.now() + 10 * 60_000;
+  // If we're already past the gate, bail early.
+  const gate = page.getByRole("heading", { name: /waiting for approval/i });
+  try {
+    await gate.waitFor({ state: "visible", timeout: 5_000 });
+  } catch {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`\n  → Awaiting manual approval for: ${user.email}\n`);
+  while (Date.now() < deadline) {
+    if (!(await gate.isVisible().catch(() => false))) return;
+    const checkAgain = page.getByRole("button", { name: /check again/i });
+    if (await checkAgain.isVisible().catch(() => false)) {
+      await checkAgain.click().catch(() => {});
+    }
+    await page.waitForTimeout(5_000);
+    // Any redirect off /auth means approval landed.
+    if (!/\/auth\b/.test(page.url())) return;
+  }
+  throw new Error(`Timed out waiting for approval of ${user.email}`);
 }
 
 /** Sign in an existing user through /auth. */
