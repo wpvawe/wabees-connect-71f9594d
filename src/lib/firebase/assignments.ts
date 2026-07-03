@@ -19,6 +19,7 @@ import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { resolveConversationDocIds } from "@/lib/firebase/conversations";
 import { isWithinWorkingHours, type WorkingHours } from "@/lib/firebase/working-hours";
+import type { Availability } from "@/hooks/useAgentAvailability";
 
 export async function assignConversation(
   uid: string,
@@ -253,6 +254,7 @@ export type PickCandidate = {
   activeLoad?: number;
   skills?: string[];
   workingHours?: WorkingHours | null;
+  availability?: Availability;
 };
 
 export function pickRoundRobinAgent(
@@ -260,7 +262,10 @@ export function pickRoundRobinAgent(
   excludeAgentId: string | null = null,
 ): PickCandidate | null {
   const eligible = agents.filter(
-    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+    (a) =>
+      a.id !== excludeAgentId &&
+      (a.status ?? "active") !== "revoked" &&
+      a.availability !== "dnd",
   );
   if (eligible.length === 0) return null;
 
@@ -302,7 +307,10 @@ export function pickSkillsMatchAgent(
   excludeAgentId: string | null = null,
 ): PickCandidate | null {
   const eligible = agents.filter(
-    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+    (a) =>
+      a.id !== excludeAgentId &&
+      (a.status ?? "active") !== "revoked" &&
+      a.availability !== "dnd",
   );
   if (eligible.length === 0) return null;
 
