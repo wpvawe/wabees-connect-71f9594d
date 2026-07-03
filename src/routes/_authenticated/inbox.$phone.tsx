@@ -726,6 +726,17 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                 Schedule message
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faClockRotateLeft} className="h-3.5 w-3.5" />
+                Activity timeline
+              </button>
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
