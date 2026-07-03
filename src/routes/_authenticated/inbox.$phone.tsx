@@ -926,6 +926,12 @@ function Thread({ phone }: { phone: string }) {
         onOpenChange={setAssignOpen}
       />
       <ScheduleDialog phone={phone} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+      <ActivityDrawer
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        phone={phone}
+        contactName={conv?.contactName ?? null}
+      />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
