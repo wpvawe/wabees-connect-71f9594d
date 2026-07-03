@@ -8,6 +8,8 @@
 import { useEffect, useRef } from "react";
 import {
   collection,
+  doc,
+  getDoc,
   limit,
   onSnapshot,
   orderBy,
@@ -95,11 +97,32 @@ export function useAutoTriage(): void {
 
           seen.current.add(d.id);
           inFlight.current.add(d.id);
-          lastByPhone.current.set(phone, Date.now());
           // Fire and forget — the settings hook already restricts to owner,
           // and Firestore write is idempotent.
           void (async () => {
             try {
+              // Persistent throttle: skip if this conversation was triaged
+              // within TRIAGE_THROTTLE_MS by any past session.
+              try {
+                const convRef = doc(db, `users/${uid}/conversations/${phone}`);
+                const convSnap = await getDoc(convRef);
+                const raw = convSnap.exists()
+                  ? ((convSnap.data() as Record<string, unknown>).aiTriageAt as unknown)
+                  : null;
+                const lastMs =
+                  typeof raw === "string"
+                    ? Date.parse(raw)
+                    : raw && typeof raw === "object" && "toDate" in (raw as object)
+                      ? (raw as { toDate: () => Date }).toDate().getTime()
+                      : NaN;
+                if (Number.isFinite(lastMs) && Date.now() - lastMs < TRIAGE_THROTTLE_MS) {
+                  lastByPhone.current.set(phone, Date.now());
+                  return;
+                }
+              } catch {
+                // Non-fatal — proceed to classify.
+              }
+              lastByPhone.current.set(phone, Date.now());
               const user = fbAuth().currentUser;
               if (!user) return;
               const idToken = await user.getIdToken();

@@ -134,10 +134,10 @@ export function DeveloperApiSection() {
             <FontAwesomeIcon icon={faCode} className="h-3 w-3 text-primary" /> Example
           </p>
           <pre className="overflow-x-auto whitespace-pre text-[11px] leading-relaxed text-muted-foreground">
-{`curl -X POST https://api.wabees.live/send-message.php \\
+{`curl -X POST https://api.wabees.live/public-send.php \\
   -H "x-api-key: ${apiKey ?? "wbk_your_key_here"}" \\
   -H "Content-Type: application/json" \\
-  -d '{"to":"+9230012345678","text":"Hello from API"}'`}
+  -d '{"to":"923001234567","type":"text","message":"Hello from API"}'`}
           </pre>
         </div>
       </WbCardBody>
