@@ -2782,22 +2782,9 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
             ],
         ];
 
-        // 3. Create notification
-        $writes[] = [
-            'update' => [
-                'name' => "$dbPrefix/users/$userId/notifications/$notifId",
-                'fields' => convert_to_firestore_fields([
-                    'title' => "🤖 Bot Triggered: $botName",
-                    'body' => "Auto-replied to $from",
-                    'type' => 'bot_triggered',
-                    'data' => ['botName' => $botName, 'contactPhone' => $from],
-                    'read' => false,
-                    'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
-                ]),
-            ],
-        ];
-
-        // 4. Increment bot trigger count
+        // 3. Increment bot trigger count
+        // (Bot-triggered notifications intentionally omitted — noise. Only
+        // meaningful events like hot leads, plan changes, warnings persist.)
         $writes[] = [
             'transform' => [
                 'document' => "$dbPrefix/users/$userId/bots/$botId",
