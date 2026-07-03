@@ -2,7 +2,7 @@
 /**
  * WABEES — Scheduled Message Dispatcher (server cron)
  * Runs from Hostinger crontab every minute:
- *   * * * * * /usr/bin/curl -fsS "https://api.wabees.live/api/cron/dispatch-scheduled.php?key=REPLACE_ME" > /dev/null 2>&1
+ *   * * * * * /usr/bin/curl -fsS "https://api.wabees.live/cron/dispatch-scheduled.php?key=REPLACE_ME" > /dev/null 2>&1
  *
  * - Per-user query on users/{uid}/scheduled_messages using ONLY a
  *   single-field filter (scheduledFor <= now). Single-field indexes are
@@ -92,9 +92,15 @@ foreach ($dueDocs as $doc) {
 
     // Load owner's WA credentials.
     $ownerResp = firestore_get_cached("users/$uid", 60);
-    $ownerFields = $ownerResp['fields'] ?? [];
+    $ownerFields = $ownerResp['data']['fields'] ?? [];
     $phoneNumberId = _fs_string($ownerFields['whatsappPhoneNumberId'] ?? null, '');
     $accessToken = _fs_string($ownerFields['whatsappAccessToken'] ?? null, '');
+    if ($phoneNumberId === '' || $accessToken === '') {
+        $configResp = firestore_get("users/$uid/whatsapp_config/config");
+        $configFields = $configResp['data']['fields'] ?? [];
+        if ($phoneNumberId === '') $phoneNumberId = _fs_string($configFields['phoneNumberId'] ?? null, '');
+        if ($accessToken === '') $accessToken = _fs_string($configFields['accessToken'] ?? null, '');
+    }
     if ($phoneNumberId === '' || $accessToken === '') {
         _mark_failed($uid, $schedId, 'Owner has no WhatsApp credentials');
         continue;
