@@ -629,6 +629,20 @@ function Thread({ phone }: { phone: string }) {
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
+                disabled={stateBusy}
+                onClick={onToggleResolve}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted ${
+                  isResolved ? "text-sky-600" : "text-emerald-600"
+                } disabled:opacity-50`}
+              >
+                <FontAwesomeIcon
+                  icon={isResolved ? faRotateLeft : faCheckDouble}
+                  className="h-3.5 w-3.5"
+                />
+                {isResolved ? "Reopen conversation" : "Mark as resolved"}
+              </button>
+              <button
+                type="button"
                 disabled={blockBusy}
                 onClick={onToggleBlock}
                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted ${
