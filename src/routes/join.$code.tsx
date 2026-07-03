@@ -40,6 +40,7 @@ function JoinPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [switchPrompt, setSwitchPrompt] = useState<{ priorOwner: string } | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(fbAuth(), (u) => setUser(u));
@@ -78,7 +79,7 @@ function JoinPage() {
     navigate({ to: "/auth" });
   }
 
-  async function accept() {
+  async function accept(confirmSwitch = false) {
     if (!user || user === "loading" || invite === "loading" || invite === "error" || !invite) return;
     setAccepting(true);
     try {
@@ -86,6 +87,7 @@ function JoinPage() {
         code: invite.code,
         selfUid: user.uid,
         selfEmail: user.email ?? null,
+        confirmSwitch,
       });
       try {
         window.sessionStorage.removeItem(PENDING_INVITE_KEY);
@@ -93,12 +95,18 @@ function JoinPage() {
         /* ignore */
       }
       setAccepted(true);
+      setSwitchPrompt(null);
       toast.success("You've joined the workspace");
       setTimeout(() => {
         navigate({ to: "/inbox" });
       }, 1200);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not accept invite");
+      const err = e as Error & { code?: string; priorOwner?: string };
+      if (err?.code === "AGENT_SWITCH_REQUIRED" && err.priorOwner) {
+        setSwitchPrompt({ priorOwner: err.priorOwner });
+      } else {
+        toast.error(err instanceof Error ? err.message : "Could not accept invite");
+      }
     } finally {
       setAccepting(false);
     }
@@ -169,9 +177,34 @@ function JoinPage() {
               <p className="text-xs text-muted-foreground">
                 Signed in as <strong>{user.email ?? user.uid}</strong>
               </p>
-              <WbButton onClick={accept} loading={accepting} className="w-full">
-                Accept invite &amp; join
-              </WbButton>
+              {switchPrompt ? (
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+                  <p className="text-foreground">
+                    You are already an agent in another workspace. Joining this one will
+                    leave the previous workspace and switch your access.
+                  </p>
+                  <div className="flex gap-2">
+                    <WbButton
+                      variant="secondary"
+                      onClick={() => setSwitchPrompt(null)}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </WbButton>
+                    <WbButton
+                      onClick={() => accept(true)}
+                      loading={accepting}
+                      className="flex-1"
+                    >
+                      Leave &amp; join new
+                    </WbButton>
+                  </div>
+                </div>
+              ) : (
+                <WbButton onClick={() => accept(false)} loading={accepting} className="w-full">
+                  Accept invite &amp; join
+                </WbButton>
+              )}
             </div>
           ) : (
             <div className="space-y-2">

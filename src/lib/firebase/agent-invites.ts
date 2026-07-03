@@ -168,6 +168,12 @@ export async function acceptAgentInvite(input: {
   code: string;
   selfUid: string;
   selfEmail: string | null;
+  /**
+   * When true, the caller has already been shown the "you are switching
+   * workspaces" warning and confirmed it. Without this flag we refuse to
+   * overwrite an existing `dataOwner` on the invitee's user doc.
+   */
+  confirmSwitch?: boolean;
 }): Promise<{ ownerId: string; role: InviteRole }> {
   const db = fbDb();
   const invite = await lookupInviteByCode(input.code);
@@ -195,6 +201,27 @@ export async function acceptAgentInvite(input: {
     throw new Error(
       `This invite is for ${invite.email}. Please sign in with that email to accept.`,
     );
+  }
+
+  // H-2: don't silently overwrite a previous workspace membership. If the
+  // invitee already has `dataOwner` pointing at a DIFFERENT owner, force
+  // the caller to pass `confirmSwitch: true` after showing an explicit
+  // "you will leave workspace X and join workspace Y" confirmation.
+  const selfSnap = await getDoc(doc(db, `users/${input.selfUid}`));
+  const priorRaw = selfSnap.exists() ? (selfSnap.data() as Record<string, unknown>).dataOwner : null;
+  const priorOwner =
+    typeof priorRaw === "string" && priorRaw.trim() && priorRaw !== invite.ownerId
+      ? priorRaw.trim()
+      : null;
+  if (priorOwner && !input.confirmSwitch) {
+    const err = new Error(
+      "You are already an agent in another workspace. Confirm the switch to continue.",
+    ) as Error & { code?: string; priorOwner?: string; nextOwner?: string; nextRole?: InviteRole };
+    err.code = "AGENT_SWITCH_REQUIRED";
+    err.priorOwner = priorOwner;
+    err.nextOwner = invite.ownerId;
+    err.nextRole = invite.role;
+    throw err;
   }
 
   // Order matters: firestore rules on users/{ownerId}/agents/{agentId}
@@ -235,6 +262,22 @@ export async function acceptAgentInvite(input: {
     },
     { merge: true },
   );
+
+  // If the invitee was previously an agent under a DIFFERENT owner, mark
+  // that prior assignment as `left` so the old owner's team list shows an
+  // accurate state instead of a stale "active" row. Best-effort — rules
+  // allow the agent to self-set status='left' on their own agent doc.
+  if (priorOwner) {
+    try {
+      await updateDoc(doc(db, `users/${priorOwner}/agents/${input.selfUid}`), {
+        status: "left",
+        leftAt: serverTimestamp(),
+        leftReason: "switched_workspace",
+      });
+    } catch {
+      /* rules or offline — safe to skip */
+    }
+  }
 
   // Best-effort mirror update on the owner-scoped invite doc. Rules
   // reject writes from the invitee here (owner-only), so this is only
