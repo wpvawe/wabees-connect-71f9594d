@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faWandMagicSparkles, faXmark, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faXmark, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
@@ -69,17 +69,10 @@ export function AutoTriageSection() {
 
   return (
     <WbCard>
-      <WbCardHeader>
-        <div className="flex items-center gap-2">
-          <FontAwesomeIcon icon={faWandMagicSparkles} className="h-4 w-4 text-violet-500" />
-          <div>
-            <div className="text-sm font-semibold">AI Auto-triage</div>
-            <div className="text-xs text-muted-foreground">
-              Automatically tag, prioritize, and summarize new customer messages.
-            </div>
-          </div>
-        </div>
-      </WbCardHeader>
+      <WbCardHeader
+        title="AI Auto-triage"
+        subtitle="Automatically tag, prioritize, and summarize new customer messages."
+      />
       <WbCardBody>
         <div className="space-y-4">
           <label className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30">
