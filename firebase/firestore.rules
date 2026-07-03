@@ -269,5 +269,13 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
+
+    // ============ GLOBAL SETTINGS (subscription_messages, etc.) ============
+    // Any authenticated user can read (e.g. plan request dialog needs
+    // paymentInstructions / adminContact). Only admin can write.
+    match /settings/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
   }
 }
