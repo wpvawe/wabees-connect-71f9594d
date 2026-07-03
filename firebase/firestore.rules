@@ -18,7 +18,17 @@ service cloud.firestore {
     // Helper: Check if user is an agent of this owner
     function isAgentOf(ownerId) {
       return request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid));
+        exists(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+          .data.get('status', 'active') != 'revoked';
+    }
+
+    // Helper: Check if user is a supervisor-level agent of this owner
+    // (can reassign, view all conversations, etc.). Missing role → 'agent'.
+    function isSupervisorOf(ownerId) {
+      return isAgentOf(ownerId) &&
+        get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+          .data.get('role', 'agent') == 'supervisor';
     }
 
     // ============ USERS ============

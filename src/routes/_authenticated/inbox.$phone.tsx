@@ -18,6 +18,8 @@ import {
   faClock,
   faBan,
   faCircleCheck,
+  faCheckDouble,
+  faRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -27,11 +29,12 @@ import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
+import { setConversationState } from "@/lib/firebase/assignments";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneQueryCandidates, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import {
   sendReactionMessage,
@@ -62,6 +65,8 @@ function Thread({ phone }: { phone: string }) {
   const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const session = useFirebaseSession();
+  const selfEmail = session.status === "ready" ? session.user.email ?? null : null;
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
@@ -75,6 +80,7 @@ function Thread({ phone }: { phone: string }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [stateBusy, setStateBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -420,6 +426,8 @@ function Thread({ phone }: { phone: string }) {
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
   const isBlocked = !!conv?.isBlocked;
+  const convState = conv?.state ?? "open";
+  const isResolved = convState === "resolved";
   const displayName = contact?.name || (name !== phone ? name : "");
 
   const onToggleBlock = useCallback(async () => {
@@ -444,6 +452,26 @@ function Thread({ phone }: { phone: string }) {
       setHeaderMenu(false);
     }
   }, [uid, phone, isBlocked]);
+
+  const onToggleResolve = useCallback(async () => {
+    if (!uid || !selfUid) return;
+    setStateBusy(true);
+    try {
+      const convId = normalizePhone(phone);
+      await setConversationState(
+        uid,
+        convId,
+        isResolved ? "open" : "resolved",
+        { uid: selfUid, email: selfEmail },
+      );
+      toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setStateBusy(false);
+      setHeaderMenu(false);
+    }
+  }, [uid, selfUid, selfEmail, phone, isResolved]);
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
@@ -599,6 +627,20 @@ function Thread({ phone }: { phone: string }) {
                 Schedule message
               </button>
               <div className="my-1 h-px bg-border" />
+              <button
+                type="button"
+                disabled={stateBusy}
+                onClick={onToggleResolve}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted ${
+                  isResolved ? "text-sky-600" : "text-emerald-600"
+                } disabled:opacity-50`}
+              >
+                <FontAwesomeIcon
+                  icon={isResolved ? faRotateLeft : faCheckDouble}
+                  className="h-3.5 w-3.5"
+                />
+                {isResolved ? "Reopen conversation" : "Mark as resolved"}
+              </button>
               <button
                 type="button"
                 disabled={blockBusy}

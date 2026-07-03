@@ -18,6 +18,8 @@ import {
   faUserSlash,
   faNoteSticky,
   faBan,
+  faCircleCheck,
+  faMoon,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -34,6 +36,7 @@ import { phoneQueryCandidates, str, toIso } from "@/lib/firebase/normalizers";
 import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { useConvTags } from "@/hooks/useConvTags";
+import { useAgentRole } from "@/hooks/useAgentRole";
 import {
   togglePin,
   addTag,
@@ -57,7 +60,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Filter = "all" | "unread" | "free" | "free_unread" | "mine" | "unassigned";
+type Filter =
+  | "all"
+  | "unread"
+  | "free"
+  | "free_unread"
+  | "mine"
+  | "unassigned"
+  | "resolved";
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function isReplyWindowOpen(iso: string | null | undefined): boolean {
@@ -90,8 +100,19 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data: tags } = useConvTags();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const role = useAgentRole();
+  const isPrivileged = role === "owner" || role === "supervisor";
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+
+  // Regular agents get scoped visibility by default (Mine + Unassigned).
+  // Owners/supervisors keep the "All" default. Runs once when role resolves.
+  useEffect(() => {
+    if (role === "agent" && filter === "all") {
+      setFilter("mine");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [incomingFallbacks, setIncomingFallbacks] = useState<Record<string, string | null>>({});
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
@@ -166,6 +187,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       case "unassigned":
         rows = rows.filter((c) => !c.assignedAgentId);
         break;
+      case "resolved":
+        rows = rows.filter((c) => c.state === "resolved");
+        break;
+    }
+    // Hide resolved chats from every non-resolved view so the queue stays
+    // focused on actionable conversations. Users can hit the "Resolved" chip
+    // to bring them back.
+    if (filter !== "resolved") {
+      rows = rows.filter((c) => c.state !== "resolved");
+    }
+    // Agents (non-privileged) only ever see Mine + Unassigned regardless of
+    // which chip they pick — the Firestore rules enforce this too, but
+    // filtering client-side avoids empty rows from other agents.
+    if (role === "agent") {
+      rows = rows.filter(
+        (c) => !c.assignedAgentId || (selfUid && c.assignedAgentId === selfUid),
+      );
     }
     if (q.trim()) {
       const needle = q.trim().toLowerCase();
@@ -174,7 +212,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       );
     }
     return rows;
-  }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid]);
+  }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid, role]);
 
   useEffect(() => {
     if (!uid || !merged) return;
@@ -384,16 +422,18 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <FilterChip
-            icon={faMailBulk}
-            label="All"
-            active={filter === "all" && !selectedTag}
-            color="hsl(var(--primary))"
-            onClick={() => {
-              setFilter("all");
-              setSelectedTag(null);
-            }}
-          />
+          {isPrivileged && (
+            <FilterChip
+              icon={faMailBulk}
+              label="All"
+              active={filter === "all" && !selectedTag}
+              color="hsl(var(--primary))"
+              onClick={() => {
+                setFilter("all");
+                setSelectedTag(null);
+              }}
+            />
+          )}
           <FilterChip
             icon={faUser}
             label="Mine"
@@ -441,6 +481,16 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
             color="#e91e63"
             onClick={() => {
               setFilter(filter === "free_unread" ? "all" : "free_unread");
+              setSelectedTag(null);
+            }}
+          />
+          <FilterChip
+            icon={faCircleCheck}
+            label="Resolved"
+            active={filter === "resolved"}
+            color="#10b981"
+            onClick={() => {
+              setFilter(filter === "resolved" ? (isPrivileged ? "all" : "mine") : "resolved");
               setSelectedTag(null);
             }}
           />
@@ -849,6 +899,20 @@ function ConvRow({
               icon={faBan}
               className="h-3 w-3 text-destructive"
               title="Blocked"
+            />
+          )}
+          {c.state === "resolved" && (
+            <FontAwesomeIcon
+              icon={faCircleCheck}
+              className="h-3 w-3 text-emerald-500"
+              title="Resolved"
+            />
+          )}
+          {c.state === "snoozed" && (
+            <FontAwesomeIcon
+              icon={faMoon}
+              className="h-3 w-3 text-amber-500"
+              title="Snoozed"
             />
           )}
           {typeof c.notesCount === "number" && c.notesCount > 0 && (
