@@ -1,6 +1,6 @@
 /**
  * Owner-only background worker: listens for new inbound WhatsApp messages
- * and runs them through the Lovable AI triage classifier. Results are
+ * and runs them through the DeepSeek triage classifier. Results are
  * merged into the conversation doc (tags, priority, intent, sentiment,
  * one-line summary). Agents/supervisors never run this — only the owner
  * client so a single classification runs per message.
