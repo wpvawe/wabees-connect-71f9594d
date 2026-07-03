@@ -10,6 +10,7 @@ import { fbAuth } from "@/integrations/firebase/client";
 import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 import { toast } from "sonner";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { postAuthDestination } from "@/lib/auth-redirect";
 
 export function SignInForm() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export function SignInForm() {
     try {
       await signInWithEmailAndPassword(fbAuth(), values.email.trim(), values.password);
       toast.success("Welcome back");
-      navigate({ to: "/dashboard" });
+      navigate(postAuthDestination() as never);
     } catch (err) {
       toast.error(friendlyAuthError(err, "Invalid email or password"));
     }
