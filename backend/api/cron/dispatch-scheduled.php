@@ -238,6 +238,7 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     curl_close($ch);
 
     if ($code >= 400 || $code === 0) {
+        $GLOBALS['_wabees_cron_global_query_failed'] = true;
         error_log("[WABEES cron] global due query $code " . substr((string) $resp, 0, 500));
         return [];
     }
@@ -252,7 +253,26 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     return $out;
 }
 
-// Kept as a manual fallback helper, but no longer used by cron's main path.
+function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
+    $out = [];
+    $pageToken = null;
+    $maxUsers = 80;
+    $scanned = 0;
+    $started = microtime(true);
+    do {
+        [$userIds, $pageToken] = _list_user_ids($pageToken, 100);
+        foreach ($userIds as $uid) {
+            if (++$scanned > $maxUsers) break 2;
+            if ((microtime(true) - $started) > 40) break 2;
+            $docs = _query_user_due($uid, $nowIso, $perUserLimit);
+            foreach ($docs as $d) $out[] = $d;
+            if (count($out) >= 50) break 2;
+        }
+    } while ($pageToken);
+    return $out;
+}
+
+// Kept as bounded fallback for projects missing collection-group indexes.
 function _list_user_ids(?string $pageToken, int $pageSize): array {
     // listDocuments returns only document names — cheap read.
     $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
