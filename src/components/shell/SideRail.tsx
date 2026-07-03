@@ -15,6 +15,7 @@ import {
   faChartColumn,
   faBrain,
   faUsers,
+  faGaugeHigh,
   faHeadset,
   faLink,
   faBell,
@@ -44,6 +45,7 @@ const NAV: { to: string; label: string; icon: IconDefinition; require?: Capabili
   { to: "/connect", label: "Connect", icon: faPlug, require: "whatsapp.connect" },
   { to: "/message-links", label: "Links", icon: faLink, require: "billing.manage" },
   { to: "/agents", label: "Agents", icon: faUsers },
+  { to: "/workload", label: "Workload", icon: faGaugeHigh, require: "team.manage" },
   { to: "/notifications", label: "Alerts", icon: faBell },
   { to: "/support", label: "Support", icon: faHeadset, require: "support.chat" },
 ];
