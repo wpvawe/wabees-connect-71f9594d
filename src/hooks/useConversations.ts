@@ -172,6 +172,13 @@ export function useConversations(): { data: Conversation[] | null; error: string
               const p = typeof x.priority === "string" ? x.priority : null;
               return p === "urgent" || p === "high" || p === "normal" || p === "low" ? p : null;
             })(),
+            aiIntent: typeof x.aiIntent === "string" ? x.aiIntent : null,
+            aiSentiment: (() => {
+              const s = typeof x.aiSentiment === "string" ? x.aiSentiment : null;
+              return s === "positive" || s === "negative" || s === "neutral" ? s : null;
+            })(),
+            aiSummary: typeof x.aiSummary === "string" ? x.aiSummary : null,
+            aiTriageAt: typeof x.aiTriageAt === "string" ? x.aiTriageAt : null,
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
