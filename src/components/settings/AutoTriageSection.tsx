@@ -85,7 +85,7 @@ export function AutoTriageSection() {
             <div>
               <div className="text-sm font-medium">Enable auto-triage</div>
               <div className="text-xs text-muted-foreground">
-                Runs on every new inbound text message. Uses Lovable AI credits.
+                Runs on every new inbound text message. Uses DeepSeek AI (~$0.0001 / message).
               </div>
             </div>
           </label>

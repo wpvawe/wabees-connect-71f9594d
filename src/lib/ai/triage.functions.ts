@@ -90,8 +90,8 @@ export const classifyMessage = createServerFn({ method: "POST" })
     // building the prompt so cold start latency stays low.
     const uidPromise = verifyFirebaseUser(data.idToken);
 
-    const apiKey = readRuntimeEnv("LOVABLE_API_KEY");
-    if (!apiKey) throw new Error("Lovable AI is not configured");
+    const apiKey = readRuntimeEnv("DEEPSEEK_API_KEY");
+    if (!apiKey) throw new Error("DeepSeek AI is not configured");
 
     const catList = data.categories.map((c) => `- ${c}`).join("\n");
     const system = [
@@ -119,14 +119,14 @@ export const classifyMessage = createServerFn({ method: "POST" })
 
     await uidPromise; // throws on invalid token
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "deepseek-chat",
         response_format: { type: "json_object" },
         temperature: 0.1,
         messages: [
@@ -138,9 +138,10 @@ export const classifyMessage = createServerFn({ method: "POST" })
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      if (res.status === 429) throw new Error("AI rate limit reached. Try again in a moment.");
-      if (res.status === 402) throw new Error("Lovable AI credits exhausted. Add credits to continue auto-triage.");
-      throw new Error(`AI gateway error ${res.status}: ${body.slice(0, 200)}`);
+      if (res.status === 429) throw new Error("DeepSeek rate limit reached. Try again in a moment.");
+      if (res.status === 401 || res.status === 402)
+        throw new Error("DeepSeek API key invalid or out of credits.");
+      throw new Error(`DeepSeek error ${res.status}: ${body.slice(0, 200)}`);
     }
 
     const json = (await res.json()) as {
