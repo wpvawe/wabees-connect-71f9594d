@@ -188,7 +188,7 @@ function WorkloadPage() {
   if (!isAllowed) {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
+        <TopBar title="Workload" subtitle="Owner only" />
         <div className="mx-auto max-w-3xl px-4 py-16">
           <WbEmpty
             icon={faUserSlash}
@@ -204,7 +204,7 @@ function WorkloadPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
+      <TopBar title="Workload" subtitle="Team load & SLA" />
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">Team Workload</h1>
