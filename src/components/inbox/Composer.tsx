@@ -15,9 +15,12 @@ import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentS
 import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
 import { CannedPicker } from "@/components/inbox/CannedPicker";
 import { useCannedResponses } from "@/hooks/useCannedResponses";
+import { useContacts } from "@/hooks/useContacts";
 import {
   expandCanned,
   filterCanned,
+  findUnresolvedVars,
+  type CannedContext,
   type CannedResponse,
 } from "@/lib/firebase/canned";
 import {
@@ -89,6 +92,27 @@ export function Composer({
     ? filterCanned(cannedList ?? [], cannedQuery)
     : [];
 
+  // Live personalisation context for the quick-reply picker + insert.
+  // Sourced from the matching contact (email/company) and the conversation
+  // doc (display name), with the signed-in user's name as `{{agent}}`.
+  const { data: contactsList } = useContacts();
+  const cannedCtx: CannedContext = (() => {
+    const norm = normalizePhone(phone);
+    const contact = (contactsList ?? []).find((c) => c.phone === norm) ?? null;
+    const authUser = fbAuth().currentUser;
+    const agentName =
+      authUser?.displayName?.trim() ||
+      (authUser?.email ? authUser.email.split("@")[0] : "") ||
+      "";
+    return {
+      name: contact?.name ?? null,
+      phone: norm,
+      email: contact?.email ?? null,
+      company: contact?.company ?? null,
+      agent: agentName || null,
+    };
+  })();
+
   useEffect(() => {
     if (!emojiOpen) return;
     const onDown = (e: PointerEvent) => {
@@ -133,21 +157,31 @@ export function Composer({
   }, [text, cannedList, cannedOpen]);
 
   async function insertCanned(item: CannedResponse) {
-    let name: string | null = null;
-    try {
-      if (uid) {
+    // Contacts-hook first (already streaming); fall back to the conversation
+    // doc's `contactName` so agents get personalisation even before the
+    // contact list has hydrated.
+    let ctx: CannedContext = { ...cannedCtx };
+    if (!ctx.name && uid) {
+      try {
         const snap = await getDoc(
           doc(fbDb(), "users", uid, "conversations", phoneDocId(phone)),
         );
         const cn = snap.data()?.contactName;
-        if (typeof cn === "string" && cn) name = cn;
+        if (typeof cn === "string" && cn) ctx = { ...ctx, name: cn };
+      } catch {
+        /* best-effort personalisation */
       }
-    } catch {
-      /* best-effort personalisation */
     }
-    const body = expandCanned(item.body, { name, phone: normalizePhone(phone) });
+    const body = expandCanned(item.body, ctx);
     setText(body);
     setCannedOpen(false);
+    const missing = findUnresolvedVars(item.body, ctx);
+    if (missing.length > 0) {
+      toast.warning(
+        `Fill in ${missing.join(", ")} before sending`,
+        { duration: 4000 },
+      );
+    }
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       const len = body.length;
@@ -575,6 +609,7 @@ export function Composer({
             activeIndex={cannedIndex}
             onHover={setCannedIndex}
             onPick={(item) => void insertCanned(item)}
+            ctx={cannedCtx}
           />
           <button
             type="button"
