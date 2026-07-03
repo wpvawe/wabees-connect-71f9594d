@@ -24,6 +24,22 @@ import { normalizePhone, phoneQueryCandidates, phoneDocId } from "@/lib/firebase
 
 export const MAX_PINNED = 3;
 
+export type ConvPriority = "urgent" | "high" | "normal" | "low";
+
+export const PRIORITY_META: Record<ConvPriority, { label: string; color: string; rank: number }> = {
+  urgent: { label: "Urgent", color: "#dc2626", rank: 3 },
+  high: { label: "High", color: "#f59e0b", rank: 2 },
+  normal: { label: "Normal", color: "#64748b", rank: 1 },
+  low: { label: "Low", color: "#94a3b8", rank: 0 },
+};
+
+export async function setPriority(uid: string, phone: string, priority: ConvPriority): Promise<void> {
+  await setConversationVariants(uid, phone, {
+    priority,
+    priorityRank: PRIORITY_META[priority].rank,
+  });
+}
+
 /**
  * Find the actual doc ID that holds this conversation. Older webhook writes
  * may have used a non-canonical form (digits-only, or raw as-received) so we
