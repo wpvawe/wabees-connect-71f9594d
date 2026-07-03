@@ -70,12 +70,13 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
           && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
           && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid;
-        // Agent may update its OWN doc (presence, lastSeen, skills) but
-        // cannot re-activate a revoked assignment or change ownership.
+        // Agent may update its OWN doc (presence, lastSeen, skills, and
+        // voluntarily leave with status='left') but cannot re-activate a
+        // revoked assignment or change ownership.
         allow update: if request.auth != null
           && request.auth.uid == agentId
           && resource.data.get('status', 'active') != 'revoked'
-          && request.resource.data.get('status', 'active') != 'revoked';
+          && request.resource.data.get('status', 'active') in ['active', 'left'];
       }
 
       // ============ Messages ============
