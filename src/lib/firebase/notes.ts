@@ -26,16 +26,38 @@ export type ConvNote = {
   createdAt: string | null;
   updatedAt: string | null;
   pinned: boolean;
+  kind: "user" | "system" | "handoff";
+  mentions: string[];
 };
+
+/**
+ * Parse `@email` (or `@handle`) tokens out of a note body. Returns unique
+ * lowercased identifiers. Called both when persisting a note (to store the
+ * `mentions` field) and when rendering, so results MUST be deterministic.
+ */
+export function parseMentions(body: string): string[] {
+  const out = new Set<string>();
+  const re = /(^|\s)@([A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) out.add(m[2].toLowerCase());
+  return Array.from(out);
+}
 
 export async function addNote(
   uid: string,
   phone: string,
   body: string,
   author: { uid: string; email: string | null },
+  options?: {
+    kind?: "user" | "system" | "handoff";
+    mentions?: string[];
+  },
 ): Promise<string> {
   const db = fbDb();
   const convId = await ensureConversationDoc(uid, phone);
+  const kind = options?.kind ?? "user";
+  const mentions =
+    options?.mentions !== undefined ? options.mentions : parseMentions(body);
   const ref = await addDoc(
     collection(db, `users/${uid}/conversations/${convId}/notes`),
     {
@@ -43,6 +65,8 @@ export async function addNote(
       authorUid: author.uid,
       authorEmail: author.email,
       pinned: false,
+      kind,
+      mentions,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
@@ -55,6 +79,57 @@ export async function addNote(
     { merge: true },
   ).catch(() => {});
   return ref.id;
+}
+
+/**
+ * Convenience: append a system-generated note (handoff, state change,
+ * automation, etc.). System notes render with distinct styling in the panel
+ * and are never editable by the user.
+ */
+export async function addSystemNote(
+  uid: string,
+  phone: string,
+  body: string,
+  author: { uid: string; email: string | null },
+  kind: "system" | "handoff" = "system",
+): Promise<string> {
+  return addNote(uid, phone, body, author, { kind, mentions: [] });
+}
+
+/**
+ * Fire off a notification per mentioned agent so they see the mention in
+ * their in-app tray. Notifications live under the OWNER's subtree — agents
+ * share the owner's dataOwner subtree and can read it via `isAgentOf` rules.
+ * The `targetAgentId` field lets the client-side hook narrow the list.
+ */
+export async function writeMentionNotifications(
+  ownerUid: string,
+  phone: string,
+  mentions: string[],
+  agents: { id: string; email: string | null }[],
+  author: { uid: string; email: string | null },
+  preview: string,
+): Promise<void> {
+  if (mentions.length === 0) return;
+  const db = fbDb();
+  const matched = agents.filter((a) =>
+    mentions.some((m) => (a.email ?? "").toLowerCase() === m || a.id.toLowerCase() === m),
+  );
+  await Promise.all(
+    matched
+      .filter((a) => a.id !== author.uid)
+      .map((a) =>
+        addDoc(collection(db, `users/${ownerUid}/notifications`), {
+          title: `${author.email || "A teammate"} mentioned you`,
+          body: preview.slice(0, 160),
+          type: "mention",
+          read: false,
+          targetAgentId: a.id,
+          data: { phone, authorUid: author.uid, authorEmail: author.email },
+          createdAt: serverTimestamp(),
+        }).catch(() => null),
+      ),
+  );
 }
 
 export async function updateNote(
