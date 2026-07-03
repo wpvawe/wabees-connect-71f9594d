@@ -20,6 +20,7 @@ import {
   faCircleCheck,
   faCheckDouble,
   faRotateLeft,
+  faMoon,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -56,12 +57,26 @@ export const Route = createFileRoute("/_authenticated/inbox/$phone")({
   component: InboxThread,
 });
 
+function hoursUntilTomorrow9am(): number {
+  const now = new Date();
+  const t = new Date(now);
+  t.setDate(t.getDate() + 1);
+  t.setHours(9, 0, 0, 0);
+  const hours = Math.round((t.getTime() - now.getTime()) / 3600000);
+  return Math.max(1, hours);
+}
+
 function InboxThread() {
   const { phone } = Route.useParams();
   return <Thread phone={phone} />;
 }
 
 function Thread({ phone }: { phone: string }) {
+  // Local helper: hours between now and 9am tomorrow (24h window, minimum 1h).
+  // Defined inside Thread scope so it stays colocated with the snooze menu that uses it.
+  // (Kept as a plain function — pure, deterministic per call, no hooks needed.)
+  //
+  // Extracted below into module scope for stability across renders.
   const { data, error } = useMessages(phone);
   const { data: contacts } = useContacts();
   const { data: conversations } = useConversations();
@@ -83,6 +98,7 @@ function Thread({ phone }: { phone: string }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -468,6 +484,10 @@ function Thread({ phone }: { phone: string }) {
         convId,
         isResolved ? "open" : "resolved",
         { uid: selfUid, email: selfEmail },
+        {
+          assignedAgentId: conv?.assignedAgentId ?? null,
+          previousState: convState,
+        },
       );
       addSystemNote(
         uid,
@@ -484,6 +504,65 @@ function Thread({ phone }: { phone: string }) {
       setHeaderMenu(false);
     }
   }, [uid, selfUid, selfEmail, phone, isResolved]);
+
+  // ---- Snooze ----
+  const snoozeUntilIso = conv?.snoozeUntil ?? null;
+  const isSnoozed = convState === "snoozed";
+  const snoozeFor = useCallback(
+    async (hours: number) => {
+      if (!uid || !selfUid) return;
+      setStateBusy(true);
+      setSnoozeOpen(false);
+      try {
+        const until = new Date(Date.now() + hours * 3600 * 1000);
+        await setConversationState(
+          uid,
+          normalizePhone(phone),
+          "snoozed",
+          { uid: selfUid, email: selfEmail },
+          {
+            snoozeUntil: until,
+            assignedAgentId: conv?.assignedAgentId ?? null,
+            previousState: convState,
+          },
+        );
+        addSystemNote(
+          uid,
+          normalizePhone(phone),
+          `Snoozed until ${until.toLocaleString()}`,
+          { uid: selfUid, email: selfEmail },
+          "system",
+        ).catch(() => {});
+        toast.success(`Snoozed for ${hours}h`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Snooze failed");
+      } finally {
+        setStateBusy(false);
+        setHeaderMenu(false);
+      }
+    },
+    [uid, selfUid, selfEmail, phone, conv?.assignedAgentId, convState],
+  );
+
+  // Auto-wake: if snoozed and snoozeUntil is in the past, self-heal to open.
+  useEffect(() => {
+    if (!uid || !selfUid) return;
+    if (!isSnoozed || !snoozeUntilIso) return;
+    const until = Date.parse(snoozeUntilIso);
+    if (!Number.isFinite(until)) return;
+    if (until > Date.now()) return;
+    setConversationState(
+      uid,
+      normalizePhone(phone),
+      "open",
+      { uid: selfUid, email: selfEmail },
+      {
+        assignedAgentId: conv?.assignedAgentId ?? null,
+        previousState: "snoozed",
+      },
+    ).catch(() => {});
+  }, [uid, selfUid, selfEmail, phone, isSnoozed, snoozeUntilIso, conv?.assignedAgentId]);
+
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
@@ -653,6 +732,50 @@ function Thread({ phone }: { phone: string }) {
                 />
                 {isResolved ? "Reopen conversation" : "Mark as resolved"}
               </button>
+              <div className="relative" data-header-menu>
+                <button
+                  type="button"
+                  disabled={stateBusy}
+                  onClick={() => setSnoozeOpen((v) => !v)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-amber-600 hover:bg-muted disabled:opacity-50"
+                >
+                  <FontAwesomeIcon icon={faMoon} className="h-3.5 w-3.5" />
+                  {isSnoozed ? "Snoozed — change" : "Snooze"}
+                  <FontAwesomeIcon icon={faChevronDown} className="ml-auto h-3 w-3 opacity-60" />
+                </button>
+                {snoozeOpen && (
+                  <div className="absolute right-full top-0 z-40 mr-1 min-w-[160px] rounded-lg border border-border bg-card p-1 text-sm shadow-md">
+                    {[
+                      { label: "1 hour", h: 1 },
+                      { label: "4 hours", h: 4 },
+                      { label: "Tomorrow 9am", h: hoursUntilTomorrow9am() },
+                      { label: "3 days", h: 72 },
+                      { label: "1 week", h: 168 },
+                    ].map((o) => (
+                      <button
+                        key={o.label}
+                        type="button"
+                        onClick={() => void snoozeFor(o.h)}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                    {isSnoozed && (
+                      <>
+                        <div className="my-1 h-px bg-border" />
+                        <button
+                          type="button"
+                          onClick={onToggleResolve}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sky-600 hover:bg-muted"
+                        >
+                          Wake now
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
               {canBlock && (<button
                 type="button"
                 disabled={blockBusy}
