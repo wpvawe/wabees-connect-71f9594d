@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
 import { toast } from "sonner";
 import { playNotificationChime } from "@/lib/notification-sound";
@@ -14,6 +14,7 @@ export type AppNotification = {
   data: Record<string, unknown>;
   read: boolean;
   createdAt: string | null;
+  targetAgentId: string | null;
 };
 
 export function useNotifications(): {
@@ -21,12 +22,13 @@ export function useNotifications(): {
   unread: number;
   error: string | null;
 } {
-  const uid = useFirebaseUid();
+  const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const [data, setData] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !selfUid) return;
     const db = fbDbOrNull();
     if (!db) return;
     let first = true;
@@ -45,8 +47,15 @@ export function useNotifications(): {
               data: x.data && typeof x.data === "object" ? (x.data as Record<string, unknown>) : {},
               read: Boolean(x.read),
               createdAt: toIso(x.createdAt),
+              targetAgentId:
+                typeof x.targetAgentId === "string" ? (x.targetAgentId as string) : null,
             };
-          });
+          })
+          // Owner (uid == selfUid) sees everything; agents only see items
+          // targeted at them or with no target (broadcast).
+          .filter((n) =>
+            uid === selfUid ? true : n.targetAgentId === null || n.targetAgentId === selfUid,
+          );
         if (first) {
           for (const n of list) seen.add(n.id);
           first = false;
@@ -68,7 +77,7 @@ export function useNotifications(): {
       (err) => setError(err.message),
     );
     return () => unsub();
-  }, [uid]);
+  }, [uid, selfUid]);
 
   const unread = data ? data.filter((n) => !n.read).length : 0;
   return { data, unread, error };
