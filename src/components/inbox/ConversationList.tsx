@@ -593,6 +593,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           onAddTag={(t) => handleAddTag(menu.phone, t)}
           onRemoveTag={(t) => handleRemoveTag(menu.phone, t)}
           onCreateTag={() => handleCreateTag(menu.phone)}
+          onSetPriority={(p) => handleSetPriority(menu.phone, p)}
         />
       )}
       <Dialog
