@@ -522,6 +522,8 @@ function Thread({ phone }: { phone: string }) {
           actor: { uid: selfUid, email: selfEmail },
           assignedAgentId: conv?.assignedAgentId ?? null,
           assignedAgentEmail: conv?.assignedAgentEmail ?? null,
+          // 24-hour cooldown so resolve/reopen loops don't spam surveys.
+          cooldownMs: 24 * 60 * 60 * 1000,
         })
           .then((id) => {
             if (id) toast.success("CSAT survey sent");
