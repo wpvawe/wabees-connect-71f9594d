@@ -56,8 +56,8 @@ $startedAt = microtime(true);
 $now = new DateTime('now', new DateTimeZone('UTC'));
 $nowIso = $now->format('Y-m-d\TH:i:s.v\Z');
 
-// ---- Query: due pending/sending per-user (no composite index needed) ----
-$dueDocs = _fetch_due_scheduled_per_user($nowIso, 20);
+// ---- Query: due pending/sending globally -------------------------------
+$dueDocs = _fetch_due_scheduled_global($nowIso, 50);
 $processed = [];
 $staleWindowSec = 5 * 60;
 
@@ -184,28 +184,68 @@ echo json_encode([
 // -------- helpers --------------------------------------------------------
 
 /**
- * Iterate users and pull each owner's due scheduled_messages using a
- * single-field query (scheduledFor <= now). Firestore auto-creates
- * single-field indexes, so no composite index / collection-group index
- * is required. Status is filtered in PHP after fetch.
+ * Pull due scheduled_messages via a collection-group query. The old per-user
+ * scanner could exceed the 1-minute cron window and leave the lock busy, so
+ * later ticks never dispatched messages. Status is filtered in PHP to avoid a
+ * composite index; the single scheduledFor inequality uses Firestore's normal
+ * collection-group single-field index.
  */
-function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
+function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     $out = [];
-    $pageToken = null;
-    // Cap total users scanned per tick so a single run stays bounded.
-    $maxUsers = 500;
-    $scanned = 0;
-    do {
-        [$userIds, $pageToken] = _list_user_ids($pageToken, 100);
-        foreach ($userIds as $uid) {
-            if (++$scanned > $maxUsers) break 2;
-            $docs = _query_user_due($uid, $nowIso, $perUserLimit);
-            foreach ($docs as $d) $out[] = $d;
-        }
-    } while ($pageToken);
+    $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/(default)/documents:runQuery';
+    $q = [
+        'structuredQuery' => [
+            'from' => [['collectionId' => 'scheduled_messages', 'allDescendants' => true]],
+            'where' => [
+                'fieldFilter' => [
+                    'field' => ['fieldPath' => 'scheduledFor'],
+                    'op' => 'LESS_THAN_OR_EQUAL',
+                    'value' => ['timestampValue' => $nowIso],
+                ],
+            ],
+            'orderBy' => [
+                ['field' => ['fieldPath' => 'scheduledFor'], 'direction' => 'ASCENDING'],
+            ],
+            'limit' => $limit,
+        ],
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($q),
+        CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($code, $resp)) {
+        error_log('[WABEES cron] global due query auth retry');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    curl_close($ch);
+
+    if ($code >= 400 || $code === 0) {
+        error_log("[WABEES cron] global due query $code " . substr((string) $resp, 0, 500));
+        return [];
+    }
+    $rows = json_decode($resp, true) ?: [];
+    foreach ($rows as $r) {
+        if (empty($r['document'])) continue;
+        $doc = $r['document'];
+        $status = _fs_string(($doc['fields']['status'] ?? null), 'pending');
+        if ($status !== 'pending' && $status !== 'sending') continue;
+        $out[] = $doc;
+    }
     return $out;
 }
 
+// Kept as a manual fallback helper, but no longer used by cron's main path.
 function _list_user_ids(?string $pageToken, int $pageSize): array {
     // listDocuments returns only document names — cheap read.
     $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
