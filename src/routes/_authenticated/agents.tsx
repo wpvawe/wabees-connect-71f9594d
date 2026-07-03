@@ -339,16 +339,27 @@ function AgentsPage() {
                             Reinstate
                           </WbButton>
                         ) : (
-                          <WbButton
-                            variant="ghost"
-                            size="sm"
-                            loading={actioning === a.id}
-                            onClick={() => handleRevoke(a.id)}
-                            aria-label="Revoke access"
-                            title="Revoke access (keeps audit trail)"
-                          >
-                            <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
-                          </WbButton>
+                          <>
+                            <WbButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHoursFor(a.id)}
+                              aria-label="Working hours"
+                              title="Set working hours"
+                            >
+                              <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                            </WbButton>
+                            <WbButton
+                              variant="ghost"
+                              size="sm"
+                              loading={actioning === a.id}
+                              onClick={() => handleRevoke(a.id)}
+                              aria-label="Revoke access"
+                              title="Revoke access (keeps audit trail)"
+                            >
+                              <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
+                            </WbButton>
+                          </>
                         )}
                         <WbButton
                           variant="ghost"
