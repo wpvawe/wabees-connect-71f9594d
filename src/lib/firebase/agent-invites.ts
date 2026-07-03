@@ -197,6 +197,21 @@ export async function acceptAgentInvite(input: {
     );
   }
 
+  // Order matters: firestore rules on users/{ownerId}/agents/{agentId}
+  // require that the global invite mirror already shows acceptedBy == self.
+  // So we flip the invite to 'accepted' FIRST, then create the agent doc.
+  const acceptPatch = {
+    status: "accepted" as InviteStatus,
+    acceptedBy: input.selfUid,
+    acceptedAt: serverTimestamp(),
+  };
+  await updateDoc(doc(db, `agent_invites/${invite.code}`), {
+    ...acceptPatch,
+    ownerId: invite.ownerId,
+    inviteId: invite.inviteId,
+    role: invite.role,
+  });
+
   await setDoc(
     doc(db, `users/${invite.ownerId}/agents/${input.selfUid}`),
     {
@@ -221,17 +236,10 @@ export async function acceptAgentInvite(input: {
     { merge: true },
   );
 
-  const acceptPatch = {
-    status: "accepted" as InviteStatus,
-    acceptedBy: input.selfUid,
-    acceptedAt: serverTimestamp(),
-  };
-  await updateDoc(doc(db, `agent_invites/${invite.code}`), {
-    ...acceptPatch,
-    ownerId: invite.ownerId,
-    inviteId: invite.inviteId,
-    role: invite.role,
-  });
+  // Best-effort mirror update on the owner-scoped invite doc. Rules
+  // reject writes from the invitee here (owner-only), so this is only
+  // effective when the invitee happens to also be the owner (impossible
+  // — we guarded against that above) — kept for the admin path.
   await updateDoc(
     doc(db, `users/${invite.ownerId}/agent_invites/${invite.inviteId}`),
     acceptPatch,
