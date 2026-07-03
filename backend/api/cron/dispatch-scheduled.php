@@ -59,7 +59,7 @@ $now = new DateTime('now', new DateTimeZone('UTC'));
 $nowIso = $now->format('Y-m-d\TH:i:s.v\Z');
 
 // ---- Query: due pending/sending globally -------------------------------
-$dueDocs = _fetch_due_scheduled_global($nowIso, 50);
+$dueDocs = _fetch_due_scheduled_global($nowIso, 500);
 if (empty($dueDocs) && !empty($GLOBALS['_wabees_cron_global_query_failed'])) {
     // If a Firestore project is missing the scheduled_messages collection-group
     // index, fall back to a bounded per-user scan instead of doing nothing.
