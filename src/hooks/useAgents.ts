@@ -9,6 +9,8 @@ export type Agent = {
   email: string;
   joinedAt: string | null;
   role: string | null;
+  status: string;
+  revokedAt: string | null;
 };
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
@@ -31,6 +33,8 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
               email: str(x.email),
               joinedAt: toIso(x.joinedAt),
               role: strOrNull(x.role),
+              status: (typeof x.status === "string" && x.status) ? x.status : "active",
+              revokedAt: toIso(x.revokedAt),
             };
           }),
         );
