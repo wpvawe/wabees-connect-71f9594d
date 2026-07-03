@@ -18,6 +18,7 @@ import { BusinessProfileSection } from "@/components/settings/BusinessProfileSec
 import { DeveloperApiSection } from "@/components/settings/DeveloperApiSection";
 import { CannedResponsesSection } from "@/components/settings/CannedResponsesSection";
 import { SlaSettingsSection } from "@/components/settings/SlaSettingsSection";
+import { AutoTriageSection } from "@/components/settings/AutoTriageSection";
 import { Gated } from "@/components/auth/OwnerOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -169,6 +170,9 @@ function SettingsPage() {
         </Gated>
         <Gated capability="sla.manage">
           <SlaSettingsSection />
+        </Gated>
+        <Gated capability="sla.manage">
+          <AutoTriageSection />
         </Gated>
       </div>
     </>

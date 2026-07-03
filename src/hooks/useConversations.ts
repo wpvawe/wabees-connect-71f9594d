@@ -35,6 +35,10 @@ export type Conversation = {
   firstResponseAt?: string | null;
   firstResponseMs?: number | null;
   priority?: "urgent" | "high" | "normal" | "low" | null;
+  aiIntent?: string | null;
+  aiSentiment?: "positive" | "neutral" | "negative" | null;
+  aiSummary?: string | null;
+  aiTriageAt?: string | null;
 };
 
 function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -76,6 +80,10 @@ function mergeConversation(a: Conversation, b: Conversation): Conversation {
     state: (b.state && b.state !== "open" ? b.state : a.state) ?? a.state ?? b.state,
     snoozeUntil: fresherIso(a.snoozeUntil, b.snoozeUntil),
     priority: b.priority ?? a.priority ?? null,
+    aiIntent: b.aiIntent ?? a.aiIntent ?? null,
+    aiSentiment: b.aiSentiment ?? a.aiSentiment ?? null,
+    aiSummary: b.aiSummary ?? a.aiSummary ?? null,
+    aiTriageAt: fresherIso(a.aiTriageAt, b.aiTriageAt),
   };
 }
 
@@ -164,6 +172,13 @@ export function useConversations(): { data: Conversation[] | null; error: string
               const p = typeof x.priority === "string" ? x.priority : null;
               return p === "urgent" || p === "high" || p === "normal" || p === "low" ? p : null;
             })(),
+            aiIntent: typeof x.aiIntent === "string" ? x.aiIntent : null,
+            aiSentiment: (() => {
+              const s = typeof x.aiSentiment === "string" ? x.aiSentiment : null;
+              return s === "positive" || s === "negative" || s === "neutral" ? s : null;
+            })(),
+            aiSummary: typeof x.aiSummary === "string" ? x.aiSummary : null,
+            aiTriageAt: typeof x.aiTriageAt === "string" ? x.aiTriageAt : null,
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);
