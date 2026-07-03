@@ -34,6 +34,7 @@ import {
   upsertContact,
 } from "@/lib/firebase/contacts";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 type CsvRow = {
   name?: string;
@@ -48,6 +49,9 @@ export function ContactsWorkspace() {
   const { data, error } = useContacts();
   const uid = useEffectiveUid();
   const fileRef = useRef<HTMLInputElement>(null);
+  const can = useCan();
+  const canWrite = can("contacts.write");
+  const canDelete = can("contacts.delete");
 
   const [q, setQ] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
