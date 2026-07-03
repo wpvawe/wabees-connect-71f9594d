@@ -165,3 +165,49 @@ export async function updateAgentRole(
 ): Promise<void> {
   await updateDoc(doc(fbDb(), `users/${ownerUid}/agents/${agentId}`), { role });
 }
+
+// ============================================================
+// Batch B — Load-balanced round-robin picker
+// ============================================================
+
+/**
+ * Pick the next agent to route a conversation to, using a load-balanced
+ * round-robin over active, non-revoked agents. Preference order:
+ *   1. Online agents with the lowest `activeLoad` counter.
+ *   2. Any active agent with the lowest `activeLoad`.
+ *   3. `null` if the team has no eligible agents.
+ *
+ * The caller is responsible for actually calling `assignConversation` — this
+ * helper is a pure ranker so both the UI ("Auto-assign" button) and any
+ * future auto-assign trigger can share the same policy.
+ *
+ * `activeLoad` is maintained best-effort: `assignConversation` bumps the
+ * chosen agent's counter and decrements the previous owner's. If load counts
+ * drift, the queue re-normalises on the next assignment cycle — the field
+ * is a hint, not the source of truth.
+ */
+export type PickCandidate = {
+  id: string;
+  email: string | null;
+  role?: string | null;
+  status?: string;
+  isOnline?: boolean;
+  activeLoad?: number;
+};
+
+export function pickRoundRobinAgent(
+  agents: PickCandidate[],
+  excludeAgentId: string | null = null,
+): PickCandidate | null {
+  const eligible = agents.filter(
+    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+  );
+  if (eligible.length === 0) return null;
+
+  const byLoad = (a: PickCandidate, b: PickCandidate) =>
+    (a.activeLoad ?? 0) - (b.activeLoad ?? 0);
+
+  const online = eligible.filter((a) => a.isOnline).sort(byLoad);
+  if (online.length > 0) return online[0];
+  return [...eligible].sort(byLoad)[0];
+}
