@@ -714,6 +714,50 @@ function Thread({ phone }: { phone: string }) {
                 />
                 {isResolved ? "Reopen conversation" : "Mark as resolved"}
               </button>
+              <div className="relative" data-header-menu>
+                <button
+                  type="button"
+                  disabled={stateBusy}
+                  onClick={() => setSnoozeOpen((v) => !v)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-amber-600 hover:bg-muted disabled:opacity-50"
+                >
+                  <FontAwesomeIcon icon={faMoon} className="h-3.5 w-3.5" />
+                  {isSnoozed ? "Snoozed — change" : "Snooze"}
+                  <FontAwesomeIcon icon={faChevronDown} className="ml-auto h-3 w-3 opacity-60" />
+                </button>
+                {snoozeOpen && (
+                  <div className="absolute right-full top-0 z-40 mr-1 min-w-[160px] rounded-lg border border-border bg-card p-1 text-sm shadow-md">
+                    {[
+                      { label: "1 hour", h: 1 },
+                      { label: "4 hours", h: 4 },
+                      { label: "Tomorrow 9am", h: hoursUntilTomorrow9am() },
+                      { label: "3 days", h: 72 },
+                      { label: "1 week", h: 168 },
+                    ].map((o) => (
+                      <button
+                        key={o.label}
+                        type="button"
+                        onClick={() => void snoozeFor(o.h)}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                    {isSnoozed && (
+                      <>
+                        <div className="my-1 h-px bg-border" />
+                        <button
+                          type="button"
+                          onClick={onToggleResolve}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sky-600 hover:bg-muted"
+                        >
+                          Wake now
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
               {canBlock && (<button
                 type="button"
                 disabled={blockBusy}
