@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
@@ -9,10 +10,13 @@ import { usePendingSubscription } from "@/hooks/usePendingSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
+import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { requestSubscription } from "@/lib/firebase/subscriptions";
 import { toast } from "sonner";
 import { RequireCapability } from "@/components/auth/RequireCapability";
 import { PlanCard, PlanStat } from "@/components/plans/PlanCard";
+import { SubscriptionRequestDialog } from "@/components/plans/SubscriptionRequestDialog";
+import type { Plan } from "@/hooks/usePlans";
 import { limitLabel } from "@/lib/plans/pricing";
 
 export const Route = createFileRoute("/_authenticated/plans")({
@@ -30,7 +34,9 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
+  const messages = useSubscriptionMessages();
   const uid = useFirebaseUid();
+  const [dialogPlan, setDialogPlan] = useState<Plan | null>(null);
   // Subscription counters can lag behind profile totals (PHP webhook updates
   // both, but websites may render before sub doc is touched). Fall back to
   // profile counters when subscription shows 0 so users see real usage.
@@ -90,6 +96,7 @@ function PlansPage() {
                   try {
                     await requestSubscription(uid, plan);
                     toast.success("Request sent — waiting for admin approval");
+                    setDialogPlan(plan);
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : "Request failed");
                   }
@@ -99,6 +106,17 @@ function PlansPage() {
           </div>
         )}
       </div>
+      <SubscriptionRequestDialog
+        open={dialogPlan !== null}
+        onClose={() => setDialogPlan(null)}
+        plan={dialogPlan}
+        messages={messages}
+        user={{
+          name: profile?.businessName || profile?.name || "",
+          email: profile?.email || "",
+          phone: profile?.phoneNumber || "",
+        }}
+      />
     </>
   );
 }
