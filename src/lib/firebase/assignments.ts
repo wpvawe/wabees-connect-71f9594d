@@ -307,7 +307,10 @@ export function pickSkillsMatchAgent(
   excludeAgentId: string | null = null,
 ): PickCandidate | null {
   const eligible = agents.filter(
-    (a) => a.id !== excludeAgentId && (a.status ?? "active") !== "revoked",
+    (a) =>
+      a.id !== excludeAgentId &&
+      (a.status ?? "active") !== "revoked" &&
+      a.availability !== "dnd",
   );
   if (eligible.length === 0) return null;
 
