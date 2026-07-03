@@ -431,6 +431,9 @@ function Thread({ phone }: { phone: string }) {
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
   const displayName = contact?.name || (name !== phone ? name : "");
+  const can = useCan();
+  const canAssign = can("conversation.assign");
+  const canBlock = can("conversation.block");
 
   const onToggleBlock = useCallback(async () => {
     if (!uid) return;
