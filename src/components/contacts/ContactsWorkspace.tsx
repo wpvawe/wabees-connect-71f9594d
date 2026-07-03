@@ -635,8 +635,8 @@ function MobileMenu({
   onDelete,
   openHref,
 }: {
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit: (() => void) | null;
+  onDelete: (() => void) | null;
   openHref: string;
 }) {
   const [open, setOpen] = useState(false);
