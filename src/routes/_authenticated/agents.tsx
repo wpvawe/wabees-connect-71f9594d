@@ -291,6 +291,7 @@ function AgentsPage() {
             title="Agents"
             subtitle="Real-time list of agents connected to this account."
           />
+
           <WbCardBody>
             {error ? (
               <p className="text-sm text-destructive">{error}</p>
