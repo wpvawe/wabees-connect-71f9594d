@@ -16,12 +16,17 @@ import {
   type MessageLink,
 } from "@/lib/wabees/api";
 import { toast } from "sonner";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 type Link = { id: string; code: string; message: string; url: string; qrUrl: string };
 
 export const Route = createFileRoute("/_authenticated/message-links")({
   head: () => ({ meta: [{ title: "Message Links — Wabees" }] }),
-  component: MessageLinksPage,
+  component: () => (
+    <RequireCapability capability="billing.manage">
+      <MessageLinksPage />
+    </RequireCapability>
+  ),
 });
 
 function MessageLinksPage() {

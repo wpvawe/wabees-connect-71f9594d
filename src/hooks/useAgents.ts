@@ -30,7 +30,11 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
       collection(db, `users/${uid}/agents`),
       (snap) => {
         setData(
-          snap.docs.map((d) => {
+          snap.docs
+            // Never surface the owner themselves as a teammate row —
+            // legacy bootstrap code may seed `users/{uid}/agents/{uid}`.
+            .filter((d) => d.id !== uid)
+            .map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
               id: d.id,

@@ -18,10 +18,15 @@ import { ManualTokenForm } from "@/components/connect/ManualTokenForm";
 import { ConnectedCard } from "@/components/connect/ConnectedCard";
 import { PhoneHealthCard } from "@/components/connect/PhoneHealthCard";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 export const Route = createFileRoute("/_authenticated/connect")({
   head: () => ({ meta: [{ title: "Connect WhatsApp — Wabees" }] }),
-  component: ConnectPage,
+  component: () => (
+    <RequireCapability capability="whatsapp.connect">
+      <ConnectPage />
+    </RequireCapability>
+  ),
 });
 
 function ConnectPage() {

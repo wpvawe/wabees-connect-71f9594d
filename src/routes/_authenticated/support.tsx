@@ -26,10 +26,15 @@ import { useFirebaseUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbDb } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 export const Route = createFileRoute("/_authenticated/support")({
   head: () => ({ meta: [{ title: "Support — Wabees" }] }),
-  component: SupportPage,
+  component: () => (
+    <RequireCapability capability="support.chat">
+      <SupportPage />
+    </RequireCapability>
+  ),
 });
 
 function SupportPage() {

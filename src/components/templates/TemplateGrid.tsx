@@ -30,11 +30,15 @@ import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/
 import { WbInput } from "@/components/wb/WbInput";
 import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
+  const can = useCan();
+  const canWrite = can("templates.write");
+  const canDelete = can("templates.delete");
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -250,12 +254,12 @@ export function TemplateGrid() {
             <FontAwesomeIcon icon={faRotate} className="h-3.5 w-3.5" />
             Sync from Meta
           </WbButton>
-          <Link to="/templates/new">
+          {canWrite && (<Link to="/templates/new">
             <WbButton>
               <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
               New template
             </WbButton>
-          </Link>
+          </Link>)}
         </div>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
@@ -329,7 +333,7 @@ export function TemplateGrid() {
                     {showSend ? "Close send" : "Send test"}
                   </WbButton>
                 )}
-                {selected.metaTemplateId && (
+                {canWrite && selected.metaTemplateId && (
                   <Link to="/templates/$id/edit" params={{ id: selected.id }}>
                     <WbButton size="sm" variant="secondary">
                       <FontAwesomeIcon icon={faPencil} className="h-3 w-3" />
@@ -337,14 +341,14 @@ export function TemplateGrid() {
                     </WbButton>
                   </Link>
                 )}
-                <WbButton
+                {canDelete && (<WbButton
                   size="sm"
                   variant="ghost"
                   onClick={() => void removeTemplate(selected)}
                 >
                   <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
                   Delete
-                </WbButton>
+                </WbButton>)}
               </div>
             </div>
 

@@ -34,6 +34,7 @@ import {
   upsertContact,
 } from "@/lib/firebase/contacts";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 type CsvRow = {
   name?: string;
@@ -48,6 +49,9 @@ export function ContactsWorkspace() {
   const { data, error } = useContacts();
   const uid = useEffectiveUid();
   const fileRef = useRef<HTMLInputElement>(null);
+  const can = useCan();
+  const canWrite = can("contacts.write");
+  const canDelete = can("contacts.delete");
 
   const [q, setQ] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -213,7 +217,7 @@ export function ContactsWorkspace() {
             <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
             Sample CSV
           </WbButton>
-          <WbButton
+          {canWrite && (<WbButton
             variant="secondary"
             size="sm"
             onClick={triggerImport}
@@ -221,15 +225,15 @@ export function ContactsWorkspace() {
           >
             <FontAwesomeIcon icon={faFileImport} className="h-3.5 w-3.5" />
             Import CSV
-          </WbButton>
+          </WbButton>)}
           <WbButton variant="secondary" size="sm" onClick={onExport}>
             <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5" />
             Export
           </WbButton>
-          <WbButton size="sm" onClick={() => setEditor({ open: true, contact: null })}>
+          {canWrite && (<WbButton size="sm" onClick={() => setEditor({ open: true, contact: null })}>
             <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
             New contact
-          </WbButton>
+          </WbButton>)}
           <input
             ref={fileRef}
             type="file"
@@ -430,17 +434,17 @@ export function ContactsWorkspace() {
                             label="Open chat"
                             to={`/inbox/${encodeURIComponent(c.phone)}`}
                           />
-                          <RowAction
+                          {canWrite && (<RowAction
                             icon={faPen}
                             label="Edit contact"
                             onClick={() => setEditor({ open: true, contact: c })}
-                          />
-                          <RowAction
+                          />)}
+                          {canDelete && (<RowAction
                             icon={faTrash}
                             label="Delete contact"
                             danger
                             onClick={() => setConfirm(c)}
-                          />
+                          />)}
                         </div>
                       </td>
                     </tr>
@@ -462,8 +466,8 @@ export function ContactsWorkspace() {
                           <div className="truncate text-xs text-muted-foreground">{c.phone}</div>
                         </div>
                         <MobileMenu
-                          onEdit={() => setEditor({ open: true, contact: c })}
-                          onDelete={() => setConfirm(c)}
+                          onEdit={canWrite ? () => setEditor({ open: true, contact: c }) : null}
+                          onDelete={canDelete ? () => setConfirm(c) : null}
                           openHref={`/inbox/${encodeURIComponent(c.phone)}`}
                         />
                       </div>
@@ -631,8 +635,8 @@ function MobileMenu({
   onDelete,
   openHref,
 }: {
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit: (() => void) | null;
+  onDelete: (() => void) | null;
   openHref: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -663,28 +667,28 @@ function MobileMenu({
               <FontAwesomeIcon icon={faMessage} className="h-3.5 w-3.5" />
               Open chat
             </Link>
-            <button
+            {onEdit && (<button
               type="button"
               onClick={() => {
                 setOpen(false);
-                onEdit();
+                onEdit?.();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
             >
               <FontAwesomeIcon icon={faPen} className="h-3.5 w-3.5" />
               Edit
-            </button>
-            <button
+            </button>)}
+            {onDelete && (<button
               type="button"
               onClick={() => {
                 setOpen(false);
-                onDelete();
+                onDelete?.();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
             >
               <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" />
               Delete
-            </button>
+            </button>)}
           </div>
         </>
       )}

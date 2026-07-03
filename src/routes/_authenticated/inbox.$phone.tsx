@@ -23,6 +23,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
+import { useCan } from "@/lib/auth/permissions";
 import { Composer } from "@/components/inbox/Composer";
 import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightbox";
 import { ForwardDialog } from "@/components/inbox/ForwardDialog";
@@ -430,6 +431,9 @@ function Thread({ phone }: { phone: string }) {
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
   const displayName = contact?.name || (name !== phone ? name : "");
+  const can = useCan();
+  const canAssign = can("conversation.assign");
+  const canBlock = can("conversation.block");
 
   const onToggleBlock = useCallback(async () => {
     if (!uid) return;
@@ -607,7 +611,7 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faNoteSticky} className="h-3.5 w-3.5" />
                 Internal notes
               </button>
-              <button
+              {canAssign && (<button
                 type="button"
                 onClick={() => {
                   setAssignOpen(true);
@@ -622,7 +626,7 @@ function Thread({ phone }: { phone: string }) {
                     {conv.assignedAgentEmail}
                   </span>
                 )}
-              </button>
+              </button>)}
               <button
                 type="button"
                 onClick={() => {
@@ -649,7 +653,7 @@ function Thread({ phone }: { phone: string }) {
                 />
                 {isResolved ? "Reopen conversation" : "Mark as resolved"}
               </button>
-              <button
+              {canBlock && (<button
                 type="button"
                 disabled={blockBusy}
                 onClick={onToggleBlock}
@@ -662,7 +666,7 @@ function Thread({ phone }: { phone: string }) {
                   className="h-3.5 w-3.5"
                 />
                 {isBlocked ? "Unblock contact" : "Block contact"}
-              </button>
+              </button>)}
             </div>
           )}
         </div>

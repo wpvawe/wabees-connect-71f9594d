@@ -12,10 +12,15 @@ import { useContacts } from "@/hooks/useContacts";
 import { requestSubscription } from "@/lib/firebase/subscriptions";
 import { WbButton } from "@/components/wb/WbButton";
 import { toast } from "sonner";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 export const Route = createFileRoute("/_authenticated/plans")({
   head: () => ({ meta: [{ title: "Plans — Wabees" }] }),
-  component: PlansPage,
+  component: () => (
+    <RequireCapability capability="billing.manage">
+      <PlansPage />
+    </RequireCapability>
+  ),
 });
 
 function PlansPage() {
