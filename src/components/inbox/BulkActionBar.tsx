@@ -33,6 +33,16 @@ import {
 import type { Conversation } from "@/hooks/useConversations";
 import type { TagDef } from "@/lib/firebase/conversations";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type ActionKey =
   | null
@@ -68,6 +78,7 @@ export function BulkActionBar({
   const can = useCan();
   const [busy, setBusy] = useState(false);
   const [popover, setPopover] = useState<ActionKey>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const canAssign = can("conversation.assign");
   const canDelete = can("conversation.delete");
@@ -171,7 +182,7 @@ export function BulkActionBar({
   }
 
   async function bulkDelete() {
-    if (!confirm(`Delete ${count} conversation${count === 1 ? "" : "s"}? Messages will be removed from your side.`)) return;
+    setConfirmDelete(false);
     await runForEach((phone) => deleteConversation(uid!, phone), "Deleted");
   }
 
@@ -201,7 +212,9 @@ export function BulkActionBar({
         {canAssign && (
           <BulkChip icon={faUserPlus} label="Assign" onClick={() => setPopover(popover === "assign" ? null : "assign")} active={popover === "assign"} />
         )}
-        <BulkChip icon={faTag} label="Tag" onClick={() => setPopover(popover === "tag" ? null : "tag")} active={popover === "tag"} />
+        {tags.length > 0 && (
+          <BulkChip icon={faTag} label="Tag" onClick={() => setPopover(popover === "tag" ? null : "tag")} active={popover === "tag"} />
+        )}
         <BulkChip icon={faFlag} label="Priority" onClick={() => setPopover(popover === "priority" ? null : "priority")} active={popover === "priority"} />
         {canState && !anyResolved && (
           <BulkChip icon={faCircleCheck} label="Resolve" onClick={() => void bulkState("resolved")} />
@@ -213,7 +226,7 @@ export function BulkActionBar({
           <BulkChip icon={faMoon} label="Snooze" onClick={() => setPopover(popover === "snooze" ? null : "snooze")} active={popover === "snooze"} />
         )}
         {canDelete && (
-          <BulkChip icon={faTrash} label="Delete" onClick={() => void bulkDelete()} destructive />
+          <BulkChip icon={faTrash} label="Delete" onClick={() => setConfirmDelete(true)} destructive />
         )}
       </div>
 
@@ -304,6 +317,29 @@ export function BulkActionBar({
           ))}
         </div>
       )}
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {count} conversation{count === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The selected {count === 1 ? "conversation" : "conversations"} and their messages
+              will be hidden from your inbox. This can&rsquo;t be undone from the workspace.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void bulkDelete()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
