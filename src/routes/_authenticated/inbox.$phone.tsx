@@ -18,6 +18,8 @@ import {
   faClock,
   faBan,
   faCircleCheck,
+  faCheckDouble,
+  faRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -27,6 +29,7 @@ import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
+import { setConversationState } from "@/lib/firebase/assignments";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -75,6 +78,7 @@ function Thread({ phone }: { phone: string }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [stateBusy, setStateBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -420,6 +424,8 @@ function Thread({ phone }: { phone: string }) {
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
   const isBlocked = !!conv?.isBlocked;
+  const convState = conv?.state ?? "open";
+  const isResolved = convState === "resolved";
   const displayName = contact?.name || (name !== phone ? name : "");
 
   const onToggleBlock = useCallback(async () => {
@@ -444,6 +450,26 @@ function Thread({ phone }: { phone: string }) {
       setHeaderMenu(false);
     }
   }, [uid, phone, isBlocked]);
+
+  const onToggleResolve = useCallback(async () => {
+    if (!uid || !selfUid) return;
+    setStateBusy(true);
+    try {
+      const convId = normalizePhone(phone);
+      await setConversationState(
+        uid,
+        convId,
+        isResolved ? "open" : "resolved",
+        { uid: selfUid },
+      );
+      toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setStateBusy(false);
+      setHeaderMenu(false);
+    }
+  }, [uid, selfUid, phone, isResolved]);
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
