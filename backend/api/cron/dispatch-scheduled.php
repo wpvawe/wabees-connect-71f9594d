@@ -220,6 +220,12 @@ function _list_user_ids(?string $pageToken, int $pageSize): array {
     ]);
     $resp = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($code, $resp)) {
+        error_log('[WABEES cron] list users auth retry');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
     if ($code >= 400) { error_log("[WABEES cron] list users $code $resp"); return [[], null]; }
     $j = json_decode($resp, true) ?: [];
@@ -259,6 +265,12 @@ function _query_user_due(string $uid, string $nowIso, int $limit): array {
     ]);
     $resp = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($code, $resp)) {
+        error_log("[WABEES cron] user $uid query auth retry");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
     curl_close($ch);
     if ($code >= 400) { error_log("[WABEES cron] user $uid query $code $resp"); return []; }
     $rows = json_decode($resp, true) ?: [];
