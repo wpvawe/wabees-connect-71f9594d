@@ -427,6 +427,69 @@ function AnalyticsPage() {
                 )}
               </WbCardBody>
             </WbCard>
+
+            {canSeeAgentPerf && perfRows.length > 0 && (
+              <WbCard>
+                <WbCardBody>
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <FontAwesomeIcon icon={faUserTie} className="h-4 w-4" /> Agent performance
+                    </div>
+                    {unassignedOpen > 0 && (
+                      <span className="rounded-md bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-500">
+                        {unassignedOpen} unassigned open
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                          <th className="py-2 pr-3 font-medium">Agent</th>
+                          <th className="py-2 pr-3 font-medium">Status</th>
+                          <th className="py-2 pr-3 font-medium text-right">Assigned</th>
+                          <th className="py-2 pr-3 font-medium text-right">Open</th>
+                          <th className="py-2 pr-3 font-medium text-right">Resolved</th>
+                          <th className="py-2 pr-3 font-medium text-right">Unread</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {perfRows.map((r) => {
+                          const resolveRate = r.total > 0 ? Math.round((r.resolved / r.total) * 100) : 0;
+                          return (
+                            <tr key={r.id}>
+                              <td className="py-2 pr-3">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-foreground">{r.email}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {r.role === "supervisor" ? "Supervisor" : "Agent"} · {resolveRate}% resolved
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-2 pr-3">
+                                <span className={cn(
+                                  "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+                                  r.isOnline
+                                    ? "bg-emerald-500/10 text-emerald-500"
+                                    : "bg-muted text-muted-foreground",
+                                )}>
+                                  <FontAwesomeIcon icon={faCircle} className="h-1.5 w-1.5" />
+                                  {r.isOnline ? "Online" : "Offline"}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-foreground">{r.total}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-foreground">{r.open}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-foreground">{r.resolved}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-foreground">{r.unread}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </WbCardBody>
+              </WbCard>
+            )}
           </>
         )}
       </div>
