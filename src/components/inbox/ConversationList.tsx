@@ -779,6 +779,30 @@ function ContextMenu({
         {conv?.isPinned ? "Unpin" : "Pin conversation"}
       </button>
       <div className="my-1 border-t border-border" />
+      <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Priority</p>
+      <div className="grid grid-cols-4 gap-1 px-2 pb-1">
+        {(Object.keys(PRIORITY_META) as ConvPriority[]).map((p) => {
+          const isActive = (conv?.priority ?? "normal") === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              onPointerDown={(e) => runAction(e, () => onSetPriority(p))}
+              onClick={(e) => e.preventDefault()}
+              title={PRIORITY_META[p].label}
+              className={cn(
+                "flex items-center justify-center gap-1 rounded px-1 py-1.5 text-[10px] font-semibold transition-colors",
+                isActive ? "text-white" : "text-foreground hover:bg-muted",
+              )}
+              style={isActive ? { backgroundColor: PRIORITY_META[p].color } : undefined}
+            >
+              <FontAwesomeIcon icon={faFlag} className="h-2.5 w-2.5" style={!isActive ? { color: PRIORITY_META[p].color } : undefined} />
+              {PRIORITY_META[p].label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="my-1 border-t border-border" />
       <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Tags</p>
       <div className="max-h-40 overflow-y-auto">
         {tags.length === 0 ? (
