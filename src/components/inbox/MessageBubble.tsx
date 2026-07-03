@@ -194,6 +194,7 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
+  const [fullPickerOpen, setFullPickerOpen] = useState(false);
   const [errorOpen, setErrorOpen] = useState(false);
   const isDeleted = m.status === "deleted" || m.body === "__DELETED__";
   // H-3 helper: reactions need a wamid to forward to Meta. Pending outgoing
