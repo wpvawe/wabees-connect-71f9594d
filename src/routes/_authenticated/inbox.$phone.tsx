@@ -50,6 +50,8 @@ import {
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
+import { useSlaSettings } from "@/hooks/useSlaSettings";
+import { SlaBadge } from "@/components/inbox/SlaBadge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export const Route = createFileRoute("/_authenticated/inbox/$phone")({
@@ -443,6 +445,7 @@ function Thread({ phone }: { phone: string }) {
   const normalizedPhone = normalizePhone(phone);
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
+  const slaSettings = useSlaSettings();
   const isBlocked = !!conv?.isBlocked;
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
@@ -616,7 +619,10 @@ function Thread({ phone }: { phone: string }) {
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
+            {conv && <SlaBadge conv={conv} settings={slaSettings} compact />}
+          </div>
           <p className="text-[11px] text-muted-foreground">{phone}</p>
         </div>
         <button

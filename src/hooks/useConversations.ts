@@ -32,6 +32,8 @@ export type Conversation = {
   notesCount?: number;
   state?: "open" | "pending" | "resolved" | "snoozed";
   snoozeUntil?: string | null;
+  firstResponseAt?: string | null;
+  firstResponseMs?: number | null;
 };
 
 function fresherIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -148,6 +150,8 @@ export function useConversations(): { data: Conversation[] | null; error: string
               return s === "pending" || s === "resolved" || s === "snoozed" ? s : "open";
             })(),
             snoozeUntil: typeof x.snoozeUntil === "string" ? x.snoozeUntil : null,
+            firstResponseAt: typeof x.firstResponseAt === "string" ? x.firstResponseAt : null,
+            firstResponseMs: typeof x.firstResponseMs === "number" ? x.firstResponseMs : null,
           };
           if (row.isDeleted) continue;
           const existing = grouped.get(phone);

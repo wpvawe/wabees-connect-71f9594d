@@ -30,6 +30,7 @@ export type Capability =
   | "bots.write"
   | "aiBot.manage"
   | "canned.write"
+  | "sla.manage"
   // Inbox
   | "conversation.delete"
   | "conversation.block"
@@ -58,6 +59,7 @@ const MATRIX: Record<Capability, ReadonlyArray<AgentRole>> = {
   "bots.write": ["owner"],
   "aiBot.manage": ["owner"],
   "canned.write": ["owner"],
+  "sla.manage": ["owner"],
 
   "conversation.delete": ["owner"],
   "conversation.block": ["owner", "supervisor"],

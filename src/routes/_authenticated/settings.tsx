@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { BusinessProfileSection } from "@/components/settings/BusinessProfileSection";
 import { DeveloperApiSection } from "@/components/settings/DeveloperApiSection";
 import { CannedResponsesSection } from "@/components/settings/CannedResponsesSection";
+import { SlaSettingsSection } from "@/components/settings/SlaSettingsSection";
 import { Gated } from "@/components/auth/OwnerOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -165,6 +166,9 @@ function SettingsPage() {
 
         <Gated capability="canned.write">
           <CannedResponsesSection />
+        </Gated>
+        <Gated capability="sla.manage">
+          <SlaSettingsSection />
         </Gated>
       </div>
     </>
