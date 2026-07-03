@@ -57,6 +57,7 @@ function AgentsPage() {
   const [actioning, setActioning] = useState<string | null>(null);
   const [skillsDraft, setSkillsDraft] = useState<Record<string, string>>({});
   const [savingSkills, setSavingSkills] = useState<string | null>(null);
+  const [hoursFor, setHoursFor] = useState<string | null>(null);
   const currentEmail = session.status === "ready" ? session.user.email ?? null : null;
 
   async function addAgent() {
