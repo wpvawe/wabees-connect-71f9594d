@@ -35,6 +35,8 @@ import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
+import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
+import { useHotkeys } from "@/hooks/useHotkeys";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
 import { useMessages, type Message } from "@/hooks/useMessages";
@@ -107,6 +109,7 @@ function Thread({ phone }: { phone: string }) {
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -575,6 +578,52 @@ function Thread({ phone }: { phone: string }) {
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
+  // Keyboard shortcuts scoped to an open thread. Declared after all the
+  // callbacks and derived state so every dep is in scope. Handlers no-op
+  // gracefully when data isn't ready.
+  useHotkeys(
+    {
+      e: () => {
+        if (!stateBusy) void onToggleResolve();
+      },
+      s: () => setSnoozeOpen((v) => !v),
+      a: () => {
+        if (canAssign) setAssignOpen(true);
+      },
+      n: () => setNotesOpen(true),
+      i: () => setDetailsOpen(true),
+      t: () => setActivityOpen(true),
+      "/": () => setSearchOpen(true),
+      "?": () => setHelpOpen(true),
+      Escape: () => {
+        if (helpOpen) setHelpOpen(false);
+        else if (snoozeOpen) setSnoozeOpen(false);
+        else if (activityOpen) setActivityOpen(false);
+        else if (detailsOpen) setDetailsOpen(false);
+        else if (notesOpen) setNotesOpen(false);
+        else if (assignOpen) setAssignOpen(false);
+        else if (scheduleOpen) setScheduleOpen(false);
+        else if (searchOpen) {
+          setSearchOpen(false);
+          setSearchQuery("");
+        }
+      },
+    },
+    [
+      canAssign,
+      stateBusy,
+      onToggleResolve,
+      helpOpen,
+      snoozeOpen,
+      activityOpen,
+      detailsOpen,
+      notesOpen,
+      assignOpen,
+      scheduleOpen,
+      searchOpen,
+    ],
+  );
+
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     setNewSinceScroll(0);
@@ -963,6 +1012,7 @@ function Thread({ phone }: { phone: string }) {
           setLightboxId(id);
         }}
       />
+      <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
