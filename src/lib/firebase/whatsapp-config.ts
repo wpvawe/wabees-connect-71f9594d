@@ -66,6 +66,14 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         connectedVia: input.connected_via ?? "manual",
       },
     }).catch((err) => {
+      // Security errors from the server (e.g. previously-removed agent
+      // trying to reconnect) MUST surface to the user and stop the connect
+      // flow. Otherwise the client-side fallback below would silently
+      // re-add them as an agent, defeating the revoke/leave action.
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      if (/already connected to another workspace/i.test(msg)) {
+        throw err instanceof Error ? err : new Error(msg);
+      }
       // Backend not configured / unreachable — log and fall back to client flow.
       console.warn(
         "[wa-connect] server repair unavailable, using client fallback:",
