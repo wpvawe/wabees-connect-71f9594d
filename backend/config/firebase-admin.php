@@ -16,8 +16,14 @@
 define('SERVICE_ACCOUNT_PATH', __DIR__ . '/service-account.json');
 
 // Cache keys
-define('APCU_TOKEN_KEY', 'wabees_fb_admin_token');
-define('APCU_TOKEN_EXP_KEY', 'wabees_fb_admin_token_exp');
+// v2 intentionally ignores older APCu/file entries because the old loader
+// re-saved cached tokens with a fresh `time() + 300` expiry. A cron/webhook
+// hit every minute could therefore keep an already-expired Google OAuth token
+// alive forever, causing Firestore 401 ACCESS_TOKEN_EXPIRED and breaking both
+// incoming-message writes and scheduled-message dispatch.
+define('TOKEN_CACHE_VERSION', 2);
+define('APCU_TOKEN_KEY', 'wabees_fb_admin_token_v2');
+define('APCU_TOKEN_EXP_KEY', 'wabees_fb_admin_token_exp_v2');
 define('TOKEN_CACHE_PATH', __DIR__ . '/../logs/token-cache.json');
 
 /**
@@ -49,8 +55,9 @@ function get_firebase_admin_token()
     // 3. File cache (PRIMARY on shared hosting — survives across requests)
     $cached = _load_cached_token();
     if ($cached) {
-        _store_token_all_caches($cached, time() + 300);
-        return $cached;
+        // Preserve the real OAuth expiry. Never extend a cached token's life.
+        _store_token_all_caches($cached['token'], $cached['expires_at']);
+        return $cached['token'];
     }
 
     // 4. JWT exchange using wabees-app service account
@@ -193,10 +200,18 @@ function _load_cached_token()
     if (!$cache || empty($cache['token']) || empty($cache['expires_at']))
         return null;
 
+    // Do not trust legacy cache files that may contain an artificially
+    // extended expiry from the previous cache refresh bug.
+    if (($cache['cache_version'] ?? 0) !== TOKEN_CACHE_VERSION)
+        return null;
+
     if (time() >= ($cache['expires_at'] - 30))
         return null;
 
-    return $cache['token'];
+    return [
+        'token' => $cache['token'],
+        'expires_at' => (int) $cache['expires_at'],
+    ];
 }
 
 /**
@@ -209,6 +224,7 @@ function _save_cached_token($token, $expiresAt)
         @mkdir($dir, 0755, true);
     }
     @file_put_contents(TOKEN_CACHE_PATH, json_encode([
+        'cache_version' => TOKEN_CACHE_VERSION,
         'token' => $token,
         'expires_at' => $expiresAt,
         'created_at' => date('Y-m-d H:i:s'),
