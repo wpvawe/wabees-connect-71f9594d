@@ -61,15 +61,20 @@ service cloud.firestore {
       }
 
       // ============ Messages ============
+      // Agents can send/read messages but only owners can hard-delete rows.
       match /messages/{messageId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow delete: if isOwner(userId);
       }
 
       // ============ Conversations ============
+      // Agents can mutate state (block/resolve/assign) but only owners
+      // can hard-delete an entire thread.
       match /conversations/{convId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow delete: if isOwner(userId);
       }
 
       // ============ Contacts ============
