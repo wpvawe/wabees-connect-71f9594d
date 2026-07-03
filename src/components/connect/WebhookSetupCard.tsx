@@ -142,15 +142,15 @@ export function WebhookSetupCard() {
                   Copy the token immediately (Meta shows it only once) and paste it below.
                 </li>
               </ol>
-              <a
-                href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started/#get-system-user-access-token"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-primary hover:underline"
-              >
-                Meta official guide
-                <FontAwesomeIcon icon={faExternalLinkAlt} className="h-3 w-3" />
-              </a>
+          <a
+            href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            Meta official guide
+            <FontAwesomeIcon icon={faExternalLinkAlt} className="h-3 w-3" />
+          </a>
             </div>
           )}
         </div>
@@ -168,7 +168,7 @@ export function WebhookSetupCard() {
             </WbButton>
           </a>
           <a
-            href="https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/get-started"
+            href="https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview"
             target="_blank"
             rel="noreferrer"
             className="inline-flex"
