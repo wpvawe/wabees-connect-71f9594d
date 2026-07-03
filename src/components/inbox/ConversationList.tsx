@@ -971,6 +971,15 @@ function ConvRow({
                   Free
                 </span>
               )}
+              {c.aiIntent && (
+                <span
+                  title={c.aiSummary ?? `AI intent: ${c.aiIntent}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0 text-[9px] font-semibold text-violet-700 dark:text-violet-300"
+                >
+                  {c.aiSentiment === "negative" ? "😠" : c.aiSentiment === "positive" ? "🙂" : "✨"}
+                  {c.aiIntent}
+                </span>
+              )}
               {(c.tags ?? []).slice(0, 3).map((t) => (
                 <span
                   key={t}
