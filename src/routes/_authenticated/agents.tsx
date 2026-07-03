@@ -600,7 +600,8 @@ function AgentsPage() {
           <DialogHeader>
             <DialogTitle>Add Agent</DialogTitle>
             <DialogDescription>
-              Agent must have a Wabees account with the same email.
+              We&rsquo;ll generate an invite link scoped to this email and copy it
+              to your clipboard. The agent opens the link, signs in, and joins.
             </DialogDescription>
           </DialogHeader>
           <WbInput
@@ -615,7 +616,7 @@ function AgentsPage() {
               Cancel
             </WbButton>
             <WbButton onClick={addAgent} loading={busy}>
-              Add
+              Create invite
             </WbButton>
           </DialogFooter>
         </DialogContent>
