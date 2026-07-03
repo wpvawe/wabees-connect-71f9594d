@@ -223,9 +223,14 @@ function AgentsPage() {
         subtitle="Team members sharing this WhatsApp number"
         right={
           isOwner ? (
-            <WbButton size="sm" onClick={() => setOpen(true)}>
-              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add Agent
-            </WbButton>
+            <div className="flex items-center gap-2">
+              <WbButton size="sm" variant="secondary" onClick={() => setOpen(true)}>
+                <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Add existing user
+              </WbButton>
+              <WbButton size="sm" onClick={() => setInviteOpen(true)}>
+                <FontAwesomeIcon icon={faEnvelopeOpenText} className="h-3.5 w-3.5" /> Invite
+              </WbButton>
+            </div>
           ) : undefined
         }
       />
