@@ -623,35 +623,47 @@ export function Composer({
             onPick={(item) => void insertCanned(item)}
             ctx={cannedCtx}
           />
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setAttachOpen(true)}
-            aria-label="Attach"
-            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
-          >
-            <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setInteractiveOpen(true)}
-            aria-label="Interactive"
-            title="Send location / buttons / list"
-            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
-          >
-            <FontAwesomeIcon icon={faBolt} className="h-4 w-4" />
-          </button>
-          <div className="relative" ref={emojiWrapRef}>
+          {/* WhatsApp-style single "+" that reveals attach / interactive / emoji */}
+          <div className="relative" ref={plusWrapRef}>
             <button
               type="button"
               disabled={disabled}
-              onClick={() => setEmojiOpen((v) => !v)}
-              aria-label="Emoji"
+              onClick={() => setPlusOpen((v) => !v)}
+              aria-label="More"
               className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-50"
             >
-              <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
+              <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
             </button>
+            {plusOpen && (
+              <div className="absolute bottom-12 left-0 z-30 flex flex-col gap-1 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => { setPlusOpen(false); setAttachOpen(true); }}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                >
+                  <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4 text-muted-foreground" />
+                  Attach file
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPlusOpen(false); setInteractiveOpen(true); }}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                >
+                  <FontAwesomeIcon icon={faBolt} className="h-4 w-4 text-muted-foreground" />
+                  Interactive
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPlusOpen(false); setEmojiOpen(true); }}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                >
+                  <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4 text-muted-foreground" />
+                  Emoji
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={emojiWrapRef}>
             {emojiOpen && (
               <div className="absolute bottom-12 left-0 z-30">
                 <EmojiPickerLazy onSelect={(e) => insertEmoji(e)} />
