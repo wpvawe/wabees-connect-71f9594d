@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell, faVolumeHigh, faVolumeXmark } from "@fortawesome/free-solid-svg-icons";
 import { useEffect, useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
 import { AvailabilityToggle } from "@/components/shell/AvailabilityToggle";
 import {
   installAutoplayUnlocker,
@@ -75,7 +74,6 @@ export function TopBar({
   subtitle?: string;
   right?: React.ReactNode;
 }) {
-  useIncomingMessageAlerts();
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
       <div className="min-w-0">
