@@ -35,7 +35,11 @@ export function SignUpForm() {
         await updateProfile(cred.user, { displayName: values.displayName });
       }
       await ensureUserDoc(cred.user, { businessName: values.displayName });
-      toast.success("Account created — welcome!");
+      const name =
+        values.displayName?.trim().split(/\s+/)[0] ||
+        cred.user.email?.split("@")[0] ||
+        "";
+      toast.success(name ? `Welcome to Wabees, ${name} 🎉` : "Welcome to Wabees 🎉");
       navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Could not create account"));
