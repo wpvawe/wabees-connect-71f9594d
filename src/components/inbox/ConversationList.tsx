@@ -934,6 +934,14 @@ function ConvRow({
           )}
         </div>
         <div className="ml-1 flex shrink-0 flex-col items-end gap-1">
+          {c.priority && c.priority !== "normal" && (
+            <FontAwesomeIcon
+              icon={faFlag}
+              className="h-3 w-3"
+              style={{ color: PRIORITY_META[c.priority].color }}
+              title={`Priority: ${PRIORITY_META[c.priority].label}`}
+            />
+          )}
           {c.assignedAgentEmail && (
             <span
               title={`Assigned: ${c.assignedAgentEmail}`}
