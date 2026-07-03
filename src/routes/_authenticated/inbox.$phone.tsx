@@ -21,6 +21,7 @@ import {
   faCheckDouble,
   faRotateLeft,
   faMoon,
+  faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -31,6 +32,7 @@ import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
+import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
 import { useMessages, type Message } from "@/hooks/useMessages";
@@ -98,6 +100,7 @@ function Thread({ phone }: { phone: string }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -723,6 +726,17 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                 Schedule message
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faClockRotateLeft} className="h-3.5 w-3.5" />
+                Activity timeline
+              </button>
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
@@ -923,6 +937,12 @@ function Thread({ phone }: { phone: string }) {
         onOpenChange={setAssignOpen}
       />
       <ScheduleDialog phone={phone} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+      <ActivityDrawer
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        phone={phone}
+        contactName={conv?.contactName ?? null}
+      />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
