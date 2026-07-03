@@ -20,7 +20,11 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
       provider.setCustomParameters({ prompt: "select_account" });
       const cred = await signInWithPopup(fbAuth(), provider);
       await ensureUserDoc(cred.user);
-      toast.success("Welcome");
+      const name =
+        cred.user.displayName?.trim().split(/\s+/)[0] ||
+        cred.user.email?.split("@")[0] ||
+        "";
+      toast.success(name ? `Welcome back, ${name} 👋` : "Welcome back 👋");
       navigate(postAuthDestination());
     } catch (err) {
       toast.error(friendlyAuthError(err, "Google sign-in failed"));
