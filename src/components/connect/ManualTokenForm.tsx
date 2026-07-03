@@ -111,7 +111,7 @@ export function ManualTokenForm() {
           placeholder="e.g. 1234567890"
           {...register("phone_number_id")}
           error={errors.phone_number_id?.message}
-          hint="Meta Business settings → WhatsApp → API setup me phone number ID."
+          hint="Found in Meta Business Settings → WhatsApp → API Setup."
         />
         <WbInput
           label="Permanent access token"
@@ -119,40 +119,40 @@ export function ManualTokenForm() {
           placeholder="EAAG…"
           {...register("access_token")}
           error={errors.access_token?.message}
-          hint="Token sirf backend proxy ke through verify hota hai."
+          hint="Your token is verified only through our secure backend proxy."
         />
       </div>
       <div className="rounded-lg border border-border bg-background p-4">
         <WbInput
           label="WABA ID (optional but recommended)"
-          placeholder="Auto-detect agar permission ho; warna yahan paste karein"
+          placeholder="Auto-detected when permitted; otherwise paste it here"
           {...register("waba_id")}
           error={errors.waba_id?.message}
-          hint="WABA ID templates, quality insights, limits aur account-level sync ke liye zaroori hoti hai. Basic send/receive phone ID + token se chal sakta hai."
+          hint="A WABA ID is required for templates, quality insights, limits and account-level sync. Basic send/receive works with just the Phone Number ID and token."
         />
       </div>
       <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
         <MiniNote
           icon={faPhone}
           title="Phone verify"
-          text="Display phone, verified name aur quality best-effort fetch."
+          text="Display phone, verified name and quality are fetched on a best-effort basis."
         />
         <MiniNote
           icon={faSitemap}
           title="WABA dependent"
-          text="Templates aur business details WABA ID ke baghair limited rahen gi."
+          text="Templates and business details are limited without a WABA ID."
         />
         <MiniNote
           icon={faLock}
           title="App parity"
-          text="Website ab same PHP backend use karti hai jo mobile app karta hai."
+          text="The website now uses the same PHP backend as the mobile app."
         />
       </div>
       <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <FontAwesomeIcon icon={faCircleInfo} className="mt-0.5 h-3.5 w-3.5 text-primary" />
-          Agar WABA auto-fetch na ho, connection phir bhi save ho jayega; WABA add karne par
-          templates/insights unlock ho jayen ge.
+          If WABA auto-detect fails, your connection is still saved. Adding a WABA ID later
+          unlocks templates and insights.
         </p>
         <WbButton type="submit" loading={m.isPending} className="shrink-0">
           Connect account
