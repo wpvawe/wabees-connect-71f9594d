@@ -4,6 +4,7 @@ import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 import type { WorkingHours } from "@/lib/firebase/working-hours";
+import type { Availability } from "@/hooks/useAgentAvailability";
 
 export type Agent = {
   id: string;
@@ -17,6 +18,7 @@ export type Agent = {
   activeLoad: number;
   skills: string[];
   workingHours: WorkingHours | null;
+  availability: Availability;
 };
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
@@ -57,6 +59,10 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
                 x.workingHours && typeof x.workingHours === "object"
                   ? (x.workingHours as WorkingHours)
                   : null,
+              availability:
+                x.availability === "away" || x.availability === "dnd"
+                  ? (x.availability as Availability)
+                  : "available",
             };
           }),
         );
