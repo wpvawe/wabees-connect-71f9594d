@@ -731,6 +731,7 @@ function ContextMenu({
   onAddTag,
   onRemoveTag,
   onCreateTag,
+  onSetPriority,
 }: {
   x: number;
   y: number;
