@@ -21,6 +21,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useContacts } from "@/hooks/useContacts";
@@ -38,6 +39,10 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const { data: wa, loading } = useWhatsAppConfig("effective");
+  const session = useFirebaseSession();
+  const isAgent =
+    session.status === "ready" && !!session.dataOwner && session.dataOwner !== session.uid;
+  const sessionLoading = session.status === "loading";
   const { data: profile } = useProfile("effective");
   const { data: subscription } = useSubscription();
   const { data: contacts } = useContacts();
@@ -73,11 +78,17 @@ function DashboardPage() {
     <>
       <TopBar title="Dashboard" subtitle="Overview of your WhatsApp Business activity" />
       <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-        {loading ? (
+        {loading || sessionLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
             <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
             Loading…
           </div>
+        ) : !wa && isAgent ? (
+          <WbEmpty
+            icon={faPlug}
+            title="Insufficient permissions"
+            description="Your access to this workspace has been revoked. Ask the owner to send you a fresh invite."
+          />
         ) : !wa ? (
           <WbEmpty
             icon={faPlug}
