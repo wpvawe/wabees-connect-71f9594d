@@ -54,8 +54,17 @@ export function PhoneHealthCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_token: idToken, phone_number_id: phoneNumberId }),
       });
-      const json = (await res.json()) as Health & { error?: string };
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      const json = (await res.json()) as Health & { error?: unknown };
+      if (!res.ok) {
+        const errMsg =
+          typeof json.error === "string"
+            ? json.error
+            : json.error && typeof json.error === "object"
+              ? ((json.error as { message?: string }).message ??
+                JSON.stringify(json.error))
+              : `HTTP ${res.status}`;
+        throw new Error(errMsg);
+      }
       setData(json);
       setCheckedAt(new Date());
     } catch (e) {
