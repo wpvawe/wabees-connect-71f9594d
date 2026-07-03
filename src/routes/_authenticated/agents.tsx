@@ -28,6 +28,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAgents } from "@/hooks/useAgents";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useOwnerInfo } from "@/hooks/useOwnerInfo";
@@ -73,6 +83,7 @@ function AgentsPage() {
     (i) => i.status === "pending" && (!i.expiresAt || i.expiresAt > Date.now()),
   );
   const [revokingInvite, setRevokingInvite] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   async function copyInviteLink(code: string) {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -123,7 +134,6 @@ function AgentsPage() {
 
   async function removeAgent(agentId: string) {
     if (!selfUid) return;
-    if (!confirm("Permanently remove this agent? Their access is revoked immediately.")) return;
     setRemoving(agentId);
     try {
       // Instant client-side revoke first — cuts off access before the PHP
@@ -136,19 +146,30 @@ function AgentsPage() {
       } catch {
         /* fall through to PHP delete */
       }
-      const idToken = await fbAuth().currentUser!.getIdToken();
-      const res = await fetch(`${WABEES_API_BASE}/remove-agent.php`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          owner_id: isOwner ? selfUid : ownerUid,
-          agent_id: agentId,
-          id_token: idToken,
-        }),
-      });
-      const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
-      if (!res.ok || raw.error)
-        throw new Error(typeof raw.error === "string" ? raw.error : `HTTP ${res.status}`);
+      // Best-effort PHP cleanup — an "agent not found" response is fine
+      // (the row may have already been revoked / cleared server-side).
+      try {
+        const idToken = await fbAuth().currentUser!.getIdToken();
+        const res = await fetch(`${WABEES_API_BASE}/remove-agent.php`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            owner_id: isOwner ? selfUid : ownerUid,
+            agent_id: agentId,
+            id_token: idToken,
+          }),
+        });
+        const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
+        const errMsg = typeof raw.error === "string" ? raw.error : "";
+        // Treat idempotent "not found" as success — we still want to purge
+        // the Firestore row below so the UI reflects the delete.
+        if ((!res.ok || raw.error) && !/not\s*found/i.test(errMsg)) {
+          throw new Error(errMsg || `HTTP ${res.status}`);
+        }
+      } catch (phpErr) {
+        // Non-fatal — proceed to Firestore delete anyway.
+        console.warn("remove-agent.php failed (non-fatal):", phpErr);
+      }
       // Permanent delete: purge the agent document from Firestore so the
       // row disappears from the owner's list entirely. Rules allow the
       // owner to write/delete under users/{ownerId}/agents/{agentId}.
@@ -166,6 +187,7 @@ function AgentsPage() {
       toast.error(e instanceof Error ? e.message : "Remove failed");
     } finally {
       setRemoving(null);
+      setConfirmRemove(null);
     }
   }
 
@@ -612,6 +634,33 @@ function AgentsPage() {
           ownerBusinessName={owner?.businessName ?? owner?.displayName ?? null}
         />
       )}
+      <AlertDialog
+        open={!!confirmRemove}
+        onOpenChange={(v) => !v && !removing && setConfirmRemove(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently remove this agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Their access is revoked immediately and their record is removed
+              from your workspace. To re-add them later you&rsquo;ll need to
+              send a fresh invite.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!removing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmRemove) void removeAgent(confirmRemove);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removing ? "Removing…" : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
