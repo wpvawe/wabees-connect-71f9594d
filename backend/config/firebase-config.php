@@ -650,6 +650,20 @@ function convert_single_value($value)
         }
         return ['stringValue' => $value];
     } elseif (is_array($value)) {
+        // Allow callers to pass raw Firestore REST value objects, e.g.
+        // ['timestampValue' => '...'] or ['increment' => ...]. Without this,
+        // helper timestamps were accidentally written as mapValue.timestampValue,
+        // which breaks scheduled-message queries and chronological sorting.
+        $rawValueKeys = [
+            'nullValue', 'booleanValue', 'integerValue', 'doubleValue',
+            'timestampValue', 'stringValue', 'bytesValue', 'referenceValue',
+            'geoPointValue', 'arrayValue', 'mapValue',
+        ];
+        foreach ($rawValueKeys as $rawKey) {
+            if (array_key_exists($rawKey, $value)) {
+                return $value;
+            }
+        }
         if (empty($value)) {
             return ['arrayValue' => ['values' => []]];
         }
