@@ -196,6 +196,9 @@ export function useConversations(): { data: Conversation[] | null; error: string
         const rows = Array.from(grouped.values()).sort((a, b) => {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
           if ((a.pinOrder ?? 0) !== (b.pinOrder ?? 0)) return (b.pinOrder ?? 0) - (a.pinOrder ?? 0);
+          const pa = priorityRank(a.priority);
+          const pb = priorityRank(b.priority);
+          if (pa !== pb) return pb - pa;
           return (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
         });
         setData(rows);
