@@ -13,6 +13,13 @@ import {
 import { toast } from "sonner";
 import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
 import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
+import { CannedPicker } from "@/components/inbox/CannedPicker";
+import { useCannedResponses } from "@/hooks/useCannedResponses";
+import {
+  expandCanned,
+  filterCanned,
+  type CannedResponse,
+} from "@/lib/firebase/canned";
 import {
   addDoc,
   collection,
@@ -72,6 +79,14 @@ export function Composer({
   const emojiWrapRef = useRef<HTMLDivElement | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [interactiveOpen, setInteractiveOpen] = useState(false);
+  // Canned-response picker: opens when the textarea value starts with "/".
+  const { data: cannedList } = useCannedResponses();
+  const [cannedOpen, setCannedOpen] = useState(false);
+  const [cannedIndex, setCannedIndex] = useState(0);
+  const cannedQuery = cannedOpen && text.startsWith("/") ? text.slice(1) : "";
+  const cannedMatches = cannedOpen
+    ? filterCanned(cannedList ?? [], cannedQuery)
+    : [];
 
   useEffect(() => {
     if (!emojiOpen) return;
@@ -99,6 +114,43 @@ export function Composer({
       const pos = start + emoji.length;
       textareaRef.current.focus();
       textareaRef.current.setSelectionRange(pos, pos);
+    });
+  }
+
+  // Re-evaluate picker visibility whenever text or the library changes.
+  useEffect(() => {
+    if (!text.startsWith("/")) {
+      if (cannedOpen) setCannedOpen(false);
+      return;
+    }
+    if ((cannedList?.length ?? 0) === 0) {
+      if (cannedOpen) setCannedOpen(false);
+      return;
+    }
+    if (!cannedOpen) setCannedOpen(true);
+    setCannedIndex(0);
+  }, [text, cannedList, cannedOpen]);
+
+  async function insertCanned(item: CannedResponse) {
+    let name: string | null = null;
+    try {
+      if (uid) {
+        const snap = await getDoc(
+          doc(fbDb(), "users", uid, "conversations", phoneDocId(phone)),
+        );
+        const cn = snap.data()?.contactName;
+        if (typeof cn === "string" && cn) name = cn;
+      }
+    } catch {
+      /* best-effort personalisation */
+    }
+    const body = expandCanned(item.body, { name, phone: normalizePhone(phone) });
+    setText(body);
+    setCannedOpen(false);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const len = body.length;
+      textareaRef.current?.setSelectionRange(len, len);
     });
   }
 
@@ -439,6 +491,31 @@ export function Composer({
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (cannedOpen && cannedMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setCannedIndex((i) => (i + 1) % cannedMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setCannedIndex(
+          (i) => (i - 1 + cannedMatches.length) % cannedMatches.length,
+        );
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const pick = cannedMatches[cannedIndex] ?? cannedMatches[0];
+        void insertCanned(pick);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCannedOpen(false);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send();
