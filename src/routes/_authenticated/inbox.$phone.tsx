@@ -22,6 +22,7 @@ import {
   faRotateLeft,
   faMoon,
   faClockRotateLeft,
+  faCircleInfo,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -33,6 +34,7 @@ import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
+import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
 import { useMessages, type Message } from "@/hooks/useMessages";
@@ -101,6 +103,7 @@ function Thread({ phone }: { phone: string }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -646,6 +649,14 @@ function Thread({ phone }: { phone: string }) {
         >
           <FontAwesomeIcon icon={faPhone} className="h-4 w-4" />
         </a>
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          title="Contact details"
+          className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+        >
+          <FontAwesomeIcon icon={faCircleInfo} className="h-4 w-4" />
+        </button>
         <div className="relative" data-header-menu>
           <button
             type="button"
@@ -942,6 +953,15 @@ function Thread({ phone }: { phone: string }) {
         onClose={() => setActivityOpen(false)}
         phone={phone}
         contactName={conv?.contactName ?? null}
+      />
+      <ContactDetailsDrawer
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        phone={phone}
+        onOpenMedia={(id) => {
+          setDetailsOpen(false);
+          setLightboxId(id);
+        }}
       />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
