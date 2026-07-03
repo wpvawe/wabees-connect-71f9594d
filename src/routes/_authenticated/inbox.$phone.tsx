@@ -16,6 +16,8 @@ import {
   faNoteSticky,
   faUserPlus,
   faClock,
+  faBan,
+  faCircleCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -72,6 +74,7 @@ function Thread({ phone }: { phone: string }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
@@ -416,7 +419,31 @@ function Thread({ phone }: { phone: string }) {
   const normalizedPhone = normalizePhone(phone);
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
+  const isBlocked = !!conv?.isBlocked;
   const displayName = contact?.name || (name !== phone ? name : "");
+
+  const onToggleBlock = useCallback(async () => {
+    if (!uid) return;
+    setBlockBusy(true);
+    try {
+      const convId = normalizePhone(phone);
+      await setDoc(
+        doc(fbDb(), `users/${uid}/conversations/${convId}`),
+        {
+          isBlocked: !isBlocked,
+          blockedAt: !isBlocked ? serverTimestamp() : null,
+          contactPhone: convId,
+        },
+        { merge: true },
+      );
+      toast.success(isBlocked ? "Contact unblocked" : "Contact blocked");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBlockBusy(false);
+      setHeaderMenu(false);
+    }
+  }, [uid, phone, isBlocked]);
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
   const initials = (displayName || phone).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
 
@@ -571,10 +598,42 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                 Schedule message
               </button>
+              <div className="my-1 h-px bg-border" />
+              <button
+                type="button"
+                disabled={blockBusy}
+                onClick={onToggleBlock}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted ${
+                  isBlocked ? "text-emerald-600" : "text-destructive"
+                } disabled:opacity-50`}
+              >
+                <FontAwesomeIcon
+                  icon={isBlocked ? faCircleCheck : faBan}
+                  className="h-3.5 w-3.5"
+                />
+                {isBlocked ? "Unblock contact" : "Block contact"}
+              </button>
             </div>
           )}
         </div>
       </header>
+      {isBlocked && (
+        <div className="flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+          <FontAwesomeIcon icon={faBan} className="h-3.5 w-3.5" />
+          <span className="flex-1">
+            This contact is blocked. Incoming messages are ignored and you can’t
+            send messages.
+          </span>
+          <button
+            type="button"
+            onClick={onToggleBlock}
+            disabled={blockBusy}
+            className="rounded-full border border-destructive/40 px-2.5 py-0.5 text-[11px] font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"
+          >
+            Unblock
+          </button>
+        </div>
+      )}
       {searchOpen && (
         <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
           <div className="relative flex-1">
@@ -648,15 +707,21 @@ function Thread({ phone }: { phone: string }) {
           )}
         </button>
       )}
-      <Composer
-        phone={phone}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-        lastInboundWamid={
-          data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
-            ?.whatsappMessageId ?? null
-        }
-      />
+      {isBlocked ? (
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+          Unblock this contact to resume the conversation.
+        </div>
+      ) : (
+        <Composer
+          phone={phone}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+          lastInboundWamid={
+            data?.slice().reverse().find((m) => m.direction === "incoming" && !!m.whatsappMessageId)
+              ?.whatsappMessageId ?? null
+          }
+        />
+      )}
       {lightboxId && lightboxItems.length > 0 && (
         <MediaLightbox
           items={lightboxItems}

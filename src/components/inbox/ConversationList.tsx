@@ -17,6 +17,7 @@ import {
   faUser,
   faUserSlash,
   faNoteSticky,
+  faBan,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -841,6 +842,13 @@ function ConvRow({
               icon={faThumbtack}
               className="h-3 w-3 rotate-45 text-muted-foreground"
               title="Pinned"
+            />
+          )}
+          {c.isBlocked && (
+            <FontAwesomeIcon
+              icon={faBan}
+              className="h-3 w-3 text-destructive"
+              title="Blocked"
             />
           )}
           {typeof c.notesCount === "number" && c.notesCount > 0 && (
