@@ -385,8 +385,17 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     // a revoked access token, and the user sees clear "cancelled — WhatsApp
     // disconnected" state instead of a silent retry loop.
     await pauseOutboundWorkOnDisconnect(uid).catch(() => undefined);
+    // H-3: only preserve the wa_map routing doc when the owner still has
+    // at least one ACTIVE agent. Revoked/left agent docs stay in the
+    // subcollection for audit and would previously keep wa_map alive,
+    // routing webhooks back to an owner who no longer wants them.
     const agents = await getDocs(collection(db, "users", uid, "agents")).catch(() => null);
-    if (!agents || agents.empty) {
+    const hasActiveAgent = !!agents && agents.docs.some((d) => {
+      const s = (d.data() as Record<string, unknown>).status;
+      const status = typeof s === "string" ? s : "active";
+      return status !== "revoked" && status !== "left";
+    });
+    if (!hasActiveAgent) {
       await deleteDoc(doc(db, "wa_map", phoneId)).catch(() => {});
     }
   }
