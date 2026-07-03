@@ -663,6 +663,30 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           </div>
         ) : (
           <ul>
+            {selectMode && filtered && filtered.length > 0 && (
+              <li className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const all = filtered.map((c) => c.contactPhone);
+                    const allSelected = all.every((p) => selection.has(p));
+                    setSelection(allSelected ? new Set() : new Set(all));
+                  }}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  {filtered.every((c) => selection.has(c.contactPhone))
+                    ? "Deselect all"
+                    : `Select all ${filtered.length}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-muted-foreground hover:underline"
+                >
+                  Cancel
+                </button>
+              </li>
+            )}
             {filtered.map((c) => (
               <ConvRow
                 key={c.contactPhone}
@@ -671,11 +695,23 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 tagColors={tagColorMap(tags)}
                 incomingFallbackAt={incomingFallbacks[c.contactPhone] ?? null}
                 onContextMenu={(x, y) => setMenu({ phone: c.contactPhone, x, y })}
+                selectMode={selectMode}
+                selected={selection.has(c.contactPhone)}
+                onToggleSelect={() => toggleSelect(c.contactPhone)}
+                onLongPress={() => enterSelect(c.contactPhone)}
               />
             ))}
           </ul>
         )}
       </div>
+      {selectMode && selection.size > 0 && merged && (
+        <BulkActionBar
+          selected={selectedList}
+          conversations={merged}
+          tags={tags ?? []}
+          onClear={clearSelection}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}
