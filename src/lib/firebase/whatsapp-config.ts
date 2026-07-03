@@ -122,6 +122,10 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       return;
     }
   } catch (error) {
+    const emsg = error instanceof Error ? error.message : String(error ?? "");
+    if (/already connected to another workspace/i.test(emsg)) {
+      throw error instanceof Error ? error : new Error(emsg);
+    }
     // Non-fatal: continue to client-side fallback below.
     console.warn(
       "[wa-connect] server repair failed, using client fallback:",
