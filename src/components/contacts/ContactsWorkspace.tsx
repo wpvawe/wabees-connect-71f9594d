@@ -667,28 +667,28 @@ function MobileMenu({
               <FontAwesomeIcon icon={faMessage} className="h-3.5 w-3.5" />
               Open chat
             </Link>
-            <button
+            {onEdit && (<button
               type="button"
               onClick={() => {
                 setOpen(false);
-                onEdit();
+                onEdit?.();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
             >
               <FontAwesomeIcon icon={faPen} className="h-3.5 w-3.5" />
               Edit
-            </button>
-            <button
+            </button>)}
+            {onDelete && (<button
               type="button"
               onClick={() => {
                 setOpen(false);
-                onDelete();
+                onDelete?.();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
             >
               <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" />
               Delete
-            </button>
+            </button>)}
           </div>
         </>
       )}
