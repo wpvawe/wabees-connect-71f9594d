@@ -83,11 +83,15 @@ export function CannedResponsesSection() {
     if (!uid || !draft) return;
     const body = draft.body.trim();
     const title = draft.title.trim();
-    const shortcut = draft.shortcut.trim();
-    if (!body || !title || !shortcut) {
-      toast.error("Shortcut, title and body are required");
+    const shortcutRaw = draft.shortcut.trim();
+    if (!title || !body) {
+      toast.error("Title and body are required");
       return;
     }
+    // Shortcut is optional — auto-derive from the title if the owner
+    // hasn't typed one. The library slugifies the value on write so
+    // it's always a safe `/token`.
+    const shortcut = shortcutRaw || title;
     setSaving(true);
     try {
       if (draft.id) {
