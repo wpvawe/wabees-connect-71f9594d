@@ -217,7 +217,7 @@ export function ContactsWorkspace() {
             <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
             Sample CSV
           </WbButton>
-          <WbButton
+          {canWrite && (<WbButton
             variant="secondary"
             size="sm"
             onClick={triggerImport}
@@ -225,15 +225,15 @@ export function ContactsWorkspace() {
           >
             <FontAwesomeIcon icon={faFileImport} className="h-3.5 w-3.5" />
             Import CSV
-          </WbButton>
+          </WbButton>)}
           <WbButton variant="secondary" size="sm" onClick={onExport}>
             <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5" />
             Export
           </WbButton>
-          <WbButton size="sm" onClick={() => setEditor({ open: true, contact: null })}>
+          {canWrite && (<WbButton size="sm" onClick={() => setEditor({ open: true, contact: null })}>
             <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
             New contact
-          </WbButton>
+          </WbButton>)}
           <input
             ref={fileRef}
             type="file"
@@ -434,17 +434,17 @@ export function ContactsWorkspace() {
                             label="Open chat"
                             to={`/inbox/${encodeURIComponent(c.phone)}`}
                           />
-                          <RowAction
+                          {canWrite && (<RowAction
                             icon={faPen}
                             label="Edit contact"
                             onClick={() => setEditor({ open: true, contact: c })}
-                          />
-                          <RowAction
+                          />)}
+                          {canDelete && (<RowAction
                             icon={faTrash}
                             label="Delete contact"
                             danger
                             onClick={() => setConfirm(c)}
-                          />
+                          />)}
                         </div>
                       </td>
                     </tr>
@@ -466,8 +466,8 @@ export function ContactsWorkspace() {
                           <div className="truncate text-xs text-muted-foreground">{c.phone}</div>
                         </div>
                         <MobileMenu
-                          onEdit={() => setEditor({ open: true, contact: c })}
-                          onDelete={() => setConfirm(c)}
+                          onEdit={canWrite ? () => setEditor({ open: true, contact: c }) : null}
+                          onDelete={canDelete ? () => setConfirm(c) : null}
                           openHref={`/inbox/${encodeURIComponent(c.phone)}`}
                         />
                       </div>
