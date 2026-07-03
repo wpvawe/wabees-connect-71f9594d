@@ -566,7 +566,13 @@ export function Composer({
           </button>
         </div>
       ) : (
-        <div className="flex items-end gap-2 p-3">
+        <div className="relative flex items-end gap-2 p-3">
+          <CannedPicker
+            matches={cannedMatches}
+            activeIndex={cannedIndex}
+            onHover={setCannedIndex}
+            onPick={(item) => void insertCanned(item)}
+          />
           <button
             type="button"
             disabled={disabled}
