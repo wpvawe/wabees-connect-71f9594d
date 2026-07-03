@@ -512,6 +512,16 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
               setSelectedTag(null);
             }}
           />
+          <FilterChip
+            icon={faFlag}
+            label="Priority"
+            active={filter === "priority"}
+            color="#dc2626"
+            onClick={() => {
+              setFilter(filter === "priority" ? (isPrivileged ? "all" : "mine") : "priority");
+              setSelectedTag(null);
+            }}
+          />
           {(tags ?? []).map((t) => (
             <FilterChip
               key={t.id}
