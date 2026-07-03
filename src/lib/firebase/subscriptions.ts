@@ -3,11 +3,18 @@ import {
   collection,
   doc,
   getDoc,
+  increment,
   runTransaction,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import type { Plan } from "@/hooks/usePlans";
+import {
+  renderSubscriptionMessage,
+  type SubscriptionMessages,
+} from "@/lib/firebase/subscriptionMessages";
+import { resolvePricing } from "@/lib/plans/pricing";
 
 export async function requestSubscription(uid: string, plan: Plan): Promise<void> {
   const db = fbDb();
@@ -61,4 +68,50 @@ export async function requestSubscription(uid: string, plan: Plan): Promise<void
     read: false,
     createdAt: serverTimestamp(),
   }).catch(() => undefined);
+}
+
+/**
+ * Post the subscription request as an auto message into the user's own
+ * support chat (`support_chats/{uid}/messages`) so admin sees it in the
+ * support inbox. The message text is rendered from the admin-editable
+ * `supportChatTemplate` in `settings/subscription_messages`.
+ */
+export async function postSubscriptionRequestToSupport(
+  uid: string,
+  plan: Plan,
+  messages: SubscriptionMessages,
+  user: { name: string; email: string; phone: string },
+): Promise<void> {
+  const db = fbDb();
+  const priced = resolvePricing(plan);
+  const text = renderSubscriptionMessage(messages.supportChatTemplate, {
+    plan: plan.name,
+    price: priced.effectivePrice,
+    currency: plan.currency,
+    user: user.name,
+    email: user.email,
+    phone: user.phone,
+  });
+  await setDoc(
+    doc(db, "support_chats", uid),
+    {
+      userId: uid,
+      userEmail: user.email || fbAuth().currentUser?.email || "",
+      lastMessage: text.slice(0, 120),
+      lastMessageAt: serverTimestamp(),
+      unreadByAdmin: increment(1),
+    },
+    { merge: true },
+  );
+  await addDoc(collection(db, "support_chats", uid, "messages"), {
+    senderId: uid,
+    senderRole: "user",
+    text,
+    imageUrl: null,
+    read: false,
+    kind: "subscription_request",
+    planId: plan.id,
+    planName: plan.name,
+    createdAt: serverTimestamp(),
+  });
 }
