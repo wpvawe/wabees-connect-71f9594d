@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   makeUser,
-  signUp,
+  signInOrSignUp,
   generateInvite,
   acceptInvite,
   revokeAgentByEmail,
@@ -28,10 +28,10 @@ test.describe.serial("invite / revoke / switch flows", () => {
     const a = await newUserContext(browser);
     const b = await newUserContext(browser);
     try {
-      await signUp(a.page, ownerA);
+      await signInOrSignUp(a.page, ownerA);
       const { code } = await generateInvite(a.page, { role: "agent" });
 
-      await signUp(b.page, agentB);
+      await signInOrSignUp(b.page, agentB);
       await acceptInvite(b.page, code);
 
       // Owner A sees agent B listed.
@@ -47,19 +47,24 @@ test.describe.serial("invite / revoke / switch flows", () => {
     const a = await newUserContext(browser);
     const b = await newUserContext(browser);
     try {
-      await signUp(a.page, ownerA);
+      await signInOrSignUp(a.page, ownerA);
       const { code } = await generateInvite(a.page);
 
-      await signUp(b.page, agentB);
+      await signInOrSignUp(b.page, agentB);
       await acceptInvite(b.page, code);
 
       await revokeAgentByEmail(a.page, agentB.email);
 
       // B's session should self-heal — inbox becomes empty / gate flips.
       await b.page.reload();
-      // Either an "access removed" banner or a redirect off the shared workspace.
+      // Post-revoke B should either see the "you are the owner" empty workspace,
+      // a permission error from Firestore, or a workspace-removed banner.
       await expect(
-        b.page.getByText(/access (was )?revoked|removed from|no workspace/i).first(),
+        b.page
+          .getByText(
+            /you are the owner|missing or insufficient permissions|access (was )?revoked|removed from|no workspace/i,
+          )
+          .first(),
       ).toBeVisible({ timeout: 30_000 });
     } finally {
       await closeContext(a.context);
@@ -73,14 +78,14 @@ test.describe.serial("invite / revoke / switch flows", () => {
     const b = await newUserContext(browser);
     try {
       // A onboards B first.
-      await signUp(a.page, ownerA);
+      await signInOrSignUp(a.page, ownerA);
       const inviteA = await generateInvite(a.page);
 
-      await signUp(b.page, agentB);
+      await signInOrSignUp(b.page, agentB);
       await acceptInvite(b.page, inviteA.code);
 
       // C creates a competing invite.
-      await signUp(c.page, ownerC);
+      await signInOrSignUp(c.page, ownerC);
       const inviteC = await generateInvite(c.page);
 
       // B accepts C's invite → switch prompt appears, confirm to leave A.

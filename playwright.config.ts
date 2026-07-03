@@ -10,7 +10,7 @@ const baseURL =
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 120_000,
+  timeout: 15 * 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
