@@ -537,7 +537,7 @@ function AgentsPage() {
                           variant="ghost"
                           size="sm"
                           loading={removing === a.id}
-                          onClick={() => removeAgent(a.id)}
+                          onClick={() => setConfirmRemove(a.id)}
                           aria-label="Remove agent"
                           title="Permanently remove"
                         >
