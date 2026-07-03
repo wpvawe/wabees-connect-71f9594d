@@ -63,6 +63,11 @@ function InboxThread() {
 }
 
 function Thread({ phone }: { phone: string }) {
+  // Local helper: hours between now and 9am tomorrow (24h window, minimum 1h).
+  // Defined inside Thread scope so it stays colocated with the snooze menu that uses it.
+  // (Kept as a plain function — pure, deterministic per call, no hooks needed.)
+  //
+  // Extracted below into module scope for stability across renders.
   const { data, error } = useMessages(phone);
   const { data: contacts } = useContacts();
   const { data: conversations } = useConversations();
