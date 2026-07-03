@@ -39,7 +39,6 @@ import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
 import { InviteAgentDialog } from "@/components/agents/InviteAgentDialog";
 import { useAgentInvites } from "@/hooks/useAgentInvites";
 import { revokeAgentInvite } from "@/lib/firebase/agent-invites";
-import { useOwnerInfo as _unused } from "@/hooks/useOwnerInfo";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
