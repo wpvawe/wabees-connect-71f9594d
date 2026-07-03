@@ -2372,6 +2372,12 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
     $userId = $user['id'];
 
     $triggered = false;
+    // Tracks whether ANY manual-text keyword matched (even if the bot was
+    // ultimately suppressed by cooldown / maxTriggersPerContact). Callers
+    // use this to decide whether the AI bot should also reply — a matched
+    // keyword ALWAYS wins over the AI bot, otherwise the second "Welcome"
+    // to the same contact would still trigger the AI and confuse the user.
+    $keywordMatched = false;
     foreach ($documents as $doc) {
         $fields = $doc['fields'] ?? [];
         // Handle isActive: Firestore REST returns booleanValue, JSON cache may vary
@@ -2559,6 +2565,13 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
 
         if (!$shouldTrigger)
             continue;
+
+        // Note keyword-based match up front so per-contact throttling below
+        // can still short-circuit `continue`, but the AI-bot suppression
+        // signal survives.
+        if (in_array($triggerType, ['exactMatch', 'startsWith', 'keyword', 'regex'], true)) {
+            $keywordMatched = true;
+        }
 
         // ============ PER-CONTACT LIMITS: maxTriggersPerContact & cooldownMinutes ============
         if ($maxTriggersPerContact > 0 || $cooldownMinutes > 0) {
@@ -2820,7 +2833,10 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
         break;
     }
 
-    return $triggered;
+    // Return true if a keyword matched at all — the AI bot must stand down
+    // even when the keyword bot was throttled, so the user's configured
+    // keyword reply always wins for its own trigger words.
+    return $triggered || $keywordMatched;
 }
 
 // ================================================================
@@ -3820,14 +3836,37 @@ function _extract_and_save_lead($userId, $clientPhone, $clientName, $userMsg, $b
 
     // Look for CNIC pattern
     $cnic = $leadFields['cnic']['stringValue'] ?? '';
+    $prevCnic = $cnic;
     if (empty($cnic) && preg_match('/\b\d{5}[-]?\d{7}[-]?\d{1}\b/', $userMsg, $m)) {
         $cnic = $m[0];
     }
 
     // Look for email
     $email = $leadFields['email']['stringValue'] ?? '';
+    $prevEmail = $email;
     if (empty($email) && preg_match('/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', $userMsg, $m)) {
         $email = $m[0];
+    }
+
+    // Look for a Pakistan-style callback phone number that the customer
+    // typed into the chat (e.g. "03003522143" or "+92 300 3522143"). This
+    // is separate from $clientPhone (their WhatsApp sender number) — the
+    // customer may prefer a different number for follow-up calls.
+    $altPhone = $leadFields['altPhone']['stringValue'] ?? '';
+    $prevAltPhone = $altPhone;
+    if (empty($altPhone)) {
+        $digits = preg_replace('/[^\d+]/', '', $userMsg);
+        if (preg_match('/(\+?92\d{10}|0\d{10})/', $digits, $m)) {
+            $altPhone = $m[0];
+        }
+    }
+
+    // Try to pluck a name that comes right before an alt phone or CNIC —
+    // typical customer format is "abdul rauf, 03003522143".
+    if (empty($existingName) && !empty($altPhone)) {
+        if (preg_match('/([A-Za-z][A-Za-z\s.\'\-]{1,40}?)[\s,\-]+(?:\+?92|0)\d/', $userMsg, $m)) {
+            $extractedName = trim($m[1]);
+        }
     }
 
     // Append message context to details
@@ -3849,6 +3888,7 @@ function _extract_and_save_lead($userId, $clientPhone, $clientName, $userMsg, $b
     $leadData = [
         'name' => $extractedName,
         'phone' => $clientPhone,
+        'altPhone' => $altPhone,
         'cnic' => $cnic,
         'email' => $email,
         'details' => $extractedDetails,
@@ -3859,6 +3899,40 @@ function _extract_and_save_lead($userId, $clientPhone, $clientName, $userMsg, $b
     ];
 
     firestore_set($leadPath, $leadData, true);
+
+    // Notify the moment the AI actually captures follow-up info the team
+    // needs — a callback number, an email, or a CNIC. Owners were seeing
+    // "hamare team ko forward" AI replies with no matching notification
+    // anywhere, because the previous notifier only fired on "hot".
+    $capturedBits = [];
+    if (!empty($altPhone) && empty($prevAltPhone)) {
+        $capturedBits[] = "📞 $altPhone";
+    }
+    if (!empty($email) && empty($prevEmail)) {
+        $capturedBits[] = "✉️ $email";
+    }
+    if (!empty($cnic) && empty($prevCnic)) {
+        $capturedBits[] = "🆔 $cnic";
+    }
+    if (!empty($capturedBits)) {
+        $capNotifId = 'notif_lead_capture_' . time() . '_' . rand(1000, 9999);
+        $displayName = !empty($extractedName) ? $extractedName : $clientPhone;
+        firestore_set("users/$userId/notifications/$capNotifId", [
+            'title' => "🎯 New lead from AI bot: $displayName",
+            'body' => implode('  ·  ', $capturedBits) . "  · WhatsApp: $clientPhone",
+            'type' => 'ai_lead_capture',
+            'data' => [
+                'contactPhone' => $clientPhone,
+                'leadName' => $extractedName,
+                'altPhone' => $altPhone,
+                'email' => $email,
+                'cnic' => $cnic,
+            ],
+            'read' => false,
+            'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
+        ]);
+        webhook_log("AI_BOT: LEAD CAPTURED notification sent for $clientPhone (" . implode(',', $capturedBits) . ')');
+    }
 
     // Notify owner when lead becomes "hot"
     $prevScore = $leadFields['score']['stringValue'] ?? 'cold';
