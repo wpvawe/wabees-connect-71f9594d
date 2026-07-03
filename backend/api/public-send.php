@@ -195,6 +195,52 @@ if ($curlErr) {
     exit;
 }
 
+// --- Mirror to Firestore so the app/website see API-sent messages ----------
+if ($graphCode >= 200 && $graphCode < 300) {
+    $graphData = json_decode($graphResp, true) ?: [];
+    $waMsgId   = $graphData['messages'][0]['id'] ?? null;
+    $nowIso    = gmdate('Y-m-d\TH:i:s\Z');
+    $docId     = 'msg_api_' . time() . '_' . rand(1000, 9999);
+
+    // Short preview for conversation list
+    $preview = '';
+    if ($type === 'text')          $preview = mb_substr($input['message'] ?? '', 0, 100);
+    elseif ($type === 'template')  $preview = '[Template] ' . ($input['template_name'] ?? '');
+    else                            $preview = '[' . strtoupper($type) . ']';
+
+    $msgDoc = [
+        'contactPhone'    => $to,
+        'contactName'     => $to,
+        'type'            => $type,
+        'direction'       => 'outgoing',
+        'status'          => 'sent',
+        'body'            => $preview,
+        'createdAt'       => $nowIso,
+        'sentVia'         => 'api',
+        'waMessageId'     => $waMsgId,
+    ];
+    if ($type === 'template') {
+        $msgDoc['templateName'] = $input['template_name'] ?? '';
+        $msgDoc['languageCode'] = $input['language_code'] ?? '';
+    }
+    if (in_array($type, ['image','video','document','audio'], true)) {
+        if (!empty($input['media_url'])) $msgDoc['mediaUrl']   = $input['media_url'];
+        if (!empty($input['media_id']))  $msgDoc['mediaId']    = $input['media_id'];
+        if (!empty($input['caption']))   $msgDoc['caption']    = $input['caption'];
+        if (!empty($input['filename']))  $msgDoc['filename']   = $input['filename'];
+    }
+
+    @firestore_set("users/$ownerUid/messages/$docId", $msgDoc);
+    @firestore_set("users/$ownerUid/conversations/$to", [
+        'contactPhone'     => $to,
+        'contactName'      => $to,
+        'lastMessage'      => $preview,
+        'lastMessageType'  => $type,
+        'lastMessageAt'    => $nowIso,
+    ], true);
+    @firestore_increment("users/$ownerUid/subscription/current", 'messagesUsed', 1);
+}
+
 http_response_code(($graphCode >= 100 && $graphCode < 600) ? $graphCode : 502);
 echo $graphResp ?: json_encode(['error' => 'No response from WhatsApp API']);
 
