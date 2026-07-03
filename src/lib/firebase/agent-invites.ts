@@ -224,22 +224,25 @@ export async function acceptAgentInvite(input: {
     throw err;
   }
 
-  // Order matters: firestore rules on users/{ownerId}/agents/{agentId}
-  // require that the global invite mirror already shows acceptedBy == self.
-  // So we flip the invite to 'accepted' FIRST, then create the agent doc.
+  // M-1: wrap the three critical writes (invite CAS, agent doc create,
+  // self user doc dataOwner) in an atomic writeBatch. Firestore commits
+  // the batch as a single transaction — either all three succeed or none.
+  // The invite-update rule (pending→accepted only) doubles as a CAS lock:
+  // two concurrent accept batches race, one commits and the other's
+  // invite update fails, aborting that whole batch.
   const acceptPatch = {
     status: "accepted" as InviteStatus,
     acceptedBy: input.selfUid,
     acceptedAt: serverTimestamp(),
   };
-  await updateDoc(doc(db, `agent_invites/${invite.code}`), {
+  const acceptBatch = writeBatch(db);
+  acceptBatch.update(doc(db, `agent_invites/${invite.code}`), {
     ...acceptPatch,
     ownerId: invite.ownerId,
     inviteId: invite.inviteId,
     role: invite.role,
   });
-
-  await setDoc(
+  acceptBatch.set(
     doc(db, `users/${invite.ownerId}/agents/${input.selfUid}`),
     {
       email: input.selfEmail ?? null,
@@ -252,8 +255,7 @@ export async function acceptAgentInvite(input: {
     },
     { merge: true },
   );
-
-  await setDoc(
+  acceptBatch.set(
     doc(db, `users/${input.selfUid}`),
     {
       dataOwner: invite.ownerId,
@@ -262,6 +264,21 @@ export async function acceptAgentInvite(input: {
     },
     { merge: true },
   );
+  try {
+    await acceptBatch.commit();
+  } catch (e) {
+    // Most common cause: another tab / device accepted first, so the
+    // invite CAS rule rejected our update. Refresh + report cleanly.
+    const latest = await lookupInviteByCode(input.code).catch(() => null);
+    if (latest && latest.status !== "pending") {
+      throw new Error(
+        latest.acceptedBy && latest.acceptedBy !== input.selfUid
+          ? "This invite was already accepted from another device."
+          : "This invite is no longer accepting new members.",
+      );
+    }
+    throw e;
+  }
 
   // If the invitee was previously an agent under a DIFFERENT owner, mark
   // that prior assignment as `left` so the old owner's team list shows an
