@@ -19,6 +19,7 @@ import { fbDb } from "@/integrations/firebase/client";
 export type SubscriptionMessages = {
   requestTemplate: string;
   replyTemplate: string;
+  supportChatTemplate: string;
   paymentInstructions: string;
   adminContact: {
     whatsapp: string;
@@ -31,6 +32,8 @@ export const DEFAULT_SUBSCRIPTION_MESSAGES: SubscriptionMessages = {
     "Assalam-o-Alaikum Wabees team,\n\nI would like to subscribe to the *{plan}* plan ({currency} {price}/mo).\n\nName: {user}\nEmail: {email}\nPhone: {phone}\n\nPlease share the payment details. Shukriya!",
   replyTemplate:
     "Wa alaikum assalam {user},\n\nYour request for the *{plan}* plan has been received. Please send payment using the details below and share the receipt so we can activate your subscription.\n\nJazakAllah khair.",
+  supportChatTemplate:
+    "Hi Wabees team 👋\n\nI'd like to subscribe to the *{plan}* plan ({currency} {price}/mo).\n\nName: {user}\nEmail: {email}\nPhone: {phone}\n\nPlease share the payment details here. Shukriya!",
   paymentInstructions:
     "Bank Transfer\nAccount Title: WABEES\nBank: (add your bank)\nAccount / IBAN: (add your IBAN)\n\nEasyPaisa / JazzCash: (add number)\n\nAfter payment, please send the receipt on WhatsApp so we can activate your plan.",
   adminContact: {
@@ -57,6 +60,10 @@ function normalize(raw: Record<string, unknown> | undefined): SubscriptionMessag
       typeof raw.replyTemplate === "string" && raw.replyTemplate.trim()
         ? (raw.replyTemplate as string)
         : DEFAULT_SUBSCRIPTION_MESSAGES.replyTemplate,
+    supportChatTemplate:
+      typeof raw.supportChatTemplate === "string" && raw.supportChatTemplate.trim()
+        ? (raw.supportChatTemplate as string)
+        : DEFAULT_SUBSCRIPTION_MESSAGES.supportChatTemplate,
     paymentInstructions:
       typeof raw.paymentInstructions === "string" && raw.paymentInstructions.trim()
         ? (raw.paymentInstructions as string)

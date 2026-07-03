@@ -77,8 +77,8 @@ export function SubscriptionRequestDialog({
               Complete your {plan.name} request
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Send the message below to admin on WhatsApp and complete payment. Your
-              request is already saved; we activate the plan once payment is confirmed.
+              Your request has been posted to the support chat — admin will reply there.
+              Payment instructions are below; the plan activates once payment is confirmed.
             </p>
           </div>
           <button
