@@ -10,6 +10,7 @@ import {
   faRotate,
   faShieldHalved,
   faStar,
+  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { useState } from "react";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
@@ -23,6 +24,16 @@ import {
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Row {
   phone_number_id: string | null;
@@ -37,9 +48,13 @@ export function ConnectedCard({ row }: { row: Row }) {
   const selfUid = useFirebaseUid();
   const effectiveUid = useEffectiveUid();
   const [wabaInput, setWabaInput] = useState(row.waba_id ?? "");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const dis = useMutation({
     mutationFn: () => disconnectWhatsApp(selfUid!),
-    onSuccess: () => toast.success("Disconnected"),
+    onSuccess: () => {
+      setConfirmOpen(false);
+      toast.success("WhatsApp disconnected");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const sync = useMutation({
@@ -86,7 +101,7 @@ export function ConnectedCard({ row }: { row: Row }) {
                 variant="danger"
                 size="sm"
                 loading={dis.isPending}
-                onClick={() => dis.mutate()}
+                onClick={() => setConfirmOpen(true)}
               >
                 Disconnect
               </WbButton>
@@ -153,6 +168,49 @@ export function ConnectedCard({ row }: { row: Row }) {
           </div>
         </div>
       </WbCardBody>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <FontAwesomeIcon
+                icon={faTriangleExclamation}
+                className="h-4 w-4 text-destructive"
+              />
+              Disconnect WhatsApp?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  This will disconnect{" "}
+                  <span className="font-medium text-foreground">
+                    {row.display_phone || row.phone_number_id || "your WhatsApp number"}
+                  </span>{" "}
+                  from this workspace. Until you reconnect:
+                </p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>New messages will not be delivered to your inbox.</li>
+                  <li>Sending, replies, campaigns and scheduled messages will fail.</li>
+                  <li>Your agents will be shown a “workspace disconnected” screen.</li>
+                </ul>
+                <p>You can reconnect anytime from this page.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={dis.isPending}>Keep connected</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                dis.mutate();
+              }}
+              disabled={dis.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {dis.isPending ? "Disconnecting…" : "Yes, disconnect"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </WbCard>
   );
 }
