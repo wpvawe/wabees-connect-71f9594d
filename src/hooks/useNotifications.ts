@@ -3,8 +3,6 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
-import { toast } from "sonner";
-import { playNotificationChime } from "@/lib/notification-sound";
 
 export type AppNotification = {
   id: string;
@@ -63,12 +61,6 @@ export function useNotifications(): {
           for (const n of list) {
             if (!seen.has(n.id)) {
               seen.add(n.id);
-              if (!n.read) {
-                playNotificationChime();
-                toast(n.title || "New notification", {
-                  description: n.body || undefined,
-                });
-              }
             }
           }
         }
