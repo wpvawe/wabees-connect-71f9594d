@@ -5,8 +5,9 @@
  * Storage: `users/{ownerUid}/canned/{id}` — the owner writes, all agents
  * under that owner read (rules match the contacts / templates pattern).
  *
- * Body supports `{{name}}` and `{{phone}}` placeholders which are expanded
- * client-side when the reply is inserted (never stored in the message doc).
+ * Body supports rich `{{variable}}` placeholders (name, first_name, phone,
+ * email, company, agent, date, time) which are expanded client-side when
+ * the reply is inserted (never stored in the message doc).
  */
 import {
   addDoc,
@@ -26,6 +27,31 @@ export type CannedResponse = {
   createdAt: string | null;
   updatedAt: string | null;
 };
+
+/** Context used to personalise a canned body at insert-time. */
+export type CannedContext = {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  company?: string | null;
+  agent?: string | null;
+};
+
+/** All supported placeholders, in the order shown to the user. */
+export const CANNED_VARIABLES: ReadonlyArray<{
+  token: string;
+  label: string;
+  hint: string;
+}> = [
+  { token: "{{name}}", label: "Contact name", hint: "Full contact name" },
+  { token: "{{first_name}}", label: "First name", hint: "First word of the contact name" },
+  { token: "{{phone}}", label: "Phone", hint: "Recipient phone (E.164)" },
+  { token: "{{email}}", label: "Email", hint: "Contact email if saved" },
+  { token: "{{company}}", label: "Company", hint: "Contact company if saved" },
+  { token: "{{agent}}", label: "Your name", hint: "Signed-in agent's name" },
+  { token: "{{date}}", label: "Today's date", hint: "Local date, e.g. Jul 3, 2026" },
+  { token: "{{time}}", label: "Current time", hint: "Local time, e.g. 4:12 PM" },
+];
 
 function slug(s: string): string {
   return s
@@ -72,13 +98,59 @@ export async function deleteCanned(ownerUid: string, id: string): Promise<void> 
  * details. Unknown tokens are left untouched so the agent can spot them
  * before hitting send.
  */
-export function expandCanned(
-  body: string,
-  ctx: { name?: string | null; phone?: string | null },
-): string {
-  return body
-    .replace(/\{\{\s*name\s*\}\}/gi, (ctx.name ?? "").trim() || "there")
-    .replace(/\{\{\s*phone\s*\}\}/gi, (ctx.phone ?? "").trim());
+export function expandCanned(body: string, ctx: CannedContext): string {
+  const name = (ctx.name ?? "").trim();
+  const firstName = name.split(/\s+/)[0] ?? "";
+  const now = new Date();
+  const date = now.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const time = now.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const map: Record<string, string> = {
+    name: name || "there",
+    first_name: firstName || "there",
+    phone: (ctx.phone ?? "").trim(),
+    email: (ctx.email ?? "").trim(),
+    company: (ctx.company ?? "").trim(),
+    agent: (ctx.agent ?? "").trim(),
+    date,
+    time,
+  };
+  return body.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (raw, key: string) => {
+    const k = key.toLowerCase();
+    const val = map[k];
+    // Unknown token → leave as-is so the agent can spot it before sending.
+    if (val === undefined) return raw;
+    return val;
+  });
+}
+
+/**
+ * Return the list of `{{var}}` tokens in `body` that would end up empty
+ * for the given context — used by the composer to warn agents about
+ * un-personalised placeholders before they hit send.
+ */
+export function findUnresolvedVars(body: string, ctx: CannedContext): string[] {
+  const expanded = expandCanned(body, ctx);
+  const missing = new Set<string>();
+  // Unknown token still literal in expanded body.
+  const unknown = expanded.match(/\{\{\s*[a-z_]+\s*\}\}/gi);
+  if (unknown) for (const t of unknown) missing.add(t.replace(/\s+/g, ""));
+  // Known-but-empty tokens (email/company/agent may be blank). We detect by
+  // re-expanding with sentinel values and comparing lengths for each token.
+  const knownTokens = body.match(/\{\{\s*([a-z_]+)\s*\}\}/gi) ?? [];
+  for (const raw of knownTokens) {
+    const key = raw.replace(/[^a-z_]/gi, "").toLowerCase();
+    if (!["email", "company", "agent"].includes(key)) continue;
+    const val = (ctx as Record<string, string | null | undefined>)[key];
+    if (!val || String(val).trim() === "") missing.add(`{{${key}}}`);
+  }
+  return Array.from(missing);
 }
 
 /**

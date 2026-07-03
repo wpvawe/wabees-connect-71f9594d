@@ -22,6 +22,8 @@ import {
   createCanned,
   deleteCanned,
   updateCanned,
+  expandCanned,
+  CANNED_VARIABLES,
   type CannedResponse,
 } from "@/lib/firebase/canned";
 
@@ -35,6 +37,36 @@ export function CannedResponsesSection() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
+  const bodyRef = useMemo(
+    () => ({ current: null as HTMLTextAreaElement | null }),
+    [],
+  );
+
+  function insertToken(token: string) {
+    if (!draft) return;
+    const ta = bodyRef.current;
+    const start = ta?.selectionStart ?? draft.body.length;
+    const end = ta?.selectionEnd ?? draft.body.length;
+    const next = draft.body.slice(0, start) + token + draft.body.slice(end);
+    setDraft({ ...draft, body: next });
+    requestAnimationFrame(() => {
+      const el = bodyRef.current;
+      if (!el) return;
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  // Sample context used by the editor preview so owners can see how a body
+  // will look for a real contact before saving.
+  const previewCtx = {
+    name: "Amelia Khan",
+    phone: "+15551234567",
+    email: "amelia@example.com",
+    company: "Acme Co.",
+    agent: "You",
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -205,15 +237,37 @@ export function CannedResponsesSection() {
               </label>
               <textarea
                 rows={4}
+                ref={(el) => {
+                  bodyRef.current = el;
+                }}
                 value={draft.body}
                 onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                 placeholder="Hi {{name}}, thanks for reaching out! How can we help?"
                 className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Placeholders: <span className="font-mono">{"{{name}}"}</span>,{" "}
-                <span className="font-mono">{"{{phone}}"}</span>
-              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {CANNED_VARIABLES.map((v) => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => insertToken(v.token)}
+                    title={v.hint}
+                    className="rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] font-medium text-primary hover:bg-primary/10"
+                  >
+                    {v.token}
+                  </button>
+                ))}
+              </div>
+              {draft.body.trim() && (
+                <div className="mt-3 rounded-md border border-border/60 bg-background/60 p-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Preview (sample data)
+                  </p>
+                  <p className="whitespace-pre-wrap text-xs text-foreground">
+                    {expandCanned(draft.body, previewCtx)}
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2">
               <WbButton variant="ghost" onClick={() => setDraft(null)}>

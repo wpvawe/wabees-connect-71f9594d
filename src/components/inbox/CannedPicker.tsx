@@ -4,18 +4,25 @@
  * Escape closes. The parent Composer owns the trigger detection.
  */
 import { useEffect, useRef } from "react";
-import type { CannedResponse } from "@/lib/firebase/canned";
+import {
+  expandCanned,
+  findUnresolvedVars,
+  type CannedContext,
+  type CannedResponse,
+} from "@/lib/firebase/canned";
 
 export function CannedPicker({
   matches,
   activeIndex,
   onHover,
   onPick,
+  ctx,
 }: {
   matches: CannedResponse[];
   activeIndex: number;
   onHover: (index: number) => void;
   onPick: (item: CannedResponse) => void;
+  ctx: CannedContext;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -28,6 +35,10 @@ export function CannedPicker({
   }, [activeIndex]);
 
   if (matches.length === 0) return null;
+
+  const active = matches[activeIndex] ?? matches[0];
+  const preview = active ? expandCanned(active.body, ctx) : "";
+  const missing = active ? findUnresolvedVars(active.body, ctx) : [];
 
   return (
     <div
@@ -69,6 +80,26 @@ export function CannedPicker({
           </p>
         </button>
       ))}
+      {active && (
+        <div className="sticky bottom-0 border-t border-border/60 bg-muted/40 px-3 py-2">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Preview
+            </span>
+            {missing.length > 0 && (
+              <span
+                className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                title={`Placeholders still empty: ${missing.join(", ")}`}
+              >
+                {missing.length} to fill
+              </span>
+            )}
+          </div>
+          <p className="line-clamp-3 whitespace-pre-wrap text-xs text-foreground">
+            {preview}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
