@@ -117,6 +117,13 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
+      // ============ Settings (SLA targets, etc.) ============
+      // Owner writes; agents inherit read-only so the badge renders.
+      match /settings/{docId} {
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+
       // ============ Subscription ============
       match /subscription/{docId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
