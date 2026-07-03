@@ -83,10 +83,17 @@ export function SubscriptionMessagesEditor() {
       <WbCardBody className="space-y-5">
         <Field
           label="Request template"
-          hint={`Sent to admin on WhatsApp when a user requests a plan. Placeholders: ${PLACEHOLDER_HINT}`}
+          hint={`WhatsApp fallback message shown in the request dialog. Placeholders: ${PLACEHOLDER_HINT}`}
           value={m.requestTemplate}
           rows={6}
           onChange={(v) => setM({ ...m, requestTemplate: v })}
+        />
+        <Field
+          label="Support chat auto-message"
+          hint={`Auto-posted into the user's support chat when they click Request. Placeholders: ${PLACEHOLDER_HINT}`}
+          value={m.supportChatTemplate}
+          rows={6}
+          onChange={(v) => setM({ ...m, supportChatTemplate: v })}
         />
         <Field
           label="Admin reply template"
