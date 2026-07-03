@@ -9,6 +9,7 @@ import { useIncomingMessageAlerts } from "@/hooks/useIncomingMessageAlerts";
 import { useAgentPresence } from "@/hooks/useAgentPresence";
 import { useAgentAvailability } from "@/hooks/useAgentAvailability";
 import { useAutoTriage } from "@/hooks/useAutoTriage";
+import { useCsatCapture } from "@/hooks/useCsatCapture";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
@@ -54,6 +55,8 @@ function AuthenticatedShell() {
   // Owner-only AI auto-triage of new inbound messages. No-op unless the
   // signed-in user is the owner and has enabled it in settings.
   useAutoTriage();
+  // Owner-only listener that turns inbound CSAT list-replies into ratings.
+  useCsatCapture();
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);

@@ -23,6 +23,7 @@ import {
   faMoon,
   faClockRotateLeft,
   faCircleInfo,
+  faStar,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -39,6 +40,8 @@ import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
+import { sendCsatSurvey } from "@/lib/firebase/csat";
+import { useCsatSettings } from "@/hooks/useCsatSettings";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -455,6 +458,7 @@ function Thread({ phone }: { phone: string }) {
   const contact = (contacts ?? []).find((c) => normalizePhone(c.phone) === normalizedPhone);
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
   const slaSettings = useSlaSettings();
+  const csatSettings = useCsatSettings();
   const isBlocked = !!conv?.isBlocked;
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
@@ -509,13 +513,28 @@ function Thread({ phone }: { phone: string }) {
         "system",
       ).catch(() => {});
       toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
+      // Auto-send CSAT survey on resolve when the owner has it enabled.
+      if (!isResolved && csatSettings.enabled && csatSettings.autoOnResolve) {
+        void sendCsatSurvey({
+          ownerUid: uid,
+          phone: convId,
+          settings: csatSettings,
+          actor: { uid: selfUid, email: selfEmail },
+          assignedAgentId: conv?.assignedAgentId ?? null,
+          assignedAgentEmail: conv?.assignedAgentEmail ?? null,
+        })
+          .then((id) => {
+            if (id) toast.success("CSAT survey sent");
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Action failed");
     } finally {
       setStateBusy(false);
       setHeaderMenu(false);
     }
-  }, [uid, selfUid, selfEmail, phone, isResolved]);
+  }, [uid, selfUid, selfEmail, phone, isResolved, csatSettings, conv?.assignedAgentId, conv?.assignedAgentEmail, convState]);
 
   // ---- Snooze ----
   const snoozeUntilIso = conv?.snoozeUntil ?? null;
@@ -812,6 +831,35 @@ function Thread({ phone }: { phone: string }) {
                 />
                 {isResolved ? "Reopen conversation" : "Mark as resolved"}
               </button>
+              {csatSettings.enabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!uid || !selfUid) return;
+                    setHeaderMenu(false);
+                    void sendCsatSurvey({
+                      ownerUid: uid,
+                      phone: normalizePhone(phone),
+                      settings: csatSettings,
+                      actor: { uid: selfUid, email: selfEmail },
+                      assignedAgentId: conv?.assignedAgentId ?? null,
+                      assignedAgentEmail: conv?.assignedAgentEmail ?? null,
+                    })
+                      .then((id) =>
+                        id
+                          ? toast.success("CSAT survey sent")
+                          : toast.error("Could not send CSAT survey"),
+                      )
+                      .catch((e: unknown) =>
+                        toast.error(e instanceof Error ? e.message : "Send failed"),
+                      );
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-amber-600 hover:bg-muted"
+                >
+                  <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+                  Send CSAT survey now
+                </button>
+              )}
               <div className="relative" data-header-menu>
                 <button
                   type="button"

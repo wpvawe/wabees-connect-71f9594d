@@ -1,0 +1,214 @@
+/**
+ * Batch F16 — Customer Satisfaction (CSAT) surveys.
+ *
+ * When an agent resolves a conversation, the workspace can automatically
+ * ship a WhatsApp Interactive List message with 5 rating rows (⭐ 1..5).
+ * A survey doc under `users/{uid}/csat_surveys/{id}` tracks the send +
+ * incoming rating so the workload dashboard can compute team CSAT.
+ *
+ * Row IDs sent to WhatsApp are `csat:{surveyId}:{rating}` — inbound
+ * messages captured by the webhook carry this back as `buttonReplyId`,
+ * which the capture hook uses to close the loop.
+ */
+import {
+  addDoc,
+  collection,
+  doc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+import { fbDb } from "@/integrations/firebase/client";
+import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
+import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
+import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+
+export const CSAT_ROW_PREFIX = "csat:";
+
+export type CsatSettings = {
+  enabled: boolean;
+  autoOnResolve: boolean;
+  question: string;
+  footer: string;
+  askComment: boolean;
+  commentPrompt: string;
+};
+
+export const DEFAULT_CSAT: CsatSettings = {
+  enabled: false,
+  autoOnResolve: true,
+  question:
+    "Thanks for chatting with us! How would you rate your experience today?",
+  footer: "Tap a star to rate",
+  askComment: true,
+  commentPrompt:
+    "Thanks for your rating! Feel free to share any additional feedback.",
+};
+
+export function csatSettingsPath(uid: string): string {
+  return `users/${uid}/settings/csat`;
+}
+
+export async function saveCsatSettings(
+  uid: string,
+  s: CsatSettings,
+): Promise<void> {
+  await setDoc(
+    doc(fbDb(), csatSettingsPath(uid)),
+    { ...s, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+export type CsatSurvey = {
+  id: string;
+  phone: string;
+  conversationId: string;
+  sentAt: string | null;
+  sentByUid: string | null;
+  sentByEmail: string | null;
+  agentId: string | null;
+  agentEmail: string | null;
+  wamid: string | null;
+  status: "pending" | "responded" | "expired" | "failed";
+  rating: number | null;
+  comment: string | null;
+  respondedAt: string | null;
+  error?: string | null;
+};
+
+/**
+ * Send a CSAT list survey to `phone` and record the survey doc. Returns
+ * the created survey id, or null on hard failure.
+ */
+export async function sendCsatSurvey(args: {
+  ownerUid: string;
+  phone: string;
+  settings: CsatSettings;
+  actor: { uid: string; email: string | null };
+  assignedAgentId?: string | null;
+  assignedAgentEmail?: string | null;
+}): Promise<string | null> {
+  const { ownerUid, phone, settings, actor } = args;
+  const canonical = phoneDocId(phone);
+  // Create the survey doc first so the row id can reference it.
+  const surveyRef = await addDoc(collection(fbDb(), `users/${ownerUid}/csat_surveys`), {
+    phone: normalizePhone(phone),
+    conversationId: canonical,
+    sentAt: serverTimestamp(),
+    sentByUid: actor.uid,
+    sentByEmail: actor.email,
+    agentId: args.assignedAgentId ?? null,
+    agentEmail: args.assignedAgentEmail ?? null,
+    status: "pending",
+    rating: null,
+    comment: null,
+    respondedAt: null,
+  });
+
+  const creds = await loadWaCredentials(ownerUid).catch(() => null);
+  if (!creds?.phone_number_id || !creds?.access_token) {
+    await updateDoc(surveyRef, {
+      status: "failed",
+      error: "WhatsApp not connected",
+    });
+    return null;
+  }
+
+  const stars = ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"];
+  const labels = ["Very poor", "Poor", "Okay", "Good", "Excellent"];
+  const rows = [1, 2, 3, 4, 5].map((r) => ({
+    id: `${CSAT_ROW_PREFIX}${surveyRef.id}:${r}`,
+    title: `${stars[r - 1]} ${r}`,
+    description: labels[r - 1],
+  }));
+
+  const res = await sendListMessage({
+    phone_number_id: creds.phone_number_id,
+    access_token: creds.access_token,
+    to: phone,
+    body_text: settings.question || DEFAULT_CSAT.question,
+    button_text: "Rate 1–5",
+    footer_text: settings.footer || DEFAULT_CSAT.footer,
+    sections: [{ title: "Your rating", rows }],
+  }).catch((e: unknown) => ({
+    success: false,
+    message: e instanceof Error ? e.message : "send failed",
+    raw: {} as Record<string, unknown>,
+  }));
+
+  const wamid = (() => {
+    const raw = res.raw ?? {};
+    const msgs = Array.isArray(raw.messages) ? raw.messages : null;
+    const first = msgs && msgs[0] && typeof msgs[0] === "object"
+      ? (msgs[0] as { id?: unknown })
+      : null;
+    return typeof first?.id === "string" ? first.id : null;
+  })();
+
+  if (!res.success) {
+    await updateDoc(surveyRef, {
+      status: "failed",
+      error: res.message || "send failed",
+    });
+    return null;
+  }
+  await updateDoc(surveyRef, { wamid });
+  return surveyRef.id;
+}
+
+/** Parse a WhatsApp inbound reply id / body into a CSAT rating hit. */
+export function parseCsatReply(input: {
+  buttonReplyId?: string | null;
+  body?: string | null;
+}): { surveyId: string; rating: number } | null {
+  const id = input.buttonReplyId?.trim() ?? "";
+  if (id.startsWith(CSAT_ROW_PREFIX)) {
+    const parts = id.slice(CSAT_ROW_PREFIX.length).split(":");
+    if (parts.length === 2) {
+      const r = Number(parts[1]);
+      if (Number.isInteger(r) && r >= 1 && r <= 5) {
+        return { surveyId: parts[0], rating: r };
+      }
+    }
+  }
+  return null;
+}
+
+/** Record a rating on a pending survey and, when configured, ask for a comment. */
+export async function recordCsatRating(args: {
+  ownerUid: string;
+  surveyId: string;
+  rating: number;
+  phone: string;
+  askComment: boolean;
+  commentPrompt: string;
+}): Promise<void> {
+  const { ownerUid, surveyId, rating, phone, askComment, commentPrompt } = args;
+  await updateDoc(doc(fbDb(), `users/${ownerUid}/csat_surveys/${surveyId}`), {
+    rating,
+    status: "responded",
+    respondedAt: serverTimestamp(),
+  });
+  if (!askComment) return;
+  const creds = await loadWaCredentials(ownerUid).catch(() => null);
+  if (!creds?.phone_number_id || !creds?.access_token) return;
+  await sendTextMessage({
+    phone_number_id: creds.phone_number_id,
+    access_token: creds.access_token,
+    to: phone,
+    message: commentPrompt || DEFAULT_CSAT.commentPrompt,
+  }).catch(() => {});
+}
+
+/** Attach a customer's free-text comment to the most recent responded survey. */
+export async function attachCsatComment(args: {
+  ownerUid: string;
+  surveyId: string;
+  comment: string;
+}): Promise<void> {
+  await updateDoc(
+    doc(fbDb(), `users/${args.ownerUid}/csat_surveys/${args.surveyId}`),
+    { comment: args.comment.slice(0, 500) },
+  );
+}
