@@ -7,6 +7,7 @@ import {
   revokeAgentByEmail,
   newUserContext,
   closeContext,
+  purgeAgentRows,
 } from "./helpers";
 
 /**
@@ -32,6 +33,7 @@ test.describe.serial("invite / revoke / switch flows", () => {
     const b = await newUserContext(browser);
     try {
       await signInOrSignUp(a.page, ownerA);
+      await purgeAgentRows(a.page, [agentB.email, agentB2.email]);
       const { code } = await generateInvite(a.page, { role: "agent" });
 
       await signInOrSignUp(b.page, agentB);
@@ -51,6 +53,7 @@ test.describe.serial("invite / revoke / switch flows", () => {
     const b = await newUserContext(browser);
     try {
       await signInOrSignUp(a.page, ownerA);
+      await purgeAgentRows(a.page, [agentB.email, agentB2.email]);
       const { code } = await generateInvite(a.page);
 
       await signInOrSignUp(b.page, agentB);
@@ -82,6 +85,7 @@ test.describe.serial("invite / revoke / switch flows", () => {
     try {
       // A onboards B first.
       await signInOrSignUp(a.page, ownerA);
+      await purgeAgentRows(a.page, [agentB.email, agentB2.email]);
       const inviteA = await generateInvite(a.page);
 
       await signInOrSignUp(b.page, agentB2);
@@ -89,6 +93,7 @@ test.describe.serial("invite / revoke / switch flows", () => {
 
       // C creates a competing invite.
       await signInOrSignUp(c.page, ownerC);
+      await purgeAgentRows(c.page, [agentB.email, agentB2.email]);
       const inviteC = await generateInvite(c.page);
 
       // B accepts C's invite → switch prompt appears, confirm to leave A.
