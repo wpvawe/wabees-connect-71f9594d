@@ -98,6 +98,13 @@ function firestore_set($path, $data, $merge = true)
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_set auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_set FAILED ($httpCode) path=$path err=" . curl_error($ch));
     }
@@ -140,6 +147,13 @@ function firestore_update($path, $data, $updateMask = [])
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_update auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_update FAILED ($httpCode) path=$path err=" . curl_error($ch));
     }
@@ -167,6 +181,13 @@ function firestore_commit($writes)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log('[WABEES] firestore_commit auth retry');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         $curlError = curl_error($ch);
@@ -262,6 +283,13 @@ function firestore_query($collectionPath, $field, $op, $value)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_query auth retry path=$collectionPath");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_query FAILED ($httpCode) path=$collectionPath err=" . curl_error($ch));
@@ -554,6 +582,13 @@ function firestore_get($path)
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        error_log("[WABEES] firestore_get auth retry path=$path");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
 
     if ($httpCode >= 400 || $httpCode === 0) {
         error_log("[WABEES] firestore_get FAILED ($httpCode) path=$path err=" . curl_error($ch));
