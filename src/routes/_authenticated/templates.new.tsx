@@ -2,10 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbFirebaseGate } from "@/components/wb/WbFirebaseGate";
 import { TemplateComposer } from "@/components/templates/TemplateComposer";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 export const Route = createFileRoute("/_authenticated/templates/new")({
   head: () => ({ meta: [{ title: "New template — Wabees" }] }),
-  component: NewTemplatePage,
+  component: () => (
+    <RequireCapability capability="templates.write">
+      <NewTemplatePage />
+    </RequireCapability>
+  ),
 });
 
 function NewTemplatePage() {

@@ -6,10 +6,15 @@ import { TopBar } from "@/components/shell/TopBar";
 import { WbFirebaseGate } from "@/components/wb/WbFirebaseGate";
 import { TemplateComposer } from "@/components/templates/TemplateComposer";
 import { useTemplates } from "@/hooks/useTemplates";
+import { RequireCapability } from "@/components/auth/RequireCapability";
 
 export const Route = createFileRoute("/_authenticated/templates/$id/edit")({
   head: () => ({ meta: [{ title: "Edit template — Wabees" }] }),
-  component: EditTemplatePage,
+  component: () => (
+    <RequireCapability capability="templates.write">
+      <EditTemplatePage />
+    </RequireCapability>
+  ),
 });
 
 function EditTemplatePage() {
