@@ -394,16 +394,24 @@ function AgentsPage() {
               />
             ) : (
               <ul className="divide-y divide-border">
-                {agents.map((a) => (
+                {agents.map((a) => {
+                  const isRevoked = a.status === "revoked";
+                  const isLeft = a.status === "left";
+                  const isInactive = isRevoked || isLeft;
+                  return (
                   <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium text-foreground">
                           {a.email || a.id}
                         </p>
-                        {a.status === "revoked" ? (
+                        {isRevoked ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-destructive">
                             <FontAwesomeIcon icon={faBan} className="h-2.5 w-2.5" /> Revoked
+                          </span>
+                        ) : isLeft ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                            Left
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-600">
@@ -423,7 +431,7 @@ function AgentsPage() {
                           />
                           {a.role === "supervisor" ? "Supervisor" : "Agent"}
                         </span>
-                        {a.status !== "revoked" &&
+                        {!isInactive &&
                           a.workingHours &&
                           !isWithinWorkingHours(a.workingHours) && (
                             <span
@@ -436,14 +444,14 @@ function AgentsPage() {
                       </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {a.joinedAt ? `Joined ${format(new Date(a.joinedAt), "PP")}` : "—"}
-                        {a.status === "revoked" && a.revokedAt
+                        {isRevoked && a.revokedAt
                           ? ` · Revoked ${format(new Date(a.revokedAt), "PP")}`
                           : ""}
                       </p>
                     </div>
                     {isOwner && (
                       <div className="flex items-center gap-1">
-                        {a.status !== "revoked" && (
+                        {!isInactive && (
                           <select
                             value={a.role === "supervisor" ? "supervisor" : "agent"}
                             onChange={(e) =>
@@ -457,7 +465,7 @@ function AgentsPage() {
                             <option value="supervisor">Supervisor</option>
                           </select>
                         )}
-                        {a.status === "revoked" ? (
+                        {isRevoked ? (
                           <WbButton
                             variant="secondary"
                             size="sm"
@@ -466,7 +474,7 @@ function AgentsPage() {
                           >
                             Reinstate
                           </WbButton>
-                        ) : (
+                        ) : isLeft ? null : (
                           <>
                             <WbButton
                               variant="ghost"
@@ -501,7 +509,7 @@ function AgentsPage() {
                         </WbButton>
                       </div>
                     )}
-                    {isOwner && a.status !== "revoked" && (
+                    {isOwner && !isInactive && (
                       <div className="mt-2 flex w-full flex-wrap items-center gap-2">
                         <label
                           htmlFor={`skills-${a.id}`}
@@ -534,7 +542,8 @@ function AgentsPage() {
                       </div>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </WbCardBody>

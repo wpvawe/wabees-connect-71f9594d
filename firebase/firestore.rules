@@ -237,6 +237,17 @@ service cloud.firestore {
       match /agent_invites/{inviteId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create, update, delete: if isOwner(userId) || isAdmin();
+        // The accepter (invitee) may flip THIS owner-scoped mirror from
+        // pending→accepted after the global mirror already shows their
+        // uid in `acceptedBy`. Keeps the owner's Pending Invites card
+        // accurate without needing an admin SDK.
+        allow update: if request.auth != null
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && resource.data.code is string
+          && request.resource.data.code == resource.data.code
+          && exists(/databases/$(database)/documents/agent_invites/$(resource.data.code))
+          && get(/databases/$(database)/documents/agent_invites/$(resource.data.code)).data.acceptedBy == request.auth.uid;
       }
     }
 
