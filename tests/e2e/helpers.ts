@@ -6,13 +6,19 @@ export type TestUser = {
   displayName: string;
 };
 
-/** Create a unique test user identity (does not create the Firebase account). */
+/**
+ * Stable test-user pool. Same email + password on every run — no new Firebase
+ * accounts get created after the first run (which the platform owner approves
+ * once). Do NOT change the email/password without coordinating with the owner
+ * who has to re-approve.
+ */
+const FIXED_PASSWORD = "E2ePass!Wabees2026";
 export function makeUser(label: string): TestUser {
-  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const slug = label.toLowerCase().replace(/[^a-z0-9]/g, "");
   return {
-    email: `e2e+${label}-${stamp}@wabees.test`,
-    password: `E2ePass!${stamp}`,
-    displayName: `E2E ${label} ${stamp.slice(-4)}`,
+    email: `e2e-${slug}@wabees.test`,
+    password: FIXED_PASSWORD,
+    displayName: `E2E ${label}`,
   };
 }
 
@@ -157,6 +163,12 @@ export async function acceptInvite(
     await switchBtn.click();
   } else {
     await acceptBtn.click();
+    // If the app decides a switch-prompt is required (e.g. because the user
+    // is already an agent of another workspace from a previous run), auto-
+    // confirm it. Keeps the test idempotent across re-runs.
+    if (await switchBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await switchBtn.click();
+    }
   }
   // Success screen navigates to /inbox after ~1.2s. If it doesn't,
   // any URL off /join also counts (the app may drop us on /dashboard
