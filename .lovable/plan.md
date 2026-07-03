@@ -1,123 +1,75 @@
-# De-Hardcoding Plan — Batch Wise
+## Findings (kya galat mila)
 
-Aap ke 3 points + audit se mili aur hardcoded cheezen — sab ek jagah, batches me. Har batch independently ship ho sakta hai.
+Live server `/domains/wabees.live/public_html/index.php` scan karne pe:
 
-## Extra Hardcoded Cheezen Jo Mujhe Aur Mili
 
-**Website / Frontend**
-- `PhoneHealthCard.tsx` me `https://api.wabees.live/api/phone-health.php` — env base ignore.
-- `DeveloperApiSection.tsx` curl examples me full URL hardcoded (env base use nahi hota).
-- Currency fallback `"PKR"` `usePlans.ts` me hardcoded — admin-level default hona chahiye.
-- Contacts sample CSV, leads CSV filenames me `wabees-` prefix hardcoded (chalne do, minor).
-- Graph API version `v21.0` 30+ jaghon pe scattered — koi central `META_GRAPH_VERSION` nahi.
+| #   | Issue                                                                                                                                                                                                                                                                          | Location                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| 1   | **Live stats khali** (screenshot) — 6 tiles `id="s-msgs"` etc. me `—` show ho raha hai. JS `public-stats.php` fetch karta hai lekin **wo file server pe exist hi nahi karti** (Hostinger 404 return kar raha): pehle code sahi tha file exist karti hogi tum dobara check karo | `index.php:1140-1170` + missing `api/public-stats.php` |
+| 2   | **WhatsApp FAB** right-bottom pe                                                                                                                                                                                                                                               | `index.php:1569-1571`                                  |
+| 3   | **"Start 7-Day Trial"** button                                                                                                                                                                                                                                                 | `index.php:1400`                                       |
+| 4   | **Wrong WA number** `+923001234567` in Contact Sales & FAB                                                                                                                                                                                                                     | `index.php:1416, 1570`                                 |
+| 5   | **DeepSeek leaked** — "DeepSeek-powered AI" label + "Calling DeepSeek API" log line                                                                                                                                                                                            | `index.php:1273, 1327`                                 |
+| 6   | **Dark-only color scheme** — user chahta light/softer                                                                                                                                                                                                                          | root CSS vars + `hero-bg` classes                      |
+| 7   | `/download/index.php` bhi same dark scheme                                                                                                                                                                                                                                     | `download/index.php`                                   |
+| 8   | **Plans hardcoded** in landing page, Firestore me offer/pricing edits reflect nahi hote                                                                                                                                                                                        | `index.php:1360-1430`                                  |
 
-**Backend (PHP)**
-- `VERIFY_TOKEN = 'wabees_webhook_verify_2024'` `backend/api/webhook.php:17` — plain constant. Per-user rotate karne ka koi tareeqa nahi.
-- CORS allowlist 4 files me duplicate hardcoded (`send-message.php`, `edit-template.php`, `delete-template.php`, etc.) — ek shared config chahiye.
-- `WEB_APP_URL` / `PUBLIC_HOST` fallback `wabees.live` inline.
-- `media-proxy.php` full URL `webhook.php` me 2 jagah literal.
-- FCM webpush link fallback `https://wabees.live/` literal.
-- JWT secret plain-text committed (`backend/config/jwt-secret.php`) — env-based hona chahiye.
-- Firebase project id `wabees-app` 5 files me literal.
-- `v22.0` `cron/dispatch-scheduled.php` me — baaqi codebase se mismatch.
-- AI cooldown / max tokens / history `ai-config.php` me hardcoded, admin edit nahi kar sakta.
-- DeepSeek endpoint `triage.functions.ts` me literal.
 
-**Content / UX**
-- `/download` page (PHP landing) me purana webhook callback URL. Multiple docs pages me purane URLs.
-- "Contact admin for payment" auto-reply message app me hardcoded — admin edit nahi kar sakta.
-- Welcome plan flag Firestore me hai lekin default plan settings admin UI se editable nahi (sirf `isWelcomePlan` boolean).
-- Public landing pe plans hardcoded (wabees.live PHP side) — Firestore `plans` se sync nahi.
-- Offer / discount ka koi field hi nahi Plan schema me.
+## Answers to your questions
 
----
+**Q: Offer object plans/{id} me main save karun ya admin?**
+Admin karega — plans admin panel me already `usePlans` hook + Firestore write UI hai (Batch 2 me `Plan` type me `offer` field add kiya hai). Admin bas Firestore doc me `offer: {active,label,discountPct,priceOverride,endsAt}` set karega, dono jagah (website + app) turant reflect ho jayega. Main koi hardcoded offer save nahi karunga.
 
-## Batch 1 — Connect Page + Webhook Guide (aap ka Point 1)
+**Q: Public landing pe live plans grid + Firestore fetch + PHP cache?**
+Haan, is batch me kar raha hun.
 
-**Goal:** User connect page pe hi callback URL + verify token dekhe, copy kare, aur step-by-step guide (permanent token wala) follow kare. Purane callback URLs har jagah update.
+## Plan — Batch 2b (landing page + dynamic plans)
 
-- `src/routes/_authenticated/connect.tsx`: naya "Webhook Setup" card add karein — Callback URL (`https://api.wabees.live/webhook.php`) + Verify Token (`wabees_webhook_verify_2024`) with Copy buttons + external "Open Meta App Dashboard" link + numbered steps (App create → WhatsApp product → Configure webhook → Subscribe fields → Generate permanent System User token → Add phone number → Paste here).
-- Verify token ko `VITE_META_VERIFY_TOKEN` env se read + fallback current value. Doc me bhi env constant use ho.
-- Manual token form ke upar collapsible "How to get a permanent access token?" guide (System User → Assign asset → Generate token → never expires) with Meta doc links.
-- Backend PHP `download/index.php` + landing (wabees-plus repo `backend/`) me purane callback URLs (agar `/api/webhook.php` ya kuch aur) → `/webhook.php` update. SSH deploy live server bhi.
-- `DeveloperApiSection.tsx` + `PhoneHealthCard.tsx` — env base use karein (`VITE_WABEES_API_BASE`).
+### Step 1 — New PHP endpoints (server-side, cached)
 
-## Batch 2 — Dynamic Welcome Plan + Public Plans + Offers (Point 2)
+Create in `wabees-plus` repo → deploy to Hostinger:
 
-**Goal:** Welcome plan admin-editable. Public landing plans Firestore se aayen. Har plan pe optional "Offer" badge/discount.
+- `**api/public-stats.php**` — aggregates counts from Firestore (`users` count, `contacts` collectionGroup, `messages` count from `stats/global` doc if exists, active bots from `bot_configs`). File cache 5-min TTL via existing `firestore_query_cached()`. Response shape: `{"msgs":N,"users":N,"agents":N,"contacts":N,"bots":N,"convs":N}`.
+- `**api/public-plans.php**` — fetches `plans/*` where `showOnPublic == true`, returns normalized JSON with resolved pricing (using same `resolvePricing` logic ported to PHP). Cache 2-min TTL. Fixes the "hardcoded plans" issue — admin ke Firestore edits turant landing pe aayenge.: /api kion laga rahay ho? url sahi karo.. [api.wabees.live](http://api.wabees.live) se test karo
 
-Schema (Firestore `plans` doc, additive fields — koi migration break nahi):
-- `offer: { active: boolean, label: string, discountPct?: number, priceOverride?: number, endsAt?: Timestamp }`
-- `showOnPublic: boolean` (public landing pe dikhana hai ya nahi)
-- Existing `isWelcomePlan` — sirf ek plan pe true rahe (admin app already handle karta hai, hum sirf UI-level guard add karenge).
+### Step 2 — Rewrite plans section in `index.php`
 
-Frontend:
-- `usePlans.ts` me `offer` + `showOnPublic` parse.
-- `plans.tsx` (auth) + naya public plans component: Offer badge, strikethrough original price, "Ends in X days" agar `endsAt`.
-- Public landing PHP page (`backend/index.php` on wabees.live) → Firestore REST API se `plans` fetch (server-side, cached 5 min). Hardcoded plan cards remove.
-- Welcome plan auto-assign flow `src/lib/firebase/users.ts:73` already dynamic hai — sirf verify + fallback message dynamic karo.
+Replace hardcoded 3-card grid (~lines 1360-1430) with a server-render loop over `public-plans.php` output. Har card:
 
-## Batch 3 — Dynamic Subscription Request Message (Point 3)
+- Name, price (with strikethrough + discount% if offer active)
+- "🔥 {offer.label}" badge
+- Countdown "Ends in X days" agar `endsAt` set hai
+- Features list from Firestore
+- CTA button (link to `$webPortal`)
 
-**Goal:** App aur website dono ek hi Firestore config se message padhen. Admin admin panel se edit kare.
+Empty state agar Firestore me plans nahi → show "Coming soon".
 
-Firestore path: `settings/subscription_messages` (single doc):
-- `requestNotificationTemplate` (admin ko jane wala) — placeholders: `{userName}`, `{planName}`, `{price}`.
-- `userReplyTemplate` (auto-reply user ko) — placeholders: `{planName}`, `{price}`, `{adminPhone}`, `{paymentInstructions}`.
-- `paymentInstructions` (rich text / markdown).
-- `adminContactPhone`, `adminContactEmail`.
+### Step 3 — Landing page fixes
 
-Code:
-- Naya hook `useSubscriptionMessages.ts`.
-- `subscriptions.ts` `requestSubscription()` me hardcoded strings hata ke template rendering.
-- App side (Flutter) already yahi doc padhega — schema Flutter ke sath finalize karna hoga (aap confirm karo doc path).
-- Naya admin section `AdminSubscriptionSettings.tsx` (admin route pe) — editable form.
 
-## Batch 4 — Central Constants (Meta version, URLs, CORS)
+| Fix                  | Change                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WhatsApp FAB         | **Delete** lines 1569-1573 + `.wa-fab` CSS                                                                                                                    |
+| 7-Day Trial          | Change to "Start Free" / "Get Started"                                                                                                                        |
+| Wrong WA number      | Read from `config/site-config.php` (`$supportWhatsApp`). Aap ko sahi number bhejna hoga — filhal placeholder rakhunga `+92XXX` aur config me note likh dunga. |
+| DeepSeek leak        | "DeepSeek-powered AI" → "Advanced AI Automation". Log line "Calling DeepSeek API" → "Processing with AI engine". "4 msgs context" → "conversation context".   |
+| Color scheme (light) | CSS vars update: `--bg: #f7f9fb`, `--surface: #ffffff`, `--ink: #0f172a`, keep WA green accent. Test on `/` and `/download/`. Dark toggle preserve.           |
 
-- `src/lib/constants.ts` — `META_GRAPH_VERSION = "v21.0"`, `WABEES_API_BASE`, `WEB_APP_URL`. Sab TS files ko is se import karayen.
-- `backend/config/constants.php` — same PHP side (`META_GRAPH_VERSION`, `WEB_APP_URL`, `PUBLIC_HOST`, `MEDIA_PROXY_URL`, `CORS_ALLOWLIST`).
-- Sab `graph.facebook.com/v21.0` literals refactor.
-- `cron/dispatch-scheduled.php` `v22.0` → constant.
-- 4 CORS-wale PHP files ek `cors.php` require karen.
 
-## Batch 5 — Security & Sensitive Hardcoding
+### Step 4 — Deploy
 
-- `backend/config/jwt-secret.php` → `getenv('PHP_BACKEND_JWT_SECRET')` with commit-safe fallback removal. Secret Hostinger env pe set karo (SSH), file me sirf `getenv`.
-- Firebase project id `wabees-app` — `getenv('FIREBASE_PROJECT_ID')` centralize (`firebase-config.php`).
-- Verify token per-workspace: `whatsapp_config.verify_token` field. `webhook.php` incoming request pe token match per-user (fallback global for legacy).
-- AI defaults (`AI_BOT_COOLDOWN_SECONDS`, `MAX_TOKENS`, `MAX_HISTORY`) → Firestore `settings/ai_defaults`, admin editable.
+1. Git push to `wpvawe/wabees-plus` (backend/ + landing PHP updates).
+2. SSH deploy to Hostinger: `api/public-stats.php`, `api/public-plans.php`, `index.php`, `download/index.php`.
+3. Test:
+  - `curl https://wabees.live/api/public-stats.php` → JSON with counts
+  - `curl https://wabees.live/api/public-plans.php` → JSON array
+  - Visit `wabees.live` → stats numbers dikhen, plans Firestore se aayen, no FAB, no DeepSeek mention, light theme:
 
-## Batch 6 — Content / Docs Cleanup
+## Batch 3 — deferred (as you asked)
 
-- `/download` PHP page: purane webhook URL, purane plan cards, purani tagline — sab refresh.
-- `DeveloperApiSection.tsx` curl examples env-driven.
-- Sample CSV / export filenames as-is (chalne do).
-- Docs (`docs/RULES.md`, `PHASE3-SMOKE-TEST.md`) me purane URLs update.
+Dynamic subscription/payment messages — main abhi shuru **nahi** karunga. Pehle Flutter app ka code deeply padhunga (`wpvawe/wabees-plus` → `lib/` me subscription flow, Firestore paths jaisa `subscription_messages` ya jo bhi actual name hai), phir aap ko exact paths + current structure bata ke plan dunga. Assumption nahi karunga.
 
----
+## Requests from you before I start
 
-## Execution Order (Recommendation)
-
-1. **Batch 1** (fastest visible win, no schema change).
-2. **Batch 4** (foundation — baaqi batches is pe depend karengi).
-3. **Batch 2** (schema additive, safe).
-4. **Batch 3** (needs Flutter side confirmation on doc path).
-5. **Batch 5** (server SSH deploy needed, careful).
-6. **Batch 6** (content polish).
-
----
-
-## Technical Details (dev reference)
-
-- Firestore rules: `settings/*` doc → read: public/authenticated, write: admin only. `plans/*` already so.
-- Verify token per-user migration: `whatsapp_config` me nullable `verify_token`. Webhook.php pehle query params se uid → verify_token lookup, warna global VERIFY_TOKEN.
-- Public landing Firestore REST: `https://firestore.googleapis.com/v1/projects/wabees-app/databases/(default)/documents/plans` — cached in PHP APCu 5 min.
-- Placeholder rendering helper: simple `{key}` string replace (no template engine).
-
----
-
-**Aap batao:**
-1. Kya sequence theek hai ya kisi batch ko pehle chahiye?
-2. Batch 3 ke liye Flutter app me exact Firestore doc path kya hai (agar already hai to woh use kar lete hain, warna naya `settings/subscription_messages` bana lete hain)?
-3. Verify token per-user (Batch 5) chahiye ya global rakhna theek hai?
+1. **Correct WhatsApp support number** kya hai? (contact sales + agar chahye to koi CTA link ke liye)
+2. Light theme confirm — pure white background chahye ya soft grey (`#f7f9fb`)?
