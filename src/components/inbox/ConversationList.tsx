@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { format, isToday, isYesterday, differenceInDays } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -22,7 +22,7 @@ import {
   faMoon,
   faFlag,
 } from "@fortawesome/free-solid-svg-icons";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   collection,
   getDocs,
@@ -63,6 +63,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useHotkeys } from "@/hooks/useHotkeys";
+import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
 
 type Filter =
   | "all"
@@ -109,6 +111,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const isPrivileged = role === "owner" || role === "supervisor";
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   // Regular agents get scoped visibility by default (Mine + Unassigned).
   // Owners/supervisors keep the "All" default. Runs once when role resolves.
@@ -221,6 +226,48 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     }
     return rows;
   }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid, role]);
+
+  // Keyboard nav: j/k moves through the visible list; Enter is implicit
+  // because we navigate immediately. `/` focuses search, `?` opens help,
+  // `Escape` clears the search box.
+  useHotkeys(
+    {
+      j: () => {
+        if (!filtered || filtered.length === 0) return;
+        const idx = filtered.findIndex((c) => c.contactPhone === activePhone);
+        const next = filtered[(idx + 1 + filtered.length) % filtered.length];
+        if (next) {
+          void navigate({ to: "/inbox/$phone", params: { phone: next.contactPhone } });
+        }
+      },
+      k: () => {
+        if (!filtered || filtered.length === 0) return;
+        const idx = filtered.findIndex((c) => c.contactPhone === activePhone);
+        const prev = filtered[(idx <= 0 ? filtered.length : idx) - 1];
+        if (prev) {
+          void navigate({ to: "/inbox/$phone", params: { phone: prev.contactPhone } });
+        }
+      },
+      "/": () => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      },
+      "?": () => setHelpOpen(true),
+      Escape: () => {
+        if (q) setQ("");
+      },
+    },
+    [filtered, activePhone, q],
+  );
+
+  // Keep the highlighted row visible as the user pages through with j/k.
+  useEffect(() => {
+    if (!activePhone) return;
+    const el = document.querySelector(
+      `[data-conv-row="${CSS.escape(activePhone)}"]`,
+    ) as HTMLElement | null;
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activePhone]);
 
   useEffect(() => {
     if (!uid || !merged) return;
@@ -435,7 +482,8 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search chats"
+            ref={searchRef}
+            placeholder="Search chats  (press /)"
             className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
           />
         </div>
@@ -671,6 +719,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </aside>
   );
 }
@@ -880,6 +929,7 @@ function ConvRow({
       <Link
         to="/inbox/$phone"
         params={{ phone: c.contactPhone }}
+        data-conv-row={c.contactPhone}
         onContextMenu={(e) => {
           e.preventDefault();
           onContextMenu(e.clientX, e.clientY);
