@@ -163,6 +163,12 @@ export async function acceptInvite(
     await switchBtn.click();
   } else {
     await acceptBtn.click();
+    // If the app decides a switch-prompt is required (e.g. because the user
+    // is already an agent of another workspace from a previous run), auto-
+    // confirm it. Keeps the test idempotent across re-runs.
+    if (await switchBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await switchBtn.click();
+    }
   }
   // Success screen navigates to /inbox after ~1.2s. If it doesn't,
   // any URL off /join also counts (the app may drop us on /dashboard
