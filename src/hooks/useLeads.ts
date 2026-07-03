@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
 
 export type LeadScore = "cold" | "warm" | "hot";
@@ -24,11 +24,18 @@ export type Lead = {
 
 export function useLeads(): { data: Lead[] | null; error: string | null } {
   const uid = useEffectiveUid();
+  const selfUid = useFirebaseUid();
   const [data, setData] = useState<Lead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !selfUid) return;
+    // bot_leads is owner-only per Firestore rules. Agents (self != owner)
+    // would trigger a permission error, so short-circuit with an empty list.
+    if (uid !== selfUid) {
+      setData([]);
+      return;
+    }
     const db = fbDbOrNull();
     if (!db) return;
     const unsub = onSnapshot(
@@ -59,7 +66,7 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
       (e) => setError(e.message),
     );
     return () => unsub();
-  }, [uid]);
+  }, [uid, selfUid]);
 
   return { data, error };
 }
