@@ -243,6 +243,10 @@ export function Composer({
   async function send() {
     const body = text.trim();
     if (!body || sending || !uid || !selfUid) return;
+    if (windowClosed) {
+      toast.error("Reply window closed — send an approved template instead.");
+      return;
+    }
     setSending(true);
     const normalizedPhone = normalizePhone(phone);
     const to = phoneDocId(phone);
@@ -339,6 +343,10 @@ export function Composer({
     captionOverride?: string,
   ) {
     if (!uid || !selfUid) return;
+    if (windowClosed) {
+      toast.error("Reply window closed — send an approved template instead.");
+      return;
+    }
     setUploading(true);
     const normalizedPhone = normalizePhone(phone);
     const convId = phoneDocId(phone);
