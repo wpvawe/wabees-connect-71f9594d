@@ -111,7 +111,20 @@ export async function setConversationState(
   phone: string,
   state: ConversationState,
   actor: { uid: string; email: string | null },
-  options?: { reason?: string; snoozeUntil?: Date | null },
+  options?: {
+    reason?: string;
+    snoozeUntil?: Date | null;
+    /**
+     * Current assignee id (before this state change). When set, we adjust
+     * their `activeLoad` counter so round-robin stays fair:
+     *   - resolving / snoozing → decrement (thread no longer counts)
+     *   - reopening from resolved/snoozed → increment (thread counts again)
+     * Best-effort; drift heals on the next assignment cycle.
+     */
+    assignedAgentId?: string | null;
+    /** Previous state — required to decide whether load should shift. */
+    previousState?: ConversationState;
+  },
 ): Promise<void> {
   const db = fbDb();
   const ids = await resolveConversationDocIds(uid, phone);
@@ -134,6 +147,21 @@ export async function setConversationState(
       ),
     ),
   );
+  // ---- activeLoad drift repair ----
+  const assignee = options?.assignedAgentId ?? null;
+  const prev = options?.previousState ?? "open";
+  const isActive = (s: ConversationState) => s === "open" || s === "pending";
+  const wasActive = isActive(prev);
+  const nowActive = isActive(state);
+  if (assignee && wasActive !== nowActive) {
+    try {
+      await updateDoc(doc(db, `users/${uid}/agents/${assignee}`), {
+        activeLoad: increment(nowActive ? 1 : -1),
+      });
+    } catch {
+      /* self-heals on next assignment */
+    }
+  }
   try {
     const canonical = phoneDocId(phone);
     await addDoc(
