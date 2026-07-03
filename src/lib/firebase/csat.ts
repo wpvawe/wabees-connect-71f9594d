@@ -14,6 +14,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -88,9 +89,36 @@ export async function sendCsatSurvey(args: {
   actor: { uid: string; email: string | null };
   assignedAgentId?: string | null;
   assignedAgentEmail?: string | null;
+  /**
+   * If provided, skip sending when the conversation received a CSAT survey
+   * within this many milliseconds. Prevents auto-resolve loops from spamming
+   * the same contact.
+   */
+  cooldownMs?: number;
 }): Promise<string | null> {
   const { ownerUid, phone, settings, actor } = args;
   const canonical = phoneDocId(phone);
+  // Cooldown check — protects against a resolve/reopen ping-pong sending
+  // multiple surveys to the same contact in quick succession.
+  const convRef = doc(fbDb(), `users/${ownerUid}/conversations/${canonical}`);
+  if (args.cooldownMs && args.cooldownMs > 0) {
+    try {
+      const convSnap = await getDoc(convRef);
+      const data = convSnap.exists() ? (convSnap.data() as Record<string, unknown>) : null;
+      const raw = data?.csatLastSentAt;
+      const lastMs =
+        typeof raw === "string"
+          ? Date.parse(raw)
+          : raw && typeof raw === "object" && "toDate" in (raw as object)
+            ? (raw as { toDate: () => Date }).toDate().getTime()
+            : NaN;
+      if (Number.isFinite(lastMs) && Date.now() - lastMs < args.cooldownMs) {
+        return null;
+      }
+    } catch {
+      // Non-fatal — proceed with send.
+    }
+  }
   // Create the survey doc first so the row id can reference it.
   const surveyRef = await addDoc(collection(fbDb(), `users/${ownerUid}/csat_surveys`), {
     phone: normalizePhone(phone),
@@ -154,6 +182,12 @@ export async function sendCsatSurvey(args: {
     return null;
   }
   await updateDoc(surveyRef, { wamid });
+  // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
+  try {
+    await setDoc(convRef, { csatLastSentAt: serverTimestamp() }, { merge: true });
+  } catch {
+    // Non-fatal — cooldown is best-effort.
+  }
   return surveyRef.id;
 }
 

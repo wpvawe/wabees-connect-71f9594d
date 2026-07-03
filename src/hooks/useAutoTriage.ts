@@ -22,6 +22,8 @@ import { applyTriageToConversation } from "@/lib/firebase/triage";
 
 /** Only text-ish inbound messages are worth classifying. */
 const TRIAGEABLE_TYPES = new Set(["text", "button", "interactive", "list"]);
+/** Per-conversation cooldown between AI triage runs. */
+const TRIAGE_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
 
 export function useAutoTriage(): void {
   const session = useFirebaseSession();
@@ -35,6 +37,10 @@ export function useAutoTriage(): void {
   // backfill (only classify NEW inbound after mount).
   const seen = useRef<Set<string>>(new Set());
   const inFlight = useRef<Set<string>>(new Set());
+  // Per-conversation throttle: once we classify a phone, skip further
+  // messages from the same conversation for TRIAGE_THROTTLE_MS. Keeps
+  // AI cost bounded on chatty threads.
+  const lastByPhone = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!enabled || !isOwner || !uid) return;
@@ -81,9 +87,15 @@ export function useAutoTriage(): void {
             seen.current.add(d.id);
             continue;
           }
+          const lastAt = lastByPhone.current.get(phone) ?? 0;
+          if (Date.now() - lastAt < TRIAGE_THROTTLE_MS) {
+            seen.current.add(d.id);
+            continue;
+          }
 
           seen.current.add(d.id);
           inFlight.current.add(d.id);
+          lastByPhone.current.set(phone, Date.now());
           // Fire and forget — the settings hook already restricts to owner,
           // and Firestore write is idempotent.
           void (async () => {
