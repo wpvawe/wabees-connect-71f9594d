@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   deleteField,
+  increment,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
@@ -23,7 +24,12 @@ export async function assignConversation(
   phone: string,
   agent: { id: string; email: string | null } | null,
   actor: { uid: string; email: string | null },
-  options?: { reason?: string; source?: "manual" | "auto_reply" | "auto_round_robin" },
+  options?: {
+    reason?: string;
+    source?: "manual" | "auto_reply" | "auto_round_robin";
+    /** id of the agent this thread was previously assigned to (for load balancing) */
+    previousAgentId?: string | null;
+  },
 ): Promise<void> {
   const db = fbDb();
   const ids = await resolveConversationDocIds(uid, phone);
@@ -45,6 +51,29 @@ export async function assignConversation(
       ),
     ),
   );
+  // Best-effort load counter maintenance for round-robin fairness. Rules
+  // allow owners+agents to update the shared agents/{id} row, so both a
+  // supervisor reassigning and an owner auto-routing land here.
+  const prev = options?.previousAgentId ?? null;
+  const nextId = agent?.id ?? null;
+  if (prev && prev !== nextId) {
+    try {
+      await updateDoc(doc(db, `users/${uid}/agents/${prev}`), {
+        activeLoad: increment(-1),
+      });
+    } catch {
+      /* counter drift is self-healing */
+    }
+  }
+  if (nextId && nextId !== prev) {
+    try {
+      await updateDoc(doc(db, `users/${uid}/agents/${nextId}`), {
+        activeLoad: increment(1),
+      });
+    } catch {
+      /* counter drift is self-healing */
+    }
+  }
   // Audit-log entry — best-effort, never blocks the assign call.
   try {
     const canonical = phoneDocId(phone);
