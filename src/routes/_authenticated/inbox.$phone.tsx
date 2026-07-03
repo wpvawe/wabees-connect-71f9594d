@@ -23,6 +23,7 @@ import {
   faMoon,
   faClockRotateLeft,
   faCircleInfo,
+  faStar,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -39,6 +40,8 @@ import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
+import { sendCsatSurvey } from "@/lib/firebase/csat";
+import { useCsatSettings } from "@/hooks/useCsatSettings";
 import { useMessages, type Message } from "@/hooks/useMessages";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { doc, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
@@ -509,13 +512,28 @@ function Thread({ phone }: { phone: string }) {
         "system",
       ).catch(() => {});
       toast.success(isResolved ? "Conversation reopened" : "Marked as resolved");
+      // Auto-send CSAT survey on resolve when the owner has it enabled.
+      if (!isResolved && csatSettings.enabled && csatSettings.autoOnResolve) {
+        void sendCsatSurvey({
+          ownerUid: uid,
+          phone: convId,
+          settings: csatSettings,
+          actor: { uid: selfUid, email: selfEmail },
+          assignedAgentId: conv?.assignedAgentId ?? null,
+          assignedAgentEmail: conv?.assignedAgentEmail ?? null,
+        })
+          .then((id) => {
+            if (id) toast.success("CSAT survey sent");
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Action failed");
     } finally {
       setStateBusy(false);
       setHeaderMenu(false);
     }
-  }, [uid, selfUid, selfEmail, phone, isResolved]);
+  }, [uid, selfUid, selfEmail, phone, isResolved, csatSettings, conv?.assignedAgentId, conv?.assignedAgentEmail, convState]);
 
   // ---- Snooze ----
   const snoozeUntilIso = conv?.snoozeUntil ?? null;
