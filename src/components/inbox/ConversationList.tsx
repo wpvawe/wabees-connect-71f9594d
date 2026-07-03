@@ -901,6 +901,20 @@ function ConvRow({
               title="Blocked"
             />
           )}
+          {c.state === "resolved" && (
+            <FontAwesomeIcon
+              icon={faCircleCheck}
+              className="h-3 w-3 text-emerald-500"
+              title="Resolved"
+            />
+          )}
+          {c.state === "snoozed" && (
+            <FontAwesomeIcon
+              icon={faMoon}
+              className="h-3 w-3 text-amber-500"
+              title="Snoozed"
+            />
+          )}
           {typeof c.notesCount === "number" && c.notesCount > 0 && (
             <span
               title={`${c.notesCount} internal note${c.notesCount > 1 ? "s" : ""}`}
