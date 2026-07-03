@@ -1171,7 +1171,9 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // This check runs UNCONDITIONALLY (welcome-cache path used to skip it, which
     // is why blocked contacts still delivered after the first message).
     try {
-        $blockCheck = firestore_get("users/$userId/conversations/$from");
+        // Doc IDs contain a literal `+` (E.164). Firestore REST treats an
+        // unencoded `+` in the URL path inconsistently, so encode explicitly.
+        $blockCheck = firestore_get("users/$userId/conversations/" . rawurlencode($from));
         $blockCode  = $blockCheck['code'] ?? 404;
         if ($blockCode === 200) {
             $blkFields = $blockCheck['data']['fields'] ?? [];
