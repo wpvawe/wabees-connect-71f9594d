@@ -2,18 +2,18 @@ import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCheck,
+  faCircleCheck,
+  faComments,
   faCopy,
-  faEnvelope,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
-import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { toast } from "sonner";
 import { WbButton } from "@/components/wb/WbButton";
+import { Link } from "@tanstack/react-router";
 import type { Plan } from "@/hooks/usePlans";
 import { resolvePricing } from "@/lib/plans/pricing";
 import {
   renderSubscriptionMessage,
-  whatsappDeepLink,
   type SubscriptionMessages,
 } from "@/lib/firebase/subscriptionMessages";
 
@@ -47,8 +47,6 @@ export function SubscriptionRequestDialog({
 
   if (!open || !plan) return null;
 
-  const waUrl = whatsappDeepLink(messages.adminContact.whatsapp, requestText);
-
   async function copyMessage() {
     try {
       await navigator.clipboard.writeText(requestText);
@@ -74,11 +72,12 @@ export function SubscriptionRequestDialog({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-foreground">
-              Complete your {plan.name} request
+              Request sent for {plan.name}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Your request has been posted to the support chat — admin will reply there.
-              Payment instructions are below; the plan activates once payment is confirmed.
+              Your request and payment instructions have been posted to the support chat.
+              Continue the conversation there — admin will confirm your payment and activate
+              the plan.
             </p>
           </div>
           <button
@@ -89,6 +88,14 @@ export function SubscriptionRequestDialog({
           >
             <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
           </button>
+        </div>
+
+        <div className="mt-4 flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-700 dark:text-emerald-300">
+          <FontAwesomeIcon icon={faCircleCheck} className="mt-0.5 h-3.5 w-3.5" />
+          <span>
+            Request delivered to support. An auto-reply with payment details is already
+            waiting for you in the support chat.
+          </span>
         </div>
 
         <section className="mt-4">
@@ -120,24 +127,17 @@ export function SubscriptionRequestDialog({
         </section>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <a
-            href={waUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          <Link
+            to="/support"
+            onClick={onClose}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
           >
-            <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4" />
-            Send on WhatsApp
-          </a>
-          <a
-            href={`mailto:${messages.adminContact.email}?subject=${encodeURIComponent(
-              `Subscription request: ${plan.name}`,
-            )}&body=${encodeURIComponent(requestText)}`}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-          >
-            <FontAwesomeIcon icon={faEnvelope} className="h-4 w-4" />
-            Email admin
-          </a>
+            <FontAwesomeIcon icon={faComments} className="h-4 w-4" />
+            Open support chat
+          </Link>
+          <WbButton variant="secondary" onClick={onClose} className="flex-1">
+            Close
+          </WbButton>
         </div>
       </div>
     </div>

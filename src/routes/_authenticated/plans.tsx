@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleNotch } from "@fortawesome/free-solid-svg-icons";
+import { faCircleNotch, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { Link } from "@tanstack/react-router";
 import { TopBar } from "@/components/shell/TopBar";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { usePlans } from "@/hooks/usePlans";
@@ -11,6 +12,7 @@ import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
+import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -38,8 +40,10 @@ function PlansPage() {
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
   const messages = useSubscriptionMessages();
+  const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
   const [dialogPlan, setDialogPlan] = useState<Plan | null>(null);
+  const waConnected = Boolean(wa?.connected);
   // Subscription counters can lag behind profile totals (PHP webhook updates
   // both, but websites may render before sub doc is touched). Fall back to
   // profile counters when subscription shows 0 so users see real usage.
@@ -52,6 +56,27 @@ function PlansPage() {
     <>
       <TopBar title="Plans" subtitle="Your current plan and active packages" />
       <div className="space-y-6 px-4 py-6 sm:px-6">
+        {!waLoading && !waConnected && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+            <FontAwesomeIcon
+              icon={faTriangleExclamation}
+              className="mt-0.5 h-4 w-4 flex-shrink-0"
+            />
+            <div className="flex-1">
+              <p className="font-semibold">Connect WhatsApp to request a plan</p>
+              <p className="mt-1 text-xs">
+                Subscriptions activate a WhatsApp Business number. Please connect your
+                WhatsApp account first — you can request or upgrade a plan after that.
+              </p>
+              <Link
+                to="/connect"
+                className="mt-2 inline-flex items-center rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:opacity-90"
+              >
+                Connect WhatsApp
+              </Link>
+            </div>
+          </div>
+        )}
         <WbCard>
           <WbCardBody>
             {loading ? (
@@ -96,6 +121,12 @@ function PlansPage() {
                 hasPending={Boolean(pending)}
                 onRequest={async () => {
                   if (!uid) return;
+                  if (!waConnected) {
+                    toast.error(
+                      "Please connect your WhatsApp account before requesting a plan.",
+                    );
+                    return;
+                  }
                   try {
                     await requestSubscription(uid, plan);
                     await postSubscriptionRequestToSupport(uid, plan, messages, {
