@@ -134,6 +134,8 @@ export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
     payload,
     debugPayload: firestoreDebugValue(payload) as Record<string, unknown>,
     async commit(): Promise<{ id: string }> {
+      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+      await assertWithinPlanLimit(uid, "campaigns");
       await setDoc(ref, payload);
       await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
       return { id: ref.id };
