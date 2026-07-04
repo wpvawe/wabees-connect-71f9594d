@@ -191,10 +191,14 @@ echo json_encode([
 // -------- helpers --------------------------------------------------------
 
 /**
- * Pull scheduled_messages via a collection-group query and filter due/status in
- * PHP. We intentionally avoid a scheduledFor WHERE/ORDER BY here because shared
- * Firestore projects often lack the COLLECTION_GROUP index, which caused cron
- * runs to stall/fallback and miss due messages.
+ * Pull only DUE scheduled_messages via a collection-group query with a
+ * compositeFilter on (scheduledFor <= now) AND (status IN [pending,sending]).
+ * This requires a COLLECTION_GROUP index on scheduled_messages:
+ *   fields: status ASC, scheduledFor ASC
+ * Deploy via `firebase deploy --only firestore:indexes`.
+ *
+ * If the index is missing, Firestore returns FAILED_PRECONDITION (400); the
+ * caller falls back to the bounded per-user scan so cron still fires.
  */
 function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     $out = [];
@@ -203,6 +207,37 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     $q = [
         'structuredQuery' => [
             'from' => [['collectionId' => 'scheduled_messages', 'allDescendants' => true]],
+            'where' => [
+                'compositeFilter' => [
+                    'op' => 'AND',
+                    'filters' => [
+                        [
+                            'fieldFilter' => [
+                                'field' => ['fieldPath' => 'scheduledFor'],
+                                'op' => 'LESS_THAN_OR_EQUAL',
+                                'value' => ['timestampValue' => $nowIso],
+                            ],
+                        ],
+                        [
+                            'fieldFilter' => [
+                                'field' => ['fieldPath' => 'status'],
+                                'op' => 'IN',
+                                'value' => [
+                                    'arrayValue' => [
+                                        'values' => [
+                                            ['stringValue' => 'pending'],
+                                            ['stringValue' => 'sending'],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'orderBy' => [
+                ['field' => ['fieldPath' => 'scheduledFor'], 'direction' => 'ASCENDING'],
+            ],
             'limit' => $limit,
         ],
     ];
