@@ -267,6 +267,12 @@ function LocationForm(p: {
     }
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendLocationMessage({
