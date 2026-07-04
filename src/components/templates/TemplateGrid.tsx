@@ -168,6 +168,10 @@ export function TemplateGrid() {
     try {
       const creds = await loadWaCredentials(selfUid);
       if (!creds) throw new Error("Connect WhatsApp first");
+      if (uid) {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "messages");
+      }
       const components: Array<Record<string, unknown>> =
         selected.variables.length > 0
           ? [
