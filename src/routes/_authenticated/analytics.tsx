@@ -244,7 +244,7 @@ function AnalyticsPage() {
                       Campaigns
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {campaigns?.length ?? 0}
+                      {totalCampaigns}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
@@ -374,7 +374,7 @@ function AnalyticsPage() {
             </div>
 
             {/* Campaign performance summary */}
-            {(campaigns?.length ?? 0) > 0 && (
+            {totalCampaigns > 0 && (
               <div className="grid gap-4 lg:grid-cols-2">
                 <WbCard>
                   <WbCardBody>
