@@ -7,21 +7,115 @@ import {
   faFloppyDisk,
   faCircleXmark,
   faCircleNotch,
+  faPaperPlane,
+  faBell,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
 import { useConfigDoc } from "@/hooks/admin/useAdminData";
-import { saveConfigDoc } from "@/lib/admin/mutations";
+import { saveConfigDoc, broadcastNotification } from "@/lib/admin/mutations";
 
 export function SystemSection() {
   return (
     <div className="space-y-6">
       <AnnouncementCard />
+      <BroadcastCard />
       <AppVersionCard />
       <AiMasterCard />
     </div>
+  );
+}
+
+function BroadcastCard() {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [uidsRaw, setUidsRaw] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function send() {
+    if (!title.trim() || !body.trim()) {
+      toast.error("Title and message are required");
+      return;
+    }
+    const uids = uidsRaw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const scope = uids.length === 0 ? null : uids;
+    if (
+      scope === null &&
+      !window.confirm("Send this notification to EVERY user? This cannot be undone.")
+    ) {
+      return;
+    }
+    setSending(true);
+    try {
+      const n = await broadcastNotification({
+        uids: scope,
+        title: title.trim(),
+        body: body.trim(),
+      });
+      toast.success(`Delivered to ${n} user${n === 1 ? "" : "s"}`);
+      setTitle("");
+      setBody("");
+      setUidsRaw("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <WbCard>
+      <WbCardHeader
+        title="Broadcast notification"
+        subtitle="Push a custom in-app notification to one, some, or every user"
+      />
+      <WbCardBody className="space-y-3">
+        <WbInput
+          label="Title"
+          maxLength={120}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Server maintenance tonight"
+        />
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Message</label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={3}
+            maxLength={500}
+            className="block w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">{body.length}/500</p>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Target user UIDs (comma or newline separated)
+          </label>
+          <textarea
+            value={uidsRaw}
+            onChange={(e) => setUidsRaw(e.target.value)}
+            rows={2}
+            placeholder="Leave empty to send to EVERY user"
+            className="block w-full rounded-md border border-input bg-card px-3 py-2 text-xs font-mono outline-none ring-ring focus-visible:ring-2"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <WbButton onClick={send} loading={sending}>
+            <FontAwesomeIcon icon={faPaperPlane} className="h-3 w-3" /> Send notification
+          </WbButton>
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <FontAwesomeIcon icon={faBell} className="h-3 w-3" />
+            Delivered to each user's notifications inbox in real time.
+          </span>
+        </div>
+      </WbCardBody>
+    </WbCard>
   );
 }
 

@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   increment,
   serverTimestamp,
   setDoc,
@@ -11,6 +12,8 @@ import {
   writeBatch,
   deleteField,
   Timestamp,
+  query,
+  limit,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 
@@ -51,6 +54,102 @@ export async function setUserField(uid: string, field: string, value: unknown) {
   });
 }
 
+// Hard-delete a user + all subcollections we know about. This is destructive
+// and IRREVERSIBLE; the drawer wraps it in a double-confirm before calling.
+// Note: Auth user record cannot be removed from the client SDK — that needs
+// Firebase Admin (server function). We flag the doc as deleted for now and
+// wipe the Firestore-side data; Auth cleanup should be done from the admin
+// console or a future server function.
+export async function deleteUserData(uid: string) {
+  const db = fbDb();
+  const subcollections = [
+    "messages",
+    "conversations",
+    "contacts",
+    "bots",
+    "campaigns",
+    "templates",
+    "canned",
+    "settings",
+    "subscription",
+    "notifications",
+    "scheduled_messages",
+    "tags",
+    "products",
+    "call_logs",
+    "csat_surveys",
+    "bot_config",
+    "bot_usage",
+    "bot_leads",
+    "agents",
+    "agent_invites",
+    "whatsapp_config",
+  ];
+  for (const name of subcollections) {
+    // Paginate & batch-delete up to a safe cap to avoid runaway loops.
+    for (let round = 0; round < 20; round++) {
+      const snap = await getDocs(
+        query(collection(db, "users", uid, name), limit(200)),
+      );
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      for (const d of snap.docs) batch.delete(d.ref);
+      await batch.commit();
+      if (snap.size < 200) break;
+    }
+  }
+  // Root user doc last so we can inspect leftovers if anything above throws.
+  await deleteDoc(doc(db, "users", uid));
+  // Clean up any pending subscription request under the same uid.
+  try {
+    await deleteDoc(doc(db, "pending_subscriptions", uid));
+  } catch {
+    /* absent */
+  }
+}
+
+// Broadcast a custom notification. `uids: null` means "every user" and paginates
+// through the users collection in batches. Otherwise writes to the targeted uids.
+export async function broadcastNotification(args: {
+  uids: string[] | null;
+  title: string;
+  body: string;
+  type?: string;
+}): Promise<number> {
+  const db = fbDb();
+  const title = args.title.trim().slice(0, 120);
+  const body = args.body.trim().slice(0, 500);
+  if (!title || !body) throw new Error("Title and message are required");
+  const type = (args.type ?? "admin_broadcast").slice(0, 40);
+  let targets: string[];
+  if (args.uids) {
+    targets = args.uids;
+  } else {
+    const usersSnap = await getDocs(collection(db, "users"));
+    targets = usersSnap.docs.map((d) => d.id);
+  }
+  if (targets.length === 0) return 0;
+  const payload = {
+    title,
+    body,
+    type,
+    data: {},
+    read: false,
+  };
+  const CHUNK = 400;
+  let written = 0;
+  for (let i = 0; i < targets.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    for (const uid of targets.slice(i, i + CHUNK)) {
+      const ref = doc(collection(db, "users", uid, "notifications"));
+      batch.set(ref, { ...payload, createdAt: serverTimestamp() });
+    }
+    await batch.commit();
+    written += Math.min(CHUNK, targets.length - i);
+  }
+  return written;
+}
+
 // ============ PENDING SUBS ============
 export async function activatePendingSubscription(userId: string) {
   const db = fbDb();
@@ -76,16 +175,25 @@ export async function activatePendingSubscription(userId: string) {
     ? null
     : Timestamp.fromMillis(now.toMillis() + days * 24 * 60 * 60 * 1000);
 
+  // Carry-over counters from the user's EXISTING subscription doc, not from
+  // the pending request (which was written by the user and can be tampered).
+  const currentSnap = await getDoc(doc(db, "users", userId, "subscription", "current"));
+  const current =
+    currentSnap.exists() ? (currentSnap.data() as Record<string, unknown>) : {};
+  const carriedContacts = typeof current.contactsUsed === "number" ? current.contactsUsed : 0;
+  const carriedBots = typeof current.botsUsed === "number" ? current.botsUsed : 0;
+  const carriedTemplates = typeof current.templatesUsed === "number" ? current.templatesUsed : 0;
+
   const newSub = {
     id: "current",
     planId,
     planName: (plan.name as string) ?? "",
     status: "active",
     messagesUsed: 0,
-    contactsUsed: (sub.contactsUsed as number) ?? 0,
-    campaignsUsed: (sub.campaignsUsed as number) ?? 0,
-    botsUsed: (sub.botsUsed as number) ?? 0,
-    templatesUsed: (sub.templatesUsed as number) ?? 0,
+    contactsUsed: carriedContacts,
+    campaignsUsed: 0,
+    botsUsed: carriedBots,
+    templatesUsed: carriedTemplates,
     aiMessagesUsed: 0,
     maxMessages: (plan.maxMessages as number) ?? 0,
     maxContacts: (plan.maxContacts as number) ?? 0,
@@ -98,7 +206,7 @@ export async function activatePendingSubscription(userId: string) {
     startDate: now,
     endDate,
     activatedAt: now,
-    createdAt: now,
+    createdAt: current.createdAt ?? now,
   };
 
   await setDoc(doc(db, "users", userId, "subscription", "current"), newSub);
@@ -223,9 +331,12 @@ export async function adminSendSupportMessage(
   imageUrl: string | null,
 ) {
   const db = fbDb();
+  // Ensure chat doc has userId (chatId IS the user's uid per rules) so the
+  // admin list still shows a label even when the admin is the first to write.
   await setDoc(
     doc(db, "support_chats", chatId),
     {
+      userId: chatId,
       lastMessage: body || (imageUrl ? "📷 Image" : ""),
       lastMessageAt: serverTimestamp(),
       unreadByUser: increment(1),

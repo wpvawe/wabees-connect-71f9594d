@@ -161,8 +161,8 @@ function NotificationsBell() {
 
   async function handleMarkAll() {
     try {
-      await markAllRead();
-      toast.success("All notifications marked read");
+      const n = await markAllRead();
+      toast.success(n === 0 ? "Nothing to mark" : `Marked ${n} notification${n === 1 ? "" : "s"} read`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     }

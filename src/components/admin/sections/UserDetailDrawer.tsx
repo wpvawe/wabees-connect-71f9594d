@@ -9,19 +9,24 @@ import {
   faCircleCheck,
   faCircleXmark,
   faUser,
+  faCalendar,
+  faTriangleExclamation,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { useUserById } from "@/hooks/admin/useAdminData";
+import { useUserById, useUserSubscription, type UserSubscriptionRow } from "@/hooks/admin/useAdminData";
 import {
   setUserRole,
   setUserStatus,
   setUserField,
   activatePendingSubscription,
   rejectPendingSubscription,
+  deleteUserData,
 } from "@/lib/admin/mutations";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow, format } from "date-fns";
 
 export function UserDetailDrawer({
   uid,
@@ -31,6 +36,7 @@ export function UserDetailDrawer({
   onClose: () => void;
 }) {
   const { data: user } = useUserById(uid);
+  const { data: sub, loading: subLoading } = useUserSubscription(uid);
   const [busy, setBusy] = useState(false);
 
   if (!uid) return null;
@@ -118,6 +124,9 @@ export function UserDetailDrawer({
                 <StatTile icon={faRobot} label="Bots" value={user.totalBots} />
                 <StatTile icon={faBullhorn} label="Campaigns" value={user.totalCampaigns} />
               </div>
+
+              {/* Current subscription */}
+              <SubscriptionCard sub={sub} loading={subLoading} />
 
               {/* WhatsApp */}
               <WbCard>
@@ -317,6 +326,42 @@ export function UserDetailDrawer({
                 </WbCardBody>
               </WbCard>
 
+              {/* Danger zone */}
+              <WbCard className="border-destructive/40">
+                <WbCardBody>
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-destructive">
+                    <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                    Danger zone
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Permanently wipe this user's Firestore data (messages, contacts,
+                    bots, campaigns, subscription, etc.). Auth login stays until
+                    removed from the Firebase console. This cannot be undone.
+                  </p>
+                  <div className="mt-3">
+                    <WbButton
+                      size="sm"
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() => {
+                        const label = user.businessName || user.email || user.id;
+                        const first = window.prompt(
+                          `Type DELETE to permanently wipe "${label}".`,
+                        );
+                        if (first?.trim() !== "DELETE") return;
+                        if (!window.confirm(`Really delete ${label}? Cannot be undone.`)) return;
+                        void run("User data deleted", async () => {
+                          await deleteUserData(user.id);
+                          onClose();
+                        });
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faTrash} className="h-3 w-3" /> Delete user data
+                    </WbButton>
+                  </div>
+                </WbCardBody>
+              </WbCard>
+
               {/* IDs */}
               <p className="pt-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground">
                 UID: {user.id}
@@ -345,6 +390,89 @@ function StatTile({
         {value.toLocaleString()}
       </p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function SubscriptionCard({
+  sub,
+  loading,
+}: {
+  sub: UserSubscriptionRow | null;
+  loading: boolean;
+}) {
+  return (
+    <WbCard>
+      <WbCardBody>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Current subscription
+          </p>
+          {sub && (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize",
+                sub.status === "active"
+                  ? "bg-emerald-500/15 text-emerald-600"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {sub.status}
+            </span>
+          )}
+        </div>
+        {loading ? (
+          <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+        ) : !sub ? (
+          <p className="mt-2 text-xs text-muted-foreground">No subscription yet.</p>
+        ) : (
+          <>
+            <p className="mt-2 text-sm font-semibold text-foreground">
+              {sub.planName || sub.planId || "Unnamed plan"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              <FontAwesomeIcon icon={faCalendar} className="mr-1 h-3 w-3" />
+              {sub.expiryType === "lifetime"
+                ? "Lifetime access"
+                : sub.endDate
+                  ? `Renews ${format(new Date(sub.endDate), "PP")} · ${formatDistanceToNow(new Date(sub.endDate), { addSuffix: true })}`
+                  : "No expiry date"}
+            </p>
+            <div className="mt-3 space-y-2">
+              <UsageBar label="Messages" used={sub.messagesUsed} max={sub.maxMessages} />
+              <UsageBar label="AI messages" used={sub.aiMessagesUsed} max={sub.maxAiMessages} />
+              <UsageBar label="Contacts" used={sub.contactsUsed} max={sub.maxContacts} />
+              <UsageBar label="Campaigns" used={sub.campaignsUsed} max={sub.maxCampaigns} />
+              <UsageBar label="Bots" used={sub.botsUsed} max={sub.maxBots} />
+              <UsageBar label="Templates" used={sub.templatesUsed} max={sub.maxTemplates} />
+            </div>
+          </>
+        )}
+      </WbCardBody>
+    </WbCard>
+  );
+}
+
+function UsageBar({ label, used, max }: { label: string; used: number; max: number }) {
+  const isInfinite = max === 0;
+  const pct = isInfinite ? 0 : Math.min(100, Math.round((used / Math.max(1, max)) * 100));
+  const bad = !isInfinite && pct >= 90;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="tabular-nums font-semibold text-foreground">
+          {used.toLocaleString()} / {isInfinite ? "∞" : max.toLocaleString()}
+        </span>
+      </div>
+      {!isInfinite && (
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn("h-full transition-all", bad ? "bg-destructive" : "bg-primary")}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }
