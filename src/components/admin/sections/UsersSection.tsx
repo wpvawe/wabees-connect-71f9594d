@@ -139,7 +139,12 @@ export function UsersSection() {
 }
 
 function UserRow({ u, onOpen }: { u: AdminUser; onOpen: () => void }) {
-  async function action(status: string) {
+  async function action(status: string, needsConfirm = false) {
+    if (needsConfirm) {
+      const label =
+        status === "suspended" ? "Suspend" : status === "deactivated" ? "Deactivate" : "Update";
+      if (!window.confirm(`${label} ${u.businessName || u.email || u.id}?`)) return;
+    }
     try {
       await setUserStatus(u.id, status);
       toast.success(`User ${status}`);
@@ -184,12 +189,12 @@ function UserRow({ u, onOpen }: { u: AdminUser; onOpen: () => void }) {
             </WbButton>
           )}
           {u.status === "active" && (
-            <WbButton size="sm" variant="secondary" onClick={() => action("suspended")}>
+            <WbButton size="sm" variant="secondary" onClick={() => action("suspended", true)}>
               Suspend
             </WbButton>
           )}
           {u.status === "suspended" && (
-            <WbButton size="sm" variant="danger" onClick={() => action("deactivated")}>
+            <WbButton size="sm" variant="danger" onClick={() => action("deactivated", true)}>
               Deactivate
             </WbButton>
           )}
