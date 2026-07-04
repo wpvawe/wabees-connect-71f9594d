@@ -31,6 +31,7 @@ import { useAiBotConfig, EMPTY_AI_CONFIG, type AiBotConfig } from "@/hooks/useAi
 import { RequireCapability } from "@/components/auth/RequireCapability";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 import { fbDb } from "@/integrations/firebase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ function AiBotPage() {
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
   const { data: profile, loading: profileLoading } = useProfile("effective");
+  const { data: subscription } = useSubscription();
   const { data, error, exists } = useAiBotConfig();
   const [form, setForm] = useState<AiBotConfig | null>(null);
   const [faqs, setFaqs] = useState<Faq[]>([]);
@@ -90,9 +92,20 @@ function AiBotPage() {
     setForm((f) => ({ ...(f ?? EMPTY_AI_CONFIG), [k]: v }));
   }
 
-  const featureEnabled = profile?.aiBotEnabled === true;
+  // Plan gating: AI bot requires the current plan to allow AI messages.
+  // maxAiMessages <= 0 on some plans is treated as unlimited; only an
+  // explicit 0 with a loaded subscription blocks the toggle.
+  const planAllowsAi =
+    !subscription || subscription.maxAiMessages !== 0;
+  const featureEnabled = profile?.aiBotEnabled === true && planAllowsAi;
 
   function handleEnableToggle(v: boolean) {
+    if (v && !planAllowsAi) {
+      toast.error(
+        `Your ${subscription?.planName || "current plan"} does not include AI Bot. Please upgrade to enable it.`,
+      );
+      return;
+    }
     if (v && !featureEnabled) {
       toast.error(
         "AI Bot feature disabled. Please contact admin to enable it for your account.",
