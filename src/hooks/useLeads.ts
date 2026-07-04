@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
