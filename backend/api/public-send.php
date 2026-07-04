@@ -129,6 +129,32 @@ if (!$phoneNumberId || !$accessToken) {
     exit;
 }
 
+// --- Plan quota enforcement (developer API path) --------------------------
+// Mirrors send.php + send-message.php: block outbound sends when the
+// account has consumed its plan's message allowance.
+$subUrl = "https://firestore.googleapis.com/v1/projects/{$projectId}/databases/(default)/documents/users/"
+    . rawurlencode($ownerUid) . '/subscription/current';
+$ch = curl_init($subUrl);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 10,
+    CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+]);
+$subResp = curl_exec($ch);
+$subCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+if ($subCode === 200) {
+    $subDoc = json_decode($subResp, true) ?: [];
+    $subFields = $subDoc['fields'] ?? [];
+    $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
+    $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
+    if ($maxMessages > 0 && $msgsUsed >= $maxMessages) {
+        http_response_code(429);
+        echo json_encode(['error' => "Message quota exhausted ($msgsUsed/$maxMessages). Upgrade your plan to send more.", 'code' => 'plan_quota_exceeded']);
+        exit;
+    }
+}
+
 // --- Build & forward to Meta Graph ----------------------------------------
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
 $to    = trim((string)($input['to'] ?? ''));
