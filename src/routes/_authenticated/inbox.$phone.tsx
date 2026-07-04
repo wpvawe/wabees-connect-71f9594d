@@ -221,19 +221,28 @@ function Thread({ phone }: { phone: string }) {
         }
         // L-1 fix: also tell Meta the messages are read so the customer's
         // phone shows blue ticks. Best-effort & dedup'd by wamid.
+        // Perf: WhatsApp automatically marks all prior messages as read when
+        // any single wamid is marked. So we only need to hit Meta with the
+        // newest wamid — sending N calls for N-unread was pointless and
+        // burned rate-limit on high-traffic threads (B-9).
         if (selfUid) {
           try {
             const creds = await loadWaCredentials(selfUid);
             if (creds) {
-              const seen = new Set<string>();
-              for (const m of unread) {
-                const wamid = m.whatsappMessageId;
-                if (!wamid || seen.has(wamid)) continue;
-                seen.add(wamid);
+              // Newest unread with a wamid (unread is sorted ascending by
+              // createdAt in useMessages, so scan from the end).
+              let newestWamid: string | null = null;
+              for (let i = unread.length - 1; i >= 0; i--) {
+                if (unread[i].whatsappMessageId) {
+                  newestWamid = unread[i].whatsappMessageId!;
+                  break;
+                }
+              }
+              if (newestWamid) {
                 await markMessageRead({
                   phone_number_id: creds.phone_number_id,
                   access_token: creds.access_token,
-                  message_id: wamid,
+                  message_id: newestWamid,
                 }).catch(() => {});
               }
             }
