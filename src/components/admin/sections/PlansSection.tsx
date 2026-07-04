@@ -24,7 +24,9 @@ import {
 import { cn } from "@/lib/utils";
 
 export function PlansSection() {
-  const { data: plans } = usePlans();
+  // Admin view must see inactive plans too (otherwise the count and the
+  // "Active" checkbox are misleading — a disabled plan disappears entirely).
+  const { data: plans } = usePlans({ includeInactive: true });
   const [editing, setEditing] = useState<Plan | null>(null);
   const [creating, setCreating] = useState(false);
 
