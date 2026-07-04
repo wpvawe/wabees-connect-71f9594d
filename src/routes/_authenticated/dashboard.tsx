@@ -29,6 +29,8 @@ import { useConversations } from "@/hooks/useConversations";
 import { useBots } from "@/hooks/useBots";
 import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
+import { useCampaigns } from "@/hooks/useCampaigns";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -50,29 +52,20 @@ function DashboardPage() {
   const { data: bots } = useBots();
   const { data: agents } = useAgents();
   const { data: usageCounts } = useUsageCounts();
+  const { data: campaigns } = useCampaigns();
+  const { data: campaignAgg } = useCampaignAggregate();
 
-  const messagesUsed = Math.max(
-    subscription?.messagesUsed ?? 0,
-    profile?.totalMessages ?? 0,
-    usageCounts.messages,
-  );
-  const contactsUsed = Math.max(
-    subscription?.contactsUsed ?? 0,
-    profile?.totalContacts ?? 0,
-    usageCounts.contacts,
-    contacts?.length ?? 0,
-  );
-  const campaignsUsed = Math.max(
-    subscription?.campaignsUsed ?? 0,
-    profile?.totalCampaigns ?? 0,
-    usageCounts.campaigns,
-  );
-  const botsUsed = Math.max(
-    subscription?.botsUsed ?? 0,
-    profile?.totalBots ?? 0,
-    usageCounts.bots,
-    bots?.length ?? 0,
-  );
+  // Prefer LIVE counts over cached totals so deletions reflect immediately.
+  // Cached counters (profile.totalX / subscription.xUsed) are quota meters
+  // that only increment — they leave stale numbers on the dashboard after
+  // the user deletes campaigns/contacts/bots.
+  const messagesUsed =
+    subscription?.messagesUsed ?? profile?.totalMessages ?? usageCounts.messages ?? 0;
+  const contactsUsed =
+    contacts?.length ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
+  const campaignsUsed =
+    campaignAgg?.totalCampaigns ?? campaigns?.length ?? usageCounts.campaigns ?? 0;
+  const botsUsed = bots?.length ?? usageCounts.bots ?? profile?.totalBots ?? 0;
 
   return (
     <>
