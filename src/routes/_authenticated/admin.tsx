@@ -4,6 +4,7 @@ import { faCircleNotch, faLock } from "@fortawesome/free-solid-svg-icons";
 import { TopBar } from "@/components/shell/TopBar";
 import { useProfile } from "@/hooks/useProfile";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminErrorBoundary } from "@/components/admin/AdminErrorBoundary";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin — Wabees" }] }),
@@ -42,5 +43,9 @@ function AdminPage() {
     );
   }
 
-  return <AdminShell />;
+  return (
+    <AdminErrorBoundary>
+      <AdminShell />
+    </AdminErrorBoundary>
+  );
 }

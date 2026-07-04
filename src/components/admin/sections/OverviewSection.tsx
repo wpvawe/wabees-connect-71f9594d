@@ -19,6 +19,7 @@ import {
   useAllUsers,
   usePendingSubscriptions,
   usePlatformStats,
+  usePlatformCounts,
   useConfigDoc,
 } from "@/hooks/admin/useAdminData";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,10 @@ export function OverviewSection({
   onNavigate: (k: AdminSectionKey) => void;
 }) {
   const { data: users } = useAllUsers();
+  // Live message/contact/campaign totals from the loaded (capped) slice.
   const stats = usePlatformStats(users);
+  // Server-side aggregate counts — accurate even beyond the 200-user cap.
+  const counts = usePlatformCounts();
   const { data: pending } = usePendingSubscriptions();
   const { data: ann } = useConfigDoc<{ message?: string; active?: boolean }>([
     "config",
@@ -45,29 +49,29 @@ export function OverviewSection({
     <div className="space-y-6">
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard icon={faUsers} label="Users" value={stats.totalUsers} color="text-indigo-500" />
+        <StatCard icon={faUsers} label="Users" value={counts.total} color="text-indigo-500" />
         <StatCard
           icon={faCircleCheck}
           label="Active"
-          value={stats.activeUsers}
+          value={counts.active}
           color="text-emerald-500"
         />
         <StatCard
           icon={faCircleNotch}
           label="Pending"
-          value={stats.pendingUsers}
+          value={counts.pending}
           color="text-amber-500"
         />
         <StatCard
           icon={faBan}
           label="Suspended"
-          value={stats.suspendedUsers}
+          value={counts.suspended}
           color="text-destructive"
         />
         <StatCard
           icon={faWifi}
           label="Connected"
-          value={stats.connectedUsers}
+          value={counts.connected}
           color="text-sky-500"
         />
         <StatCard
@@ -124,9 +128,9 @@ export function OverviewSection({
       <WbCard>
         <WbCardHeader
           title="Pending signups"
-          subtitle={`${stats.pendingUsers} awaiting approval`}
+          subtitle={`${counts.pending} awaiting approval`}
           right={
-            stats.pendingUsers > 5 ? (
+            counts.pending > 5 ? (
               <button
                 type="button"
                 onClick={() => onNavigate("users")}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBullhorn,
@@ -15,6 +15,7 @@ import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
 import { useConfigDoc } from "@/hooks/admin/useAdminData";
+import { useAllUsers } from "@/hooks/admin/useAdminData";
 import { saveConfigDoc, broadcastNotification } from "@/lib/admin/mutations";
 
 export function SystemSection() {
@@ -29,6 +30,7 @@ export function SystemSection() {
 }
 
 function BroadcastCard() {
+  const { data: allUsers } = useAllUsers();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [uidsRaw, setUidsRaw] = useState("");
@@ -54,6 +56,7 @@ function BroadcastCard() {
     try {
       const n = await broadcastNotification({
         uids: scope,
+        allUidsHint: scope === null ? (allUsers ?? []).map((u) => u.id) : undefined,
         title: title.trim(),
         body: body.trim(),
       });
@@ -126,9 +129,16 @@ function AnnouncementCard() {
   ]);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const seededRef = useRef(false);
 
+  // Only seed the textarea from the remote doc ONCE, and never overwrite
+  // pending admin edits when the snapshot re-fires (e.g. after saving the
+  // "active" toggle from another tab). Editors: reset via Discard.
   useEffect(() => {
-    if (data) setMsg((data.message as string) ?? "");
+    if (!data || seededRef.current) return;
+    setMsg((data.message as string) ?? "");
+    seededRef.current = true;
   }, [data]);
 
   async function save(active: boolean) {
@@ -165,7 +175,10 @@ function AnnouncementCard() {
               <label className="mb-1.5 block text-sm font-medium text-foreground">Message</label>
               <textarea
                 value={msg}
-                onChange={(e) => setMsg(e.target.value)}
+                onChange={(e) => {
+                  setMsg(e.target.value);
+                  setDirty(true);
+                }}
                 rows={3}
                 maxLength={500}
                 placeholder="e.g. Scheduled maintenance tonight at 11pm PKT…"
@@ -174,9 +187,27 @@ function AnnouncementCard() {
               <p className="mt-1 text-xs text-muted-foreground">{msg.length}/500</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <WbButton onClick={() => void save(true)} loading={saving}>
+              <WbButton
+                onClick={async () => {
+                  await save(true);
+                  setDirty(false);
+                }}
+                loading={saving}
+              >
                 <FontAwesomeIcon icon={faBullhorn} className="h-3 w-3" /> Send to all
               </WbButton>
+              {dirty && (
+                <WbButton
+                  variant="secondary"
+                  onClick={() => {
+                    setMsg((data?.message as string) ?? "");
+                    setDirty(false);
+                  }}
+                  disabled={saving}
+                >
+                  Discard
+                </WbButton>
+              )}
               {data?.active && (
                 <WbButton variant="secondary" onClick={() => void save(false)} loading={saving}>
                   <FontAwesomeIcon icon={faCircleXmark} className="h-3 w-3" /> Disable current

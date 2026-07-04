@@ -90,6 +90,18 @@ function AiBotPage() {
     setForm((f) => ({ ...(f ?? EMPTY_AI_CONFIG), [k]: v }));
   }
 
+  const featureEnabled = profile?.aiBotEnabled === true;
+
+  function handleEnableToggle(v: boolean) {
+    if (v && !featureEnabled) {
+      toast.error(
+        "AI Bot feature disabled. Please contact admin to enable it for your account.",
+      );
+      return;
+    }
+    set("enabled", v);
+  }
+
   function updateFaqs(next: Faq[] | ((prev: Faq[]) => Faq[])) {
     setDirty(true);
     setFaqs((prev) => (typeof next === "function" ? (next as (p: Faq[]) => Faq[])(prev) : next));
@@ -118,25 +130,8 @@ function AiBotPage() {
     lastSyncedRef.current = JSON.stringify(data);
   }
 
-  // Admin-controlled feature flag. When disabled, show an informational
-  // gate instead of the config form so the same state matches the app.
-  if (!profileLoading && profile && !profile.aiBotEnabled) {
-    return (
-      <>
-        <TopBar title="AI Bot" subtitle="Configure your AI auto-reply assistant" />
-        <div className="mx-auto max-w-lg px-4 py-16 text-center">
-          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-muted text-muted-foreground">
-            <FontAwesomeIcon icon={faBrain} className="h-7 w-7" />
-          </span>
-          <h2 className="mt-4 text-lg font-semibold text-foreground">AI Bot not enabled</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The AI assistant feature is disabled for your account. Please contact your
-            administrator to enable it.
-          </p>
-        </div>
-      </>
-    );
-  }
+  // Admin-controlled feature flag: page stays visible so users can preview
+  // the assistant, but enabling requires admin approval.
 
   if (error)
     return (
@@ -182,6 +177,21 @@ function AiBotPage() {
         }
       />
       <div className="space-y-5 px-4 py-6 sm:px-6">
+        {!profileLoading && !featureEnabled && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
+              <FontAwesomeIcon icon={faBrain} className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">AI Bot feature is not enabled for your account</p>
+              <p className="mt-0.5 text-xs opacity-90">
+                You can preview and configure settings, but activation requires admin approval.
+                Please contact your administrator to enable the AI Bot feature.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Hero status */}
         <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
@@ -227,7 +237,7 @@ function AiBotPage() {
               </div>
               <Switch
                 checked={form.enabled}
-                onCheckedChange={(v) => set("enabled", v)}
+                onCheckedChange={handleEnableToggle}
                 disabled={!isOwner}
               />
             </div>

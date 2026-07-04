@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDocs,
+  getCountFromServer,
   limit,
   onSnapshot,
   orderBy,
@@ -310,13 +311,16 @@ export function useAdminSupportMessages(chatId: string | null): { data: AdminCha
     }
     const db = fbDbOrNull();
     if (!db) return;
+    // Cap the live stream. Very long chats otherwise re-stream every
+    // historical message on every new reply. We fetch the most recent
+    // 300 (descending) and reverse client-side to preserve chat order.
     const q = query(
       collection(db, "support_chats", chatId, "messages"),
-      orderBy("createdAt", "asc"),
+      orderBy("createdAt", "desc"),
+      limit(300),
     );
     const unsub = onSnapshot(q, (snap) => {
-      setData(
-        snap.docs.map((d) => {
+      const rows = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
           return {
             id: d.id,
@@ -327,12 +331,70 @@ export function useAdminSupportMessages(chatId: string | null): { data: AdminCha
             read: x.read === true,
             createdAt: toIso(x.createdAt),
           };
-        }),
-      );
+        });
+      setData(rows.reverse());
     });
     return () => unsub();
   }, [chatId]);
   return { data };
+}
+
+// ============ PLATFORM COUNTS (server-side aggregation) ============
+// The live user stream is capped at 200 rows for read-cost reasons, so we
+// can't derive accurate "total users / active / pending / suspended /
+// connected" numbers from it once the workspace grows past that cap.
+// Firestore's aggregation queries return an exact count without loading
+// every doc — one read per aggregate regardless of collection size.
+export type PlatformCounts = {
+  total: number;
+  active: number;
+  pending: number;
+  suspended: number;
+  connected: number;
+  loading: boolean;
+};
+
+export function usePlatformCounts(): PlatformCounts {
+  const [counts, setCounts] = useState<PlatformCounts>({
+    total: 0,
+    active: 0,
+    pending: 0,
+    suspended: 0,
+    connected: 0,
+    loading: true,
+  });
+  useEffect(() => {
+    const db = fbDbOrNull();
+    if (!db) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const users = collection(db, "users");
+        const [total, active, pending, suspended, connected] = await Promise.all([
+          getCountFromServer(users),
+          getCountFromServer(query(users, where("status", "==", "active"))),
+          getCountFromServer(query(users, where("status", "==", "pending"))),
+          getCountFromServer(query(users, where("status", "==", "suspended"))),
+          getCountFromServer(query(users, where("whatsappConnected", "==", true))),
+        ]);
+        if (cancelled) return;
+        setCounts({
+          total: total.data().count,
+          active: active.data().count,
+          pending: pending.data().count,
+          suspended: suspended.data().count,
+          connected: connected.data().count,
+          loading: false,
+        });
+      } catch {
+        if (!cancelled) setCounts((c) => ({ ...c, loading: false }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return counts;
 }
 
 // ============ USER SUBSCRIPTION (for admin drawer) ============

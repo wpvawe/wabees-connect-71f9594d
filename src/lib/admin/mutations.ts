@@ -41,6 +41,10 @@ export async function setUserStatus(uid: string, status: string) {
 }
 
 export async function setUserRole(uid: string, role: string) {
+  const allowed = ["user", "admin"];
+  if (!allowed.includes(role)) {
+    throw new Error(`Invalid role "${role}". Must be one of: ${allowed.join(", ")}.`);
+  }
   await updateDoc(doc(fbDb(), "users", uid), {
     role,
     updatedAt: serverTimestamp(),
@@ -112,6 +116,13 @@ export async function deleteUserData(uid: string) {
 // through the users collection in batches. Otherwise writes to the targeted uids.
 export async function broadcastNotification(args: {
   uids: string[] | null;
+  /**
+   * When broadcasting to "all users", pass a pre-loaded UID list from the
+   * already-streaming `useAllUsers()` hook. This avoids a second full-read
+   * of the users collection (which on Firestore charges one read per user
+   * doc). Falls back to `getDocs(users)` only if not provided.
+   */
+  allUidsHint?: string[];
   title: string;
   body: string;
   type?: string;
@@ -124,6 +135,8 @@ export async function broadcastNotification(args: {
   let targets: string[];
   if (args.uids) {
     targets = args.uids;
+  } else if (args.allUidsHint && args.allUidsHint.length > 0) {
+    targets = args.allUidsHint;
   } else {
     const usersSnap = await getDocs(collection(db, "users"));
     targets = usersSnap.docs.map((d) => d.id);

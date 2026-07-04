@@ -66,7 +66,10 @@ function parseOffer(x: unknown): PlanOffer | null {
   };
 }
 
-export function usePlans(): { data: Plan[] | null; error: string | null } {
+export function usePlans(
+  opts?: { includeInactive?: boolean },
+): { data: Plan[] | null; error: string | null } {
+  const includeInactive = opts?.includeInactive === true;
   const [data, setData] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,14 +112,14 @@ export function usePlans(): { data: Plan[] | null; error: string | null } {
               offer: parseOffer(x.offer),
             };
           })
-          .filter((p) => p.isActive)
+          .filter((p) => includeInactive || p.isActive)
           .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
         setData(rows);
       },
       (err) => setError(err.message),
     );
     return () => unsub();
-  }, []);
+  }, [includeInactive]);
 
   return { data, error };
 }
