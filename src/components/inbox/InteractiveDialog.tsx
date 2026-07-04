@@ -358,6 +358,12 @@ function ButtonsForm(p: {
     if (filled.length === 0) return toast.error("At least one button required");
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendReplyButtonsMessage({
@@ -467,6 +473,12 @@ function CtaForm(p: {
     if (!/^https?:\/\//i.test(url)) return toast.error("URL must start with http(s)://");
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendCtaUrlMessage({
