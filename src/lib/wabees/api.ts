@@ -564,3 +564,18 @@ export async function uploadMedia(args: {
 export function mediaProxyUrl(mediaId: string, uid: string): string {
   return `${WABEES_API_BASE}/media-proxy.php?id=${encodeURIComponent(mediaId)}&uid=${encodeURIComponent(uid)}`;
 }
+
+/**
+ * Send a transactional email through the PHP backend (send-email.php).
+ * Used for agent invites and any other automated outbound email.
+ */
+export function sendEmail(args: {
+  to: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  from_name?: string;
+  reply_to?: string;
+}) {
+  return postJson<{ success?: boolean }>("send-email.php", args);
+}
