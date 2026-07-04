@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -27,12 +27,18 @@ export function useSupportChat(): {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, `support_chats/${uid}/messages`), orderBy("createdAt", "asc"));
+    // Support threads can accumulate hundreds of messages over months.
+    // Read the newest 300 (desc + limit) and reverse to keep the asc UI
+    // order — chat UI only shows the most recent tail anyway.
+    const q = query(
+      collection(db, `support_chats/${uid}/messages`),
+      orderBy("createdAt", "desc"),
+      limit(300),
+    );
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setData(
-          snap.docs.map((d) => {
+        const rows = snap.docs.map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
               id: d.id,
@@ -43,8 +49,8 @@ export function useSupportChat(): {
               read: Boolean(x.read),
               createdAt: toIso(x.createdAt),
             };
-          }),
-        );
+        });
+        setData(rows.reverse());
       },
       (err) => setError(err.message),
     );
