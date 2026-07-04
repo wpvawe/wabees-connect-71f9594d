@@ -114,4 +114,38 @@ export async function postSubscriptionRequestToSupport(
     planName: plan.name,
     createdAt: serverTimestamp(),
   });
+
+  // Auto-reply from "admin" with payment instructions so the user gets an
+  // immediate response in the support thread without waiting for a human.
+  // Uses the admin-editable replyTemplate + paymentInstructions from
+  // settings/subscription_messages so ops can tune the wording.
+  const replyBody = renderSubscriptionMessage(messages.replyTemplate, {
+    plan: plan.name,
+    price: priced.effectivePrice,
+    currency: plan.currency,
+    user: user.name,
+    email: user.email,
+    phone: user.phone,
+    status: "pending",
+  });
+  const replyText = `${replyBody}\n\n${messages.paymentInstructions}`;
+  await addDoc(collection(db, "support_chats", uid, "messages"), {
+    senderId: "system",
+    senderRole: "admin",
+    text: replyText,
+    imageUrl: null,
+    read: false,
+    kind: "subscription_auto_reply",
+    planId: plan.id,
+    planName: plan.name,
+    createdAt: serverTimestamp(),
+  }).catch(() => undefined);
+  await setDoc(
+    doc(db, "support_chats", uid),
+    {
+      lastMessage: replyText.slice(0, 120),
+      lastMessageAt: serverTimestamp(),
+    },
+    { merge: true },
+  ).catch(() => undefined);
 }
