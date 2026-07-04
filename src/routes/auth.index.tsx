@@ -1,7 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { AuthTabs } from "@/components/auth/AuthTabs";
-import { Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/auth/")({
   head: () => ({
@@ -24,9 +23,9 @@ function AuthPage() {
       title="Welcome to Wabees"
       subtitle="Run your WhatsApp Business like a real team."
       footer={
-        <Link to="/" className="hover:text-foreground">
+        <a href="https://wabees.live" className="hover:text-foreground">
           ← Back to home
-        </Link>
+        </a>
       }
     >
       <AuthTabs />
