@@ -48,6 +48,15 @@ async function postJson<T = unknown>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<WabeesApiResult<T>> {
+  // Attach the caller's Firebase uid to send-message.php so the PHP layer
+  // can enforce plan-level message quotas (maxMessages / messagesUsed) and
+  // increment counters after a successful send. PHP resolves the effective
+  // owner via users/{auth_uid}.dataOwner, so agents count against their
+  // owner's subscription, not their own.
+  if (path.replace(/^\//, "") === "send-message.php") {
+    const uid = fbAuth().currentUser?.uid;
+    if (uid && body.auth_uid === undefined) body.auth_uid = uid;
+  }
   const res = await fetch(`${WABEES_API_BASE}/${path.replace(/^\//, "")}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
