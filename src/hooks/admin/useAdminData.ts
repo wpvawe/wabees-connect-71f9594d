@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -149,7 +150,7 @@ export type AdminNotification = {
 export function useAdminNotifications(): {
   notifications: AdminNotification[];
   unreadCount: number;
-  markAllRead: () => Promise<void>;
+  markAllRead: () => Promise<number>;
 } {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   useEffect(() => {
@@ -175,13 +176,25 @@ export function useAdminNotifications(): {
     return () => unsub();
   }, []);
   const unreadCount = notifications.filter((n) => !n.read).length;
-  async function markAllRead() {
+  // Full-collection markAllRead: fetches every unread doc (not just the loaded
+  // 50) and commits in 500-op batches so a large backlog still gets cleared.
+  async function markAllRead(): Promise<number> {
     const db = fbDb();
-    const batch = writeBatch(db);
-    for (const n of notifications) {
-      if (!n.read) batch.update(doc(db, "admin_notifications", n.id), { read: true });
+    const snap = await getDocs(
+      query(collection(db, "admin_notifications"), where("read", "==", false)),
+    );
+    if (snap.empty) return 0;
+    let committed = 0;
+    const CHUNK = 400;
+    for (let i = 0; i < snap.docs.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      for (const d of snap.docs.slice(i, i + CHUNK)) {
+        batch.update(d.ref, { read: true });
+      }
+      await batch.commit();
+      committed += Math.min(CHUNK, snap.docs.length - i);
     }
-    await batch.commit();
+    return committed;
   }
   return { notifications, unreadCount, markAllRead };
 }
@@ -203,7 +216,11 @@ export function usePendingSubscriptions(): { data: PendingSubRow[] | null } {
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(collection(db, "pending_subscriptions"), (snap) => {
+    const q = query(
+      collection(db, "pending_subscriptions"),
+      orderBy("requestedAt", "desc"),
+    );
+    const unsub = onSnapshot(q, (snap) => {
       setData(
         snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
@@ -314,6 +331,80 @@ export function useAdminSupportMessages(chatId: string | null): { data: AdminCha
   return { data };
 }
 
+// ============ USER SUBSCRIPTION (for admin drawer) ============
+export type UserSubscriptionRow = {
+  planId: string;
+  planName: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  expiryType: string;
+  messagesUsed: number;
+  maxMessages: number;
+  contactsUsed: number;
+  maxContacts: number;
+  campaignsUsed: number;
+  maxCampaigns: number;
+  botsUsed: number;
+  maxBots: number;
+  templatesUsed: number;
+  maxTemplates: number;
+  aiMessagesUsed: number;
+  maxAiMessages: number;
+};
+
+export function useUserSubscription(uid: string | null): {
+  data: UserSubscriptionRow | null;
+  loading: boolean;
+} {
+  const [data, setData] = useState<UserSubscriptionRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!uid) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const db = fbDbOrNull();
+    if (!db) return;
+    const unsub = onSnapshot(
+      doc(db, "users", uid, "subscription", "current"),
+      (snap) => {
+        setLoading(false);
+        if (!snap.exists()) {
+          setData(null);
+          return;
+        }
+        const x = snap.data() as Record<string, unknown>;
+        setData({
+          planId: (x.planId as string) ?? "",
+          planName: (x.planName as string) ?? "",
+          status: (x.status as string) ?? "unknown",
+          startDate: toIso(x.startDate),
+          endDate: toIso(x.endDate),
+          expiryType: (x.expiryType as string) ?? "monthly",
+          messagesUsed: (x.messagesUsed as number) ?? 0,
+          maxMessages: (x.maxMessages as number) ?? 0,
+          contactsUsed: (x.contactsUsed as number) ?? 0,
+          maxContacts: (x.maxContacts as number) ?? 0,
+          campaignsUsed: (x.campaignsUsed as number) ?? 0,
+          maxCampaigns: (x.maxCampaigns as number) ?? 0,
+          botsUsed: (x.botsUsed as number) ?? 0,
+          maxBots: (x.maxBots as number) ?? 0,
+          templatesUsed: (x.templatesUsed as number) ?? 0,
+          maxTemplates: (x.maxTemplates as number) ?? 0,
+          aiMessagesUsed: (x.aiMessagesUsed as number) ?? 0,
+          maxAiMessages: (x.maxAiMessages as number) ?? 0,
+        });
+      },
+      () => setLoading(false),
+    );
+    return () => unsub();
+  }, [uid]);
+  return { data, loading };
+}
+
 // ============ CONFIG DOC READER ============
 export function useConfigDoc<T extends Record<string, unknown>>(
   path: [string, string],
@@ -331,6 +422,3 @@ export function useConfigDoc<T extends Record<string, unknown>>(
   }, [path[0], path[1]]);
   return { data, loading };
 }
-
-// keep `where` referenced so tree-shake doesn't drop the import
-void where;
