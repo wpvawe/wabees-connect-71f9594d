@@ -265,6 +265,7 @@ if ($graphCode >= 200 && $graphCode < 300) {
         'lastMessageAt'    => $nowIso,
     ], true);
     @firestore_increment("users/$ownerUid/subscription/current", 'messagesUsed', 1);
+    @firestore_increment("users/$ownerUid", 'totalMessages', 1);
 }
 
 http_response_code(($graphCode >= 100 && $graphCode < 600) ? $graphCode : 502);
