@@ -40,6 +40,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useAnalytics, type AnalyticsRange } from "@/hooks/useAnalytics";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { useContacts } from "@/hooks/useContacts";
 import { useAgents } from "@/hooks/useAgents";
 import { useConversations } from "@/hooks/useConversations";
@@ -65,6 +66,7 @@ function AnalyticsPage() {
   const { data, loading, error, reload } = useAnalytics(range);
   const { data: templates } = useTemplates();
   const { data: campaigns } = useCampaigns();
+  const { data: campaignAgg } = useCampaignAggregate();
   const { data: contacts } = useContacts();
   const { data: agents } = useAgents();
   const { data: conversations } = useConversations();
@@ -132,9 +134,17 @@ function AnalyticsPage() {
     ["running", "scheduled", "active"].includes((c.status || "").toLowerCase()),
   ).length ?? 0;
   const completedCampaigns = campaigns?.filter((c) => (c.status || "").toLowerCase() === "completed").length ?? 0;
-  const campaignSent = campaigns?.reduce((a, c) => a + (c.sentCount ?? 0), 0) ?? 0;
-  const campaignDelivered = campaigns?.reduce((a, c) => a + (c.deliveredCount ?? 0), 0) ?? 0;
-  const campaignRead = campaigns?.reduce((a, c) => a + (c.readCount ?? 0), 0) ?? 0;
+  // Totals come from a server-side aggregate so they stay accurate even
+  // when the live campaigns list is capped at 100 rows. Falls back to the
+  // in-memory sum on the first render (before the aggregate resolves).
+  const campaignSent =
+    campaignAgg?.sent ?? campaigns?.reduce((a, c) => a + (c.sentCount ?? 0), 0) ?? 0;
+  const campaignDelivered =
+    campaignAgg?.delivered ??
+    campaigns?.reduce((a, c) => a + (c.deliveredCount ?? 0), 0) ?? 0;
+  const campaignRead =
+    campaignAgg?.read ?? campaigns?.reduce((a, c) => a + (c.readCount ?? 0), 0) ?? 0;
+  const totalCampaigns = campaignAgg?.totalCampaigns ?? campaigns?.length ?? 0;
 
   const topCampaigns = (campaigns ?? [])
     .filter((c) => (c.sentCount ?? 0) > 0)
@@ -234,7 +244,7 @@ function AnalyticsPage() {
                       Campaigns
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {campaigns?.length ?? 0}
+                      {totalCampaigns}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
@@ -364,7 +374,7 @@ function AnalyticsPage() {
             </div>
 
             {/* Campaign performance summary */}
-            {(campaigns?.length ?? 0) > 0 && (
+            {totalCampaigns > 0 && (
               <div className="grid gap-4 lg:grid-cols-2">
                 <WbCard>
                   <WbCardBody>
