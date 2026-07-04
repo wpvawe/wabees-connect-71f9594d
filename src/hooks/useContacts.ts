@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, limit } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { listOfStrings, normalizePhone, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -31,8 +31,7 @@ export function useContacts(): { data: Contact[] | null; error: string | null } 
     const unsub = onSnapshot(
       query(
         collection(db, `users/${uid}/contacts`),
-        orderBy("createdAt", "desc"),
-        limit(1000),
+        limit(2000),
       ),
       (snap) => {
         const rows: Contact[] = snap.docs
