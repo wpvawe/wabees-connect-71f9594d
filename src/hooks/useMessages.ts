@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { mediaProxyUrl } from "@/lib/wabees/api";
@@ -79,6 +79,8 @@ export function useMessages(phone: string | undefined): {
       candidates.length === 1
         ? where("contactPhone", "==", candidates[0])
         : where("contactPhone", "in", candidates),
+      orderBy("createdAt", "desc"),
+      limit(300),
     );
     const unsub = onSnapshot(
       q,

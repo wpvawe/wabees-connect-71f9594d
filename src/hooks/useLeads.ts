@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
@@ -39,7 +39,10 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
     const db = fbDbOrNull();
     if (!db) return;
     const unsub = onSnapshot(
-      collection(db, `users/${uid}/bot_leads`),
+      query(
+        collection(db, `users/${uid}/bot_leads`),
+        limit(1000),
+      ),
       (snap) => {
         const rows: Lead[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
