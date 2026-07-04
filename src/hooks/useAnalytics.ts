@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
-  onSnapshot,
+  getDocs,
   query,
   where,
   Timestamp,
@@ -90,15 +90,18 @@ export function useAnalytics(range: AnalyticsRange): {
     if (!db) return;
     setRows(null);
     setError(null);
-    // Query the widest window we might need; filter client-side by range.
-    // Avoids composite indexes and keeps switching ranges instant.
+    // Analytics is a report — a live listener on 90 days of messages
+    // re-bills every keystroke of an incoming webhook. Fetch once per
+    // mount / manual reload instead; the "reload" button already exposes
+    // refresh to the user.
+    let cancelled = false;
     const q = query(
       collection(db, `users/${uid}/messages`),
       where("createdAt", ">=", Timestamp.fromDate(new Date(Date.now() - 90 * 86400_000))),
     );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    getDocs(q)
+      .then((snap) => {
+        if (cancelled) return;
         const list: Row[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
           return {
@@ -114,10 +117,13 @@ export function useAnalytics(range: AnalyticsRange): {
           };
         });
         setRows(list);
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [uid, nonce]);
 
   const data = useMemo<AnalyticsData | null>(() => {

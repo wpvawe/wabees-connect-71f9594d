@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { listOfStrings, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
@@ -36,8 +36,15 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
+    // Bots are typically 5–20 per workspace; cap defensively so a
+    // misconfigured seeder can't stream thousands.
+    const q = query(
       collection(db, `users/${uid}/bots`),
+      orderBy("createdAt", "desc"),
+      limit(200),
+    );
+    const unsub = onSnapshot(
+      q,
       (snap) => {
         setData(
           snap.docs

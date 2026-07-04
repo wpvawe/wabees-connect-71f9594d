@@ -3,7 +3,7 @@
  * inherit the owner's library via `useEffectiveUid` (dataOwner override).
  */
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
@@ -25,6 +25,9 @@ export function useCannedResponses(): {
     const q = query(
       collection(db, `users/${uid}/canned`),
       orderBy("shortcut", "asc"),
+      // Defensive cap — canned libraries rarely exceed 100 entries; this
+      // stops a runaway list from streaming thousands of reads.
+      limit(500),
     );
     const unsub = onSnapshot(
       q,
