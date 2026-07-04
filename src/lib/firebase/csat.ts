@@ -20,9 +20,10 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
+import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { incrementMessagesUsed } from "@/lib/plans/limits";
 
 export const CSAT_ROW_PREFIX = "csat:";
 
@@ -154,7 +155,7 @@ export async function sendCsatSurvey(args: {
   const res = await sendListMessage({
     phone_number_id: creds.phone_number_id,
     access_token: creds.access_token,
-    to: phone,
+    to: whatsappRecipientId(phone),
     body_text: settings.question || DEFAULT_CSAT.question,
     button_text: "Rate 1–5",
     footer_text: settings.footer || DEFAULT_CSAT.footer,
@@ -182,6 +183,8 @@ export async function sendCsatSurvey(args: {
     return null;
   }
   await updateDoc(surveyRef, { wamid });
+  // CSAT list message is a real outbound WhatsApp send — count it (B-3).
+  await incrementMessagesUsed(ownerUid, 1);
   // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
   try {
     await setDoc(convRef, { csatLastSentAt: serverTimestamp() }, { merge: true });
@@ -230,9 +233,14 @@ export async function recordCsatRating(args: {
   await sendTextMessage({
     phone_number_id: creds.phone_number_id,
     access_token: creds.access_token,
-    to: phone,
+    to: whatsappRecipientId(phone),
     message: commentPrompt || DEFAULT_CSAT.commentPrompt,
-  }).catch(() => {});
+  })
+    .then((r) => {
+      // Only count when Meta actually accepted the message.
+      if (r?.success) void incrementMessagesUsed(ownerUid, 1);
+    })
+    .catch(() => {});
 }
 
 /** Attach a customer's free-text comment to the most recent responded survey. */

@@ -344,6 +344,15 @@ function Thread({ phone }: { phone: string }) {
         return;
       }
       try {
+        // Resend counts as a new billable Meta send — enforce plan quota
+        // before hitting the wire (B-4).
+        try {
+          const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+          await assertWithinPlanLimit(uid, "messages", 1);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Message limit reached");
+          return;
+        }
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           status: "pending",
           errorReason: null,
@@ -392,6 +401,8 @@ function Thread({ phone }: { phone: string }) {
           status: "sent",
           whatsappMessageId: wamid,
         });
+        const { incrementMessagesUsed } = await import("@/lib/plans/limits");
+        await incrementMessagesUsed(uid, 1);
         toast.success("Resent");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Resend failed");
