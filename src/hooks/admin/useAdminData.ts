@@ -488,3 +488,60 @@ export function useConfigDoc<T extends Record<string, unknown>>(
   }, [path[0], path[1]]);
   return { data, loading };
 }
+
+// ============ LIVE PER-USER COUNTS (admin drawer) ============
+// Cached `totalMessages/totalContacts/totalBots/totalCampaigns` on the user
+// doc are increment-only counters — they don't reflect deletions. For the
+// admin's user-detail view we run a server-side aggregate on the actual
+// subcollections so the numbers stay truthful after users delete records.
+export type UserLiveCounts = {
+  messages: number;
+  contacts: number;
+  bots: number;
+  campaigns: number;
+  loading: boolean;
+};
+
+export function useUserLiveCounts(uid: string | null): UserLiveCounts {
+  const [state, setState] = useState<UserLiveCounts>({
+    messages: 0,
+    contacts: 0,
+    bots: 0,
+    campaigns: 0,
+    loading: true,
+  });
+  useEffect(() => {
+    if (!uid) {
+      setState({ messages: 0, contacts: 0, bots: 0, campaigns: 0, loading: false });
+      return;
+    }
+    const db = fbDbOrNull();
+    if (!db) return;
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true }));
+    (async () => {
+      try {
+        const [messages, contacts, bots, campaigns] = await Promise.all([
+          getCountFromServer(collection(db, "users", uid, "messages")),
+          getCountFromServer(collection(db, "users", uid, "contacts")),
+          getCountFromServer(collection(db, "users", uid, "bots")),
+          getCountFromServer(collection(db, "users", uid, "campaigns")),
+        ]);
+        if (cancelled) return;
+        setState({
+          messages: messages.data().count,
+          contacts: contacts.data().count,
+          bots: bots.data().count,
+          campaigns: campaigns.data().count,
+          loading: false,
+        });
+      } catch {
+        if (!cancelled) setState((s) => ({ ...s, loading: false }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
+  return state;
+}

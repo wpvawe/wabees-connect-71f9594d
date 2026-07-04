@@ -16,7 +16,12 @@ import {
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { useUserById, useUserSubscription, type UserSubscriptionRow } from "@/hooks/admin/useAdminData";
+import {
+  useUserById,
+  useUserSubscription,
+  useUserLiveCounts,
+  type UserSubscriptionRow,
+} from "@/hooks/admin/useAdminData";
 import {
   setUserRole,
   setUserStatus,
@@ -37,6 +42,7 @@ export function UserDetailDrawer({
 }) {
   const { data: user } = useUserById(uid);
   const { data: sub, loading: subLoading } = useUserSubscription(uid);
+  const live = useUserLiveCounts(uid);
   const [busy, setBusy] = useState(false);
 
   if (!uid) return null;
@@ -117,12 +123,32 @@ export function UserDetailDrawer({
                 </WbCardBody>
               </WbCard>
 
-              {/* Stats */}
+              {/* Stats — live counts from actual subcollections (not cached counters). */}
               <div className="grid grid-cols-2 gap-2">
-                <StatTile icon={faMessage} label="Messages" value={user.totalMessages} />
-                <StatTile icon={faAddressBook} label="Contacts" value={user.totalContacts} />
-                <StatTile icon={faRobot} label="Bots" value={user.totalBots} />
-                <StatTile icon={faBullhorn} label="Campaigns" value={user.totalCampaigns} />
+                <StatTile
+                  icon={faMessage}
+                  label="Messages"
+                  value={live.loading ? user.totalMessages : live.messages}
+                  loading={live.loading}
+                />
+                <StatTile
+                  icon={faAddressBook}
+                  label="Contacts"
+                  value={live.loading ? user.totalContacts : live.contacts}
+                  loading={live.loading}
+                />
+                <StatTile
+                  icon={faRobot}
+                  label="Bots"
+                  value={live.loading ? user.totalBots : live.bots}
+                  loading={live.loading}
+                />
+                <StatTile
+                  icon={faBullhorn}
+                  label="Campaigns"
+                  value={live.loading ? user.totalCampaigns : live.campaigns}
+                  loading={live.loading}
+                />
               </div>
 
               {/* Current subscription */}
@@ -384,15 +410,17 @@ function StatTile({
   icon,
   label,
   value,
+  loading,
 }: {
   icon: import("@fortawesome/fontawesome-svg-core").IconDefinition;
   label: string;
   value: number;
+  loading?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3 text-center">
       <FontAwesomeIcon icon={icon} className="h-4 w-4 text-primary" />
-      <p className="mt-1 text-lg font-black tabular-nums text-foreground">
+      <p className={cn("mt-1 text-lg font-black tabular-nums text-foreground", loading && "opacity-60")}>
         {value.toLocaleString()}
       </p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
