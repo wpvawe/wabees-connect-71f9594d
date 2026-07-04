@@ -192,6 +192,8 @@ export function BotsWorkspace() {
         await updateDoc(doc(fbDb(), "users", uid, "bots", mode.id), payload);
         toast.success("Bot updated");
       } else {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "bots");
         const ref = await addDoc(collection(fbDb(), "users", uid, "bots"), {
           ...payload,
           quickReplies: [],
