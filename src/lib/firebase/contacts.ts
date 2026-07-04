@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
+import { assertWithinPlanLimit } from "@/lib/plans/limits";
 
 export async function upsertContact(
   uid: string,
@@ -24,6 +25,9 @@ export async function upsertContact(
 ): Promise<{ id: string }> {
   const db = fbDb();
   const isUpdate = Boolean(input.id);
+  if (!isUpdate) {
+    await assertWithinPlanLimit(uid, "contacts");
+  }
   const ref = isUpdate
     ? doc(db, "users", uid, "contacts", input.id!)
     : doc(collection(db, "users", uid, "contacts"));
@@ -69,6 +73,7 @@ export async function bulkImportContacts(
   }>,
 ): Promise<{ imported: number }> {
   if (rows.length === 0) return { imported: 0 };
+  await assertWithinPlanLimit(uid, "contacts", rows.length);
   const db = fbDb();
   let imported = 0;
   for (let i = 0; i < rows.length; i += 400) {

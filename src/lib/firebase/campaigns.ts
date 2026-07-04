@@ -134,6 +134,8 @@ export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
     payload,
     debugPayload: firestoreDebugValue(payload) as Record<string, unknown>,
     async commit(): Promise<{ id: string }> {
+      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+      await assertWithinPlanLimit(uid, "campaigns");
       await setDoc(ref, payload);
       await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
       return { id: ref.id };
@@ -182,6 +184,8 @@ export async function restartCampaign(uid: string, id: string): Promise<void> {
 export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
   const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
   if (!src.exists()) throw new Error("Campaign not found");
+  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+  await assertWithinPlanLimit(uid, "campaigns");
   const data = src.data() as Record<string, unknown>;
   const db = fbDb();
   const ref = doc(collection(db, "users", uid, "campaigns"));
