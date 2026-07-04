@@ -9,19 +9,24 @@ import {
   faCircleCheck,
   faCircleXmark,
   faUser,
+  faCalendar,
+  faTriangleExclamation,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
-import { useUserById } from "@/hooks/admin/useAdminData";
+import { useUserById, useUserSubscription, type UserSubscriptionRow } from "@/hooks/admin/useAdminData";
 import {
   setUserRole,
   setUserStatus,
   setUserField,
   activatePendingSubscription,
   rejectPendingSubscription,
+  deleteUserData,
 } from "@/lib/admin/mutations";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow, format } from "date-fns";
 
 export function UserDetailDrawer({
   uid,
@@ -31,6 +36,7 @@ export function UserDetailDrawer({
   onClose: () => void;
 }) {
   const { data: user } = useUserById(uid);
+  const { data: sub, loading: subLoading } = useUserSubscription(uid);
   const [busy, setBusy] = useState(false);
 
   if (!uid) return null;
@@ -118,6 +124,9 @@ export function UserDetailDrawer({
                 <StatTile icon={faRobot} label="Bots" value={user.totalBots} />
                 <StatTile icon={faBullhorn} label="Campaigns" value={user.totalCampaigns} />
               </div>
+
+              {/* Current subscription */}
+              <SubscriptionCard sub={sub} loading={subLoading} />
 
               {/* WhatsApp */}
               <WbCard>
@@ -312,6 +321,42 @@ export function UserDetailDrawer({
                       }
                     >
                       Reject pending
+                    </WbButton>
+                  </div>
+                </WbCardBody>
+              </WbCard>
+
+              {/* Danger zone */}
+              <WbCard className="border-destructive/40">
+                <WbCardBody>
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-destructive">
+                    <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                    Danger zone
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Permanently wipe this user's Firestore data (messages, contacts,
+                    bots, campaigns, subscription, etc.). Auth login stays until
+                    removed from the Firebase console. This cannot be undone.
+                  </p>
+                  <div className="mt-3">
+                    <WbButton
+                      size="sm"
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() => {
+                        const label = user.businessName || user.email || user.id;
+                        const first = window.prompt(
+                          `Type DELETE to permanently wipe "${label}".`,
+                        );
+                        if (first?.trim() !== "DELETE") return;
+                        if (!window.confirm(`Really delete ${label}? Cannot be undone.`)) return;
+                        void run("User data deleted", async () => {
+                          await deleteUserData(user.id);
+                          onClose();
+                        });
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faTrash} className="h-3 w-3" /> Delete user data
                     </WbButton>
                   </div>
                 </WbCardBody>
