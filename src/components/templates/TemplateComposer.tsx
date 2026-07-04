@@ -332,6 +332,8 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
         toast.success("Template updated — Meta will re-review; sync to refresh status.");
         navigate({ to: "/templates" });
       } else {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "templates");
         const res = await createMetaTemplate({
           business_account_id: waba_id,
           access_token: creds.access_token,
