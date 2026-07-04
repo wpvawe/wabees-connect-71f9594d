@@ -184,6 +184,8 @@ export async function restartCampaign(uid: string, id: string): Promise<void> {
 export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
   const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
   if (!src.exists()) throw new Error("Campaign not found");
+  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+  await assertWithinPlanLimit(uid, "campaigns");
   const data = src.data() as Record<string, unknown>;
   const db = fbDb();
   const ref = doc(collection(db, "users", uid, "campaigns"));
