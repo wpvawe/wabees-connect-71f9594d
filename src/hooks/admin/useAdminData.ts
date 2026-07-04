@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -63,7 +64,9 @@ export function useAllUsers(): { data: AdminUser[] | null; error: string | null 
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
+    // Cap the realtime stream so an idle admin tab doesn't accumulate reads
+    // on every user-doc update (isOnline heartbeat, totalMessages increment).
+    const q = query(collection(db, "users"), orderBy("createdAt", "desc"), limit(200));
     const unsub = onSnapshot(
       q,
       (snap) => setData(snap.docs.map((d) => toAdminUser(d.id, d.data() as Record<string, unknown>))),
@@ -156,7 +159,7 @@ export function useAdminNotifications(): {
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, "admin_notifications"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "admin_notifications"), orderBy("createdAt", "desc"), limit(100));
     const unsub = onSnapshot(q, (snap) => {
       setNotifications(
         snap.docs.slice(0, 50).map((d) => {
@@ -219,6 +222,7 @@ export function usePendingSubscriptions(): { data: PendingSubRow[] | null } {
     const q = query(
       collection(db, "pending_subscriptions"),
       orderBy("requestedAt", "desc"),
+      limit(100),
     );
     const unsub = onSnapshot(q, (snap) => {
       setData(
@@ -260,7 +264,7 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(collection(db, "support_chats"), orderBy("lastMessageAt", "desc"));
+    const q = query(collection(db, "support_chats"), orderBy("lastMessageAt", "desc"), limit(100));
     const unsub = onSnapshot(
       q,
       (snap) => {

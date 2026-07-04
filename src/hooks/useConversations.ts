@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import {
@@ -129,7 +129,14 @@ export function useConversations(): { data: Conversation[] | null; error: string
     // initial load and every listener re-emit.
     const canonicalized = new Set<string>();
     const unsub = onSnapshot(
-      collection(db, `users/${uid}/conversations`),
+      // Cap realtime stream: most inboxes only ever look at the top ~200
+      // most-recent threads. Anything older is still writable via direct
+      // doc paths; the list just doesn't pin them into a live listener.
+      query(
+        collection(db, `users/${uid}/conversations`),
+        orderBy("lastMessageAt", "desc"),
+        limit(200),
+      ),
       (snap) => {
         const grouped = new Map<string, Conversation>();
         // Track which raw doc IDs belong to each canonical phone, so we can

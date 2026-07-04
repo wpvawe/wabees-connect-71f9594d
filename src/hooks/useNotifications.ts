@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
@@ -31,7 +31,11 @@ export function useNotifications(): {
     if (!db) return;
     let first = true;
     const seen = new Set<string>();
-    const q = query(collection(db, `users/${uid}/notifications`), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, `users/${uid}/notifications`),
+      orderBy("createdAt", "desc"),
+      limit(100),
+    );
     const unsub = onSnapshot(
       q,
       (snap) => {
