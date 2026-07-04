@@ -163,6 +163,12 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const bad = results.length - ok;
+      // Bump plan counter for every successfully forwarded message so
+      // forwards don't silently bypass the messagesUsed quota (B-1).
+      if (ok > 0) {
+        const { incrementMessagesUsed } = await import("@/lib/plans/limits");
+        await incrementMessagesUsed(uid, ok);
+      }
       if (ok) toast.success(`Forwarded to ${ok} chat${ok > 1 ? "s" : ""}`);
       if (bad) toast.error(`${bad} forward${bad > 1 ? "s" : ""} failed`);
       onClose();

@@ -22,6 +22,7 @@ import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { whatsappRecipientId, normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { fbDb } from "@/integrations/firebase/client";
 import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { assertWithinPlanLimit, incrementMessagesUsed } from "@/lib/plans/limits";
 
 type Kind = "menu" | "location" | "buttons" | "cta" | "list";
 
@@ -228,6 +229,8 @@ async function persistOutgoing(
     },
     { merge: true },
   );
+  // Every successful interactive send counts against the plan quota (B-2).
+  if (wamid) await incrementMessagesUsed(uid, 1);
   return ref;
 }
 
