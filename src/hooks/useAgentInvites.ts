@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import type { AgentInvite, InviteRole, InviteStatus } from "@/lib/firebase/agent-invites";
@@ -27,6 +27,8 @@ export function useAgentInvites(): { data: AgentInvite[] | null; error: string |
     const q = query(
       collection(db, `users/${uid}/agent_invites`),
       orderBy("createdAt", "desc"),
+      // Recent invites only — pending/expired ones can pile up over years.
+      limit(100),
     );
     const unsub = onSnapshot(
       q,
