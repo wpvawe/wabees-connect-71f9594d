@@ -40,7 +40,7 @@ export function useCampaignLogs(campaignId: string | undefined): {
     const q = query(
       collection(db, `users/${uid}/campaigns/${campaignId}/logs`),
       orderBy("timestamp", "desc"),
-      limit(500),
+      limit(200),
     );
     const unsub = onSnapshot(
       q,
