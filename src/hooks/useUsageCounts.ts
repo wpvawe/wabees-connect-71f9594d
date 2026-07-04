@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
-import { collection, getCountFromServer } from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useProfile } from "@/hooks/useProfile";
 
 export type UsageCounts = {
   messages: number;
@@ -17,50 +14,24 @@ const emptyCounts: UsageCounts = {
   bots: 0,
 };
 
+/**
+ * Cost-optimised usage counts. Reads the pre-aggregated counters that the
+ * PHP webhook + client mutations already maintain on the owner's user doc
+ * (totalMessages, totalContacts, totalCampaigns, totalBots) — reusing the
+ * existing useProfile listener so this hook adds ZERO extra Firestore reads.
+ *
+ * Previously called getCountFromServer() on 4 collections per mount, which
+ * scales linearly with collection size and re-billed on every dashboard visit.
+ */
 export function useUsageCounts(): { data: UsageCounts; loading: boolean; error: string | null } {
-  const uid = useEffectiveUid();
-  const [data, setData] = useState<UsageCounts>(emptyCounts);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!uid) {
-      setData(emptyCounts);
-      return;
-    }
-    const db = fbDbOrNull();
-    if (!db) return;
-    let alive = true;
-    setLoading(true);
-    setError(null);
-
-    void (async () => {
-      try {
-        const [messages, contacts, campaigns, bots] = await Promise.all([
-          getCountFromServer(collection(db, `users/${uid}/messages`)),
-          getCountFromServer(collection(db, `users/${uid}/contacts`)),
-          getCountFromServer(collection(db, `users/${uid}/campaigns`)),
-          getCountFromServer(collection(db, `users/${uid}/bots`)),
-        ]);
-        if (!alive) return;
-        setData({
-          messages: messages.data().count,
-          contacts: contacts.data().count,
-          campaigns: campaigns.data().count,
-          bots: bots.data().count,
-        });
-      } catch (e) {
-        if (!alive) return;
-        setError(e instanceof Error ? e.message : "Failed to load usage counts");
-      } finally {
-        if (alive) setLoading(false);
+  const { data: profile, loading, error } = useProfile("effective");
+  const data: UsageCounts = profile
+    ? {
+        messages: profile.totalMessages ?? 0,
+        contacts: profile.totalContacts ?? 0,
+        campaigns: profile.totalCampaigns ?? 0,
+        bots: profile.totalBots ?? 0,
       }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [uid]);
-
+    : emptyCounts;
   return { data, loading, error };
 }
