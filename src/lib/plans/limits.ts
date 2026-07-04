@@ -1,4 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, increment, updateDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 
 export type LimitKind = "campaigns" | "contacts" | "bots" | "templates" | "messages" | "aiMessages";
@@ -91,4 +91,22 @@ export async function assertWithinPlanLimit(
       `Your ${planName} allows ${max} ${cfg.label}. Only ${remaining} slot(s) left — tried to add ${count}. Upgrade to add more.`,
     );
   }
+}
+
+/**
+ * Bumps both `subscription.current.messagesUsed` and `users/{uid}.totalMessages`
+ * by `n`. Every outbound WhatsApp send path — text, media, template,
+ * interactive, forward, resend, CSAT, scheduled — MUST call this after a
+ * successful Meta send so per-plan quotas stay accurate. Silently swallows
+ * failures because Firestore permission hiccups shouldn't block the UI.
+ */
+export async function incrementMessagesUsed(uid: string, n = 1): Promise<void> {
+  if (!uid || n <= 0) return;
+  const db = fbDb();
+  await Promise.all([
+    updateDoc(doc(db, "users", uid), { totalMessages: increment(n) }).catch(() => {}),
+    updateDoc(doc(db, "users", uid, "subscription", "current"), {
+      messagesUsed: increment(n),
+    }).catch(() => {}),
+  ]);
 }
