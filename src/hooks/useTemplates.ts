@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 
@@ -34,7 +34,11 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
     const db = fbDbOrNull();
     if (!db) return;
     const unsub = onSnapshot(
-      collection(db, `users/${uid}/templates`),
+      query(
+        collection(db, `users/${uid}/templates`),
+        orderBy("name", "asc"),
+        limit(500),
+      ),
       (snap) => {
         const rows: Template[] = snap.docs
           .map((d) => {

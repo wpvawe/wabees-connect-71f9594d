@@ -5,6 +5,7 @@ import {
   doc,
   getDocs,
   increment,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -42,8 +43,8 @@ export function useScheduledMessages(phone?: string): {
     if (!db) return;
     const base = collection(db, `users/${uid}/scheduled_messages`);
     const q = phone
-      ? query(base, where("contactPhone", "==", normalizePhone(phone)))
-      : query(base, orderBy("scheduledFor", "asc"));
+      ? query(base, where("contactPhone", "==", normalizePhone(phone)), limit(200))
+      : query(base, orderBy("scheduledFor", "asc"), limit(500));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -100,6 +101,7 @@ export function useScheduledDispatcher() {
           collection(db!, `users/${uid}/scheduled_messages`),
           where("status", "in", ["pending", "sending"]),
           orderBy("scheduledFor", "asc"),
+          limit(100),
         );
         const snap = await getDocs(snapRef);
         if (!alive) return;
