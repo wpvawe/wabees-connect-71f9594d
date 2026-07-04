@@ -22,6 +22,7 @@ import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { whatsappRecipientId, normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { fbDb } from "@/integrations/firebase/client";
 import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { assertWithinPlanLimit, incrementMessagesUsed } from "@/lib/plans/limits";
 
 type Kind = "menu" | "location" | "buttons" | "cta" | "list";
 
@@ -228,6 +229,8 @@ async function persistOutgoing(
     },
     { merge: true },
   );
+  // Every successful interactive send counts against the plan quota (B-2).
+  if (wamid) await incrementMessagesUsed(uid, 1);
   return ref;
 }
 
@@ -264,6 +267,12 @@ function LocationForm(p: {
     }
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendLocationMessage({
@@ -349,6 +358,12 @@ function ButtonsForm(p: {
     if (filled.length === 0) return toast.error("At least one button required");
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendReplyButtonsMessage({
@@ -458,6 +473,12 @@ function CtaForm(p: {
     if (!/^https?:\/\//i.test(url)) return toast.error("URL must start with http(s)://");
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendCtaUrlMessage({
@@ -541,6 +562,12 @@ function ListForm(p: {
     if (filled.length === 0) return toast.error("At least one row required");
     setLoading(true);
     try {
+      try {
+        await assertWithinPlanLimit(p.uid, "messages", 1);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const creds = await loadWaCredentials(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendListMessage({
