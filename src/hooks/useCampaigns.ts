@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { toIso } from "@/lib/firebase/normalizers";
@@ -44,8 +44,13 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
+    const q = query(
       collection(db, `users/${uid}/campaigns`),
+      orderBy("createdAt", "desc"),
+      limit(100),
+    );
+    const unsub = onSnapshot(
+      q,
       (snap) => {
         const rows: Campaign[] = snap.docs
           .map((d) => {
