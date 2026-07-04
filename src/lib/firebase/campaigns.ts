@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   increment,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -242,6 +243,28 @@ export async function runCampaign(
   const isTemplate = opts?.messageType === "template" && opts?.templateName;
   const vars = opts?.templateVariables ?? [];
 
+  // Live status via a single snapshot listener (free updates) instead of
+  // polling getDoc every 5 messages. Saves ~N/5 reads per campaign run.
+  let currentStatus: string = "running";
+  const unsubStatus = onSnapshot(campaignRef, (snap) => {
+    currentStatus = (snap.data()?.status as string) ?? "running";
+  });
+  const waitWhilePaused = async (): Promise<"continue" | "stop"> => {
+    if (currentStatus === "paused") {
+      while (currentStatus === "paused") {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    if (
+      currentStatus === "completed" ||
+      currentStatus === "failed" ||
+      currentStatus === "draft"
+    ) {
+      return "stop";
+    }
+    return "continue";
+  };
+
   // Resumable: skip phones that already have a "sent" log entry. If the tab
   // was closed mid-run, hitting Resume continues where it left off instead
   // of double-sending. Failed rows are retried.
@@ -259,24 +282,11 @@ export async function runCampaign(
   let sent = 0;
   let failed = 0;
   for (let i = 0; i < audience.length; i++) {
-    // Poll Firestore status every 5 messages to support pause/cancel from UI.
-    if (i % 5 === 0) {
-      const snap = await getDoc(campaignRef);
-      const status = (snap.data()?.status as string) ?? "running";
-      if (status === "paused") {
-        // Wait until resumed or cancelled.
-        while (true) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const s2 = await getDoc(campaignRef);
-          const st = (s2.data()?.status as string) ?? "running";
-          if (st === "running") break;
-          if (st === "completed" || st === "failed" || st === "draft") {
-            return { sent, failed };
-          }
-        }
-      } else if (status === "completed" || status === "failed" || status === "draft") {
-        return { sent, failed };
-      }
+    // Check live status (populated by snapshot listener above).
+    const decision = await waitWhilePaused();
+    if (decision === "stop") {
+      unsubStatus();
+      return { sent, failed };
     }
     const phone = audience[i];
     const to = phone.replace(/[^0-9]/g, "");
@@ -352,6 +362,7 @@ export async function runCampaign(
     }
   }
 
+  unsubStatus();
   await updateDoc(campaignRef, { status: "completed", completedAt: serverTimestamp() });
   return { sent, failed };
 }
