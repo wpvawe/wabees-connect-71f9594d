@@ -314,11 +314,17 @@ export function UserDetailDrawer({
                       size="sm"
                       variant="secondary"
                       disabled={busy}
-                      onClick={() =>
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Reject pending subscription for ${user.businessName || user.email}?`,
+                          )
+                        )
+                          return;
                         void run("Subscription rejected", () =>
                           rejectPendingSubscription(user.id),
-                        )
-                      }
+                        );
+                      }}
                     >
                       Reject pending
                     </WbButton>

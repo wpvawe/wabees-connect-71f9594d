@@ -148,8 +148,11 @@ function ChatThread({ chatId }: { chatId: string }) {
       toast.error("Please pick an image");
       return;
     }
-    if (file.size > 800 * 1024) {
-      toast.error("Image is too large — use under 800 KB");
+    // Base64 inflates size by ~33%. Firestore document hard limit is 1 MiB,
+    // so a 800 KB file → ~1.07 MB base64 payload → write silently fails.
+    // Cap at 700 KB so the base64 stays comfortably under 1 MB.
+    if (file.size > 700 * 1024) {
+      toast.error("Image is too large — use under 700 KB");
       return;
     }
     const reader = new FileReader();
