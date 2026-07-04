@@ -64,6 +64,55 @@ $accessToken   = $input['access_token'];
 $to            = $input['to'];
 $type          = $input['type'];
 
+// --- Plan quota enforcement --------------------------------------------
+// The React client (src/lib/wabees/api.ts) attaches `auth_uid` to every
+// send-message.php call. Reactions, marks-read etc. also flow through here
+// but shouldn't consume the message quota. We only meter revenue-shaped
+// sends (text / template / media / interactive / location).
+$METERED_TYPES = ['text', 'template', 'image', 'video', 'document', 'audio',
+                  'sticker', 'interactive', 'location'];
+$authUid  = isset($input['auth_uid']) ? preg_replace('/[^A-Za-z0-9_-]/', '', (string)$input['auth_uid']) : '';
+$ownerUid = '';
+$shouldMeter = in_array($type, $METERED_TYPES, true) && $authUid !== '';
+
+if ($shouldMeter) {
+    // Best-effort include of the shared Firestore helpers used by
+    // send.php / webhook.php. If the include path is unavailable in this
+    // deploy, skip metering silently — the client-side gate still applies.
+    $firestoreHelper = __DIR__ . '/../config/firebase-admin.php';
+    if (file_exists($firestoreHelper)) {
+        require_once $firestoreHelper;
+    }
+    if (function_exists('firestore_get')) {
+        $ownerUid = $authUid;
+        $userResp = firestore_get("users/$authUid");
+        $userFields = $userResp['fields'] ?? null;
+        if (is_array($userFields)) {
+            $dataOwner = $userFields['dataOwner']['stringValue'] ?? '';
+            if (is_string($dataOwner) && $dataOwner !== '') {
+                $ownerUid = preg_replace('/[^A-Za-z0-9_-]/', '', $dataOwner);
+            }
+        }
+        $subResp = firestore_get("users/$ownerUid/subscription/current");
+        $subFields = $subResp['fields'] ?? null;
+        if (is_array($subFields)) {
+            $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
+            $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
+            if ($maxMessages > 0 && $msgsUsed >= $maxMessages) {
+                http_response_code(429);
+                echo json_encode(['error' => [
+                    'message' => "Message quota exhausted ($msgsUsed/$maxMessages). Upgrade your plan to send more.",
+                    'code' => 'plan_quota_exceeded',
+                ]]);
+                exit;
+            }
+        }
+    } else {
+        // Helper unavailable — skip metering, don't block send.
+        $shouldMeter = false;
+    }
+}
+
 $url = "https://graph.facebook.com/v21.0/{$phoneNumberId}/messages";
 
 $payload = [
@@ -283,4 +332,12 @@ $data = json_decode($response, true);
 // Guard against $httpCode == 0 (curl returned but no HTTP status) — otherwise
 // http_response_code(0) is a no-op and the client sees a stale 200.
 http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
+
+// After a successful Meta send, increment the owner's usage counters so
+// the next request can enforce the cap. Non-fatal on failure.
+if ($shouldMeter && $ownerUid !== '' && $httpCode === 200 && function_exists('firestore_increment')) {
+    @firestore_increment("users/$ownerUid/subscription/current", 'messagesUsed', 1);
+    @firestore_increment("users/$ownerUid", 'totalMessages', 1);
+}
+
 echo json_encode($data ?: ['error' => ['message' => 'No response from WhatsApp API']]);
