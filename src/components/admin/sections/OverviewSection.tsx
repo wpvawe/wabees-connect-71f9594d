@@ -1,0 +1,269 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import {
+  faUsers,
+  faCircleCheck,
+  faCircleNotch,
+  faBan,
+  faWifi,
+  faMessage,
+  faBullhorn,
+  faLayerGroup,
+  faHeadset,
+  faCreditCard,
+  faCircleXmark,
+} from "@fortawesome/free-solid-svg-icons";
+import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
+import { WbButton } from "@/components/wb/WbButton";
+import {
+  useAllUsers,
+  usePendingSubscriptions,
+  usePlatformStats,
+  useConfigDoc,
+} from "@/hooks/admin/useAdminData";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { setUserStatus, saveConfigDoc } from "@/lib/admin/mutations";
+import type { AdminSectionKey } from "@/components/admin/AdminShell";
+
+export function OverviewSection({
+  onNavigate,
+}: {
+  onNavigate: (k: AdminSectionKey) => void;
+}) {
+  const { data: users } = useAllUsers();
+  const stats = usePlatformStats(users);
+  const { data: pending } = usePendingSubscriptions();
+  const { data: ann } = useConfigDoc<{ message?: string; active?: boolean }>([
+    "config",
+    "announcement",
+  ]);
+
+  const pendingUsers = (users ?? []).filter((u) => u.status === "pending").slice(0, 5);
+
+  return (
+    <div className="space-y-6">
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard icon={faUsers} label="Users" value={stats.totalUsers} color="text-indigo-500" />
+        <StatCard
+          icon={faCircleCheck}
+          label="Active"
+          value={stats.activeUsers}
+          color="text-emerald-500"
+        />
+        <StatCard
+          icon={faCircleNotch}
+          label="Pending"
+          value={stats.pendingUsers}
+          color="text-amber-500"
+        />
+        <StatCard
+          icon={faBan}
+          label="Suspended"
+          value={stats.suspendedUsers}
+          color="text-destructive"
+        />
+        <StatCard
+          icon={faWifi}
+          label="Connected"
+          value={stats.connectedUsers}
+          color="text-sky-500"
+        />
+        <StatCard
+          icon={faMessage}
+          label="Messages"
+          value={stats.totalMessages}
+          color="text-violet-500"
+        />
+      </div>
+
+      {/* Quick actions */}
+      <WbCard>
+        <WbCardHeader title="Quick actions" subtitle="Jump to a workspace" />
+        <WbCardBody className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <QuickAction icon={faBullhorn} label="System" onClick={() => onNavigate("system")} />
+          <QuickAction icon={faLayerGroup} label="Plans" onClick={() => onNavigate("plans")} />
+          <QuickAction icon={faUsers} label="Users" onClick={() => onNavigate("users")} />
+          <QuickAction icon={faHeadset} label="Support" onClick={() => onNavigate("support")} />
+        </WbCardBody>
+      </WbCard>
+
+      {/* Active announcement */}
+      {ann?.active && ann.message && (
+        <WbCard>
+          <WbCardBody className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-pink-500/15 text-pink-500">
+                <FontAwesomeIcon icon={faBullhorn} className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Active announcement</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{ann.message}</p>
+              </div>
+            </div>
+            <WbButton
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await saveConfigDoc(["config", "announcement"], { active: false });
+                  toast.success("Announcement disabled");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Failed");
+                }
+              }}
+            >
+              <FontAwesomeIcon icon={faCircleXmark} className="h-3 w-3" /> Disable
+            </WbButton>
+          </WbCardBody>
+        </WbCard>
+      )}
+
+      {/* Pending signups */}
+      <WbCard>
+        <WbCardHeader
+          title="Pending signups"
+          subtitle={`${stats.pendingUsers} awaiting approval`}
+          right={
+            stats.pendingUsers > 5 ? (
+              <button
+                type="button"
+                onClick={() => onNavigate("users")}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                View all →
+              </button>
+            ) : undefined
+          }
+        />
+        <WbCardBody>
+          {pendingUsers.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No pending signups 🎉
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {pendingUsers.map((u) => (
+                <li key={u.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {u.businessName || u.email || u.id}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {u.email}
+                      {u.phoneNumber ? ` · ${u.phoneNumber}` : ""}
+                    </p>
+                  </div>
+                  <WbButton
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await setUserStatus(u.id, "active");
+                        toast.success("Approved");
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : "Failed");
+                      }
+                    }}
+                  >
+                    Approve
+                  </WbButton>
+                </li>
+              ))}
+            </ul>
+          )}
+        </WbCardBody>
+      </WbCard>
+
+      {/* Pending subs */}
+      <WbCard>
+        <WbCardHeader
+          title="Pending subscriptions"
+          subtitle={`${pending?.length ?? 0} requests waiting`}
+          right={
+            (pending?.length ?? 0) > 0 ? (
+              <button
+                type="button"
+                onClick={() => onNavigate("pending")}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Review →
+              </button>
+            ) : undefined
+          }
+        />
+        <WbCardBody>
+          {!pending || pending.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No pending subscriptions.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {pending.slice(0, 5).map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FontAwesomeIcon
+                      icon={faCreditCard}
+                      className="h-3.5 w-3.5 text-primary"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {p.userName || p.userEmail || p.userId}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {p.planName}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </WbCardBody>
+      </WbCard>
+    </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: IconDefinition;
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <WbCard className="p-3">
+      <FontAwesomeIcon icon={icon} className={cn("h-5 w-5", color)} />
+      <p className="mt-2 text-2xl font-black tabular-nums text-foreground">
+        {value.toLocaleString()}
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </WbCard>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: IconDefinition;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+    >
+      <FontAwesomeIcon icon={icon} className="h-5 w-5 text-primary" />
+      {label}
+    </button>
+  );
+}
