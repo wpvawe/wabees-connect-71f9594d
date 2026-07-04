@@ -1,7 +1,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 
-export type LimitKind = "campaigns" | "contacts" | "bots" | "templates";
+export type LimitKind = "campaigns" | "contacts" | "bots" | "templates" | "messages" | "aiMessages";
 
 type LimitConfig = {
   label: string;
@@ -33,6 +33,17 @@ const CONFIG: Record<LimitKind, LimitConfig> = {
     label: "templates",
     maxField: "maxTemplates",
     usedField: "templatesUsed",
+  },
+  messages: {
+    label: "messages",
+    maxField: "maxMessages",
+    usedField: "messagesUsed",
+    profileField: "totalMessages",
+  },
+  aiMessages: {
+    label: "AI messages",
+    maxField: "maxAiMessages",
+    usedField: "aiMessagesUsed",
   },
 };
 
