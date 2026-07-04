@@ -240,6 +240,8 @@ export async function runCampaign(
 ): Promise<{ sent: number; failed: number }> {
   const creds = await loadWaCredentials(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
+  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+  await assertWithinPlanLimit(uid, "messages", audience.length);
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
   await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });

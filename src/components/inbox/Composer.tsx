@@ -259,6 +259,13 @@ export function Composer({
         toast.error("Connect WhatsApp first");
         return;
       }
+      try {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "messages");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       // H-1 fix: preserve the known contact name on optimistic writes so the
       // thread header / conversation list don't briefly flash back to the
       // raw phone number. Read from the conversation doc that already

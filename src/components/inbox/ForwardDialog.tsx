@@ -83,6 +83,13 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
         toast.error("Connect WhatsApp first");
         return;
       }
+      try {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "messages", list.length);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
       const db = fbDb();
       const hasMedia = !!message.mediaUrl || !!message.mediaId;
       const mediaKind = hasMedia
