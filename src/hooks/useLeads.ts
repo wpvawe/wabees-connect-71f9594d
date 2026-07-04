@@ -41,7 +41,6 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
     const unsub = onSnapshot(
       query(
         collection(db, `users/${uid}/bot_leads`),
-        orderBy("lastContactAt", "desc"),
         limit(1000),
       ),
       (snap) => {
