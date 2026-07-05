@@ -83,13 +83,18 @@ if ($code < 200 || $code >= 300 || !is_array($json)) {
 }
 
 // Best-effort cache back to Firestore so useWhatsAppConfig picks it up even
-// when this endpoint is offline.
+// when this endpoint is offline. Guarded because `firestore_patch` is not
+// always available across backend versions — never let it 500 the response.
 $quality = strtoupper((string)($json['quality_rating'] ?? ''));
-if ($quality !== '') {
-    firestore_patch("users/$ownerUid/whatsapp_config/config", [
-        'qualityRating' => ['stringValue' => $quality],
-        'qualityRatingCheckedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
-    ], ['qualityRating','qualityRatingCheckedAt']);
+if ($quality !== '' && function_exists('firestore_patch')) {
+    try {
+        firestore_patch("users/$ownerUid/whatsapp_config/config", [
+            'qualityRating' => ['stringValue' => $quality],
+            'qualityRatingCheckedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
+        ], ['qualityRating','qualityRatingCheckedAt']);
+    } catch (\Throwable $e) {
+        error_log('[phone-health] firestore_patch failed: ' . $e->getMessage());
+    }
 }
 
 echo json_encode([

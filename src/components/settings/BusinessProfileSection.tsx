@@ -77,6 +77,7 @@ export function BusinessProfileSection() {
         body: JSON.stringify({
           action: "get",
           phone_number_id: wa.phone_number_id,
+          id_token: idToken,
         }),
       });
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
@@ -122,6 +123,7 @@ export function BusinessProfileSection() {
       const body: Record<string, unknown> = {
         action: "update",
         phone_number_id: wa.phone_number_id,
+        id_token: idToken,
         vertical: form.vertical || "UNDEFINED",
         websites: form.website ? [form.website] : [],
       };
