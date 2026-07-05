@@ -20,6 +20,11 @@ const ROWS: Row[] = [
   { keys: ["i"], label: "Contact details", scope: "Chat" },
   { keys: ["t"], label: "Activity timeline", scope: "Chat" },
   { keys: ["/"], label: "Search inside chat", scope: "Chat" },
+  { keys: ["/"], label: "Quick replies (in composer)", scope: "Chat" },
+  { keys: ["#"], label: "Templates (in composer)", scope: "Chat" },
+  { keys: ["Enter"], label: "Send message", scope: "Chat" },
+  { keys: ["Shift", "Enter"], label: "New line in composer", scope: "Chat" },
+  { keys: ["Esc"], label: "Close picker / clear input", scope: "Chat" },
   { keys: ["?"], label: "Show this help", scope: "Global" },
 ];
 
