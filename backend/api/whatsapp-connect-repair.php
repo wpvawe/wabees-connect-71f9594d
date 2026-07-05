@@ -152,11 +152,36 @@ foreach (find_all_users_by_whatsapp_config($phone) as $row) {
     $candidates[$row['id']] = array_merge($candidates[$row['id']] ?? ['id' => $row['id'], 'fields' => []], ['fields' => array_merge($candidates[$row['id']]['fields'] ?? [], $fields), 'fromConfig' => true]);
 }
 $map = firestore_get('wa_map/' . rawurlencode($phone));
+$originalOwnerUid = '';
 if (($map['code'] ?? 404) === 200) {
     $fields = $map['data']['fields'] ?? [];
+    $originalOwnerUid = wa_field_string($fields, 'originalOwnerUid');
     foreach ([wa_field_string($fields, 'ownerId'), wa_field_string($fields, 'userId')] as $id) {
         if ($id) $candidates[$id] = $candidates[$id] ?? ['id' => $id, 'fields' => [], 'fromMap' => true];
     }
+}
+
+// FIRST-BIND LOCK: once a WhatsApp number is claimed by a uid, only that uid
+// may (dis)connect it. This eliminates the historical data-copy step and its
+// Firestore token burn on every reconnect.
+if ($originalOwnerUid !== '' && $originalOwnerUid !== $uid) {
+    $ownerUser = firestore_get('users/' . rawurlencode($originalOwnerUid));
+    $ownerFields = (($ownerUser['code'] ?? 0) === 200) ? ($ownerUser['data']['fields'] ?? []) : [];
+    $ownerEmail = wa_field_string($ownerFields, 'email');
+    $masked = '';
+    if ($ownerEmail !== '' && strpos($ownerEmail, '@') !== false) {
+        [$local, $domain] = explode('@', $ownerEmail, 2);
+        $masked = substr($local, 0, 1) . str_repeat('*', max(1, strlen($local) - 1)) . '@' . $domain;
+    }
+    http_response_code(409);
+    echo json_encode(['success' => false, 'error' => [
+        'code' => 'wa_locked_to_original_owner',
+        'ownerEmailMasked' => $masked,
+        'message' => $masked
+            ? "This WhatsApp number is permanently linked to $masked. Please sign in with that account to reconnect."
+            : 'This WhatsApp number is permanently linked to another account. Please sign in with the original account to reconnect.',
+    ]]);
+    exit;
 }
 
 $activeOwner = null;
@@ -229,16 +254,22 @@ firestore_update('wa_map/' . rawurlencode($phone), [
     'userId' => $uid,
     'users' => [['userId' => $uid]],
     'active' => true,
+    'originalOwnerUid' => $originalOwnerUid !== '' ? $originalOwnerUid : $uid,
     'updatedAt' => firestore_timestamp(),
-], ['ownerId','userId','users','active','updatedAt']);
+], ['ownerId','userId','users','active','originalOwnerUid','updatedAt']);
 
+// Data-copy only runs on the very first bind (originalOwnerUid was empty and
+// we just set it to $uid). On reconnects by the same original owner, the
+// data already lives under users/{uid}/* — no copy, zero Firestore burn.
 $bestPrior = null;
-$bestScore = 0;
-foreach ($priorOwners as $prior) {
-    $score = wa_user_activity_score($prior);
-    if ($score > $bestScore) { $bestScore = $score; $bestPrior = $prior; }
+if ($originalOwnerUid === '') {
+    $bestScore = 0;
+    foreach ($priorOwners as $prior) {
+        $score = wa_user_activity_score($prior);
+        if ($score > $bestScore) { $bestScore = $score; $bestPrior = $prior; }
+    }
+    if ($bestPrior) wa_copy_data_island($bestPrior, $uid);
 }
-if ($bestPrior) wa_copy_data_island($bestPrior, $uid);
 
 echo json_encode([
     'success' => true,
