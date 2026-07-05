@@ -448,14 +448,12 @@ function Thread({ phone }: { phone: string }) {
     [uid, selfUid, phone],
   );
 
-  const actions: MessageActions = {
-    onReply: setReplyTo,
-    onReact,
-    onDelete,
-    onForward: setForwardMsg,
-    onOpenMedia: (m) => setLightboxId(m.id),
-    onResend,
-    onToggleStar: async (m) => {
+  // P4 fix — stable `actions` reference so the memoized MessageBubble
+  // skips re-rendering all N bubbles on unrelated parent state changes
+  // (menu open, scroll, delivery-status ticks).
+  const onOpenMedia = useCallback((m: Message) => setLightboxId(m.id), []);
+  const onToggleStar = useCallback(
+    async (m: Message) => {
       if (!uid) return;
       try {
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
@@ -466,7 +464,20 @@ function Thread({ phone }: { phone: string }) {
         toast.error(e instanceof Error ? e.message : "Couldn't star message");
       }
     },
-  };
+    [uid],
+  );
+  const actions: MessageActions = useMemo(
+    () => ({
+      onReply: setReplyTo,
+      onReact,
+      onDelete,
+      onForward: setForwardMsg,
+      onOpenMedia,
+      onResend,
+      onToggleStar,
+    }),
+    [onReact, onDelete, onOpenMedia, onResend, onToggleStar],
+  );
 
   // Filter thread by in-chat search.
   const visibleData = useMemo(() => {

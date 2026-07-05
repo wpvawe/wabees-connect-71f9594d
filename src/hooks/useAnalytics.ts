@@ -90,14 +90,12 @@ export function useAnalytics(range: AnalyticsRange): {
     if (!db) return;
     setRows(null);
     setError(null);
-    // Analytics is a report — a live listener on 90 days of messages
-    // re-bills every keystroke of an incoming webhook. Fetch once per
-    // mount / manual reload instead; the "reload" button already exposes
-    // refresh to the user.
+    // P1 fix — was always scanning 90 days regardless of `range`; now push
+    // the actual selected window into Firestore so "7d" only reads 7 days.
     let cancelled = false;
     const q = query(
       collection(db, `users/${uid}/messages`),
-      where("createdAt", ">=", Timestamp.fromDate(new Date(Date.now() - 90 * 86400_000))),
+      where("createdAt", ">=", Timestamp.fromDate(start)),
     );
     getDocs(q)
       .then((snap) => {
@@ -124,7 +122,8 @@ export function useAnalytics(range: AnalyticsRange): {
     return () => {
       cancelled = true;
     };
-  }, [uid, nonce]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, nonce, start.getTime()]);
 
   const data = useMemo<AnalyticsData | null>(() => {
     if (!rows) return null;

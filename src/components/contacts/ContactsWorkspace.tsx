@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import Papa from "papaparse";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -35,6 +34,12 @@ import {
 } from "@/lib/firebase/contacts";
 import { cn } from "@/lib/utils";
 import { useCan } from "@/lib/auth/permissions";
+
+// P-perf — lazy-load papaparse only when the user actually clicks
+// import / export / sample. Keeps ~50KB out of the /contacts route bundle.
+async function loadPapa() {
+  return (await import("papaparse")).default;
+}
 
 type CsvRow = {
   name?: string;
@@ -106,7 +111,8 @@ export function ContactsWorkspace() {
     fileRef.current?.click();
   }
 
-  function downloadSampleCsv() {
+  async function downloadSampleCsv() {
+    const Papa = await loadPapa();
     const sample = Papa.unparse([
       { name: "Jane Doe", phone: "+923001234567", email: "jane@acme.com", company: "Acme Inc", tags: "lead,vip", group: "Customers" },
       { name: "John Smith", phone: "+14155551234", email: "", company: "", tags: "trial", group: "Prospects" },
@@ -121,10 +127,11 @@ export function ContactsWorkspace() {
     toast.success("Sample CSV downloaded");
   }
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !uid) return;
     setImporting(true);
+    const Papa = await loadPapa();
     Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
@@ -165,12 +172,13 @@ export function ContactsWorkspace() {
     });
   }
 
-  function onExport() {
+  async function onExport() {
     const rows = filtered ?? data ?? [];
     if (rows.length === 0) {
       toast.error("Nothing to export");
       return;
     }
+    const Papa = await loadPapa();
     const csv = Papa.unparse(
       rows.map((c) => ({
         name: c.name,

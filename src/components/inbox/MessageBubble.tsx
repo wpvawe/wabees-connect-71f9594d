@@ -40,7 +40,7 @@ import {
 import { faBagShopping, faClipboardList } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const linkifyOpts = {
@@ -49,6 +49,16 @@ const linkifyOpts = {
   className: "underline underline-offset-2",
   defaultProtocol: "https",
 };
+
+// S6 fix — allowlist link schemes so a Firestore-stored `ctaUrl` /
+// interactive URL from a hostile WhatsApp sender cannot become
+// `javascript:` and execute in the agent's tab.
+function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed;
+}
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -192,7 +202,7 @@ export type MessageActions = {
   onToggleStar?: (m: Message) => void;
 };
 
-export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
+function MessageBubbleImpl({ m, actions }: { m: Message; actions?: MessageActions }) {
   const mine = m.direction === "outgoing";
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -575,6 +585,13 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
   );
 }
 
+export const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
+  // Fast path — same message reference and same actions object means
+  // nothing meaningful changed. Callers memoize `actions` via useMemo
+  // in inbox.$phone.tsx, so this is stable across renders.
+  return prev.m === next.m && prev.actions === next.actions;
+});
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -790,9 +807,11 @@ function MessageContent({
   // silently show as a blank/broken bubble — we surface a download link
   // instead. Also used for <video>.
   const [mediaFailed, setMediaFailed] = useState(false);
-  // Inline media renderer used by image/video/audio/document/sticker.
-  const Media = () =>
-    m.mediaUrl ? (
+  // P11 fix — was `const Media = () => …`, a fresh component identity
+  // on every render caused React to remount the media subtree on every
+  // parent state change (mediaFailed, menuOpen, star toggle). Rendering
+  // JSX to a variable keeps the DOM stable.
+  const media: React.ReactNode = m.mediaUrl ? (
       <div className="mb-1 overflow-hidden rounded-md">
         {mediaFailed ? (
           <MediaFallback m={m} mine={mine} />
@@ -884,7 +903,7 @@ function MessageContent({
     case "sticker":
       return (
         <>
-          <Media />
+          {media}
           <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
@@ -892,7 +911,7 @@ function MessageContent({
     case "document":
       return (
         <>
-          <Media />
+          {media}
           <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
@@ -973,21 +992,22 @@ function MessageContent({
       if (m.interactiveType === "nfm_reply" && m.flowResponse) {
         return <FlowResponseCard m={m} mine={mine} />;
       }
+      const safeCta = safeHref(m.ctaUrl);
       return (
         <div>
           <p className="text-[11px] font-semibold opacity-80">
             🔘 {m.interactiveType || m.type}
           </p>
           <TextBody value={label} />
-          {m.ctaUrl && (
+          {safeCta && (
             <a
-              href={m.ctaUrl}
+              href={safeCta}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="mt-1 inline-flex items-center gap-1 text-xs underline"
             >
               <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
-              {m.ctaUrl}
+              {safeCta}
             </a>
           )}
         </div>
@@ -1045,7 +1065,7 @@ function MessageContent({
       // Never blank — fall back to whatever payload we have.
       return (
         <>
-          <Media />
+          {media}
           {cleanBody(m.body) ? (
             <TextBody value={cleanBody(m.body)} />
           ) : (
