@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -60,13 +60,28 @@ export type Message = {
   reactionAt?: string | null;
 };
 
+const PAGE_SIZE = 300;
+const PAGE_STEP = 200;
+
 export function useMessages(phone: string | undefined): {
   data: Message[] | null;
   error: string | null;
+  hasMore: boolean;
+  loadMore: () => void;
+  loadingMore: boolean;
 } {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageLimit, setPageLimit] = useState<number>(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+
+  // Reset paging when the thread changes.
+  useEffect(() => {
+    setPageLimit(PAGE_SIZE);
+    setHasMore(false);
+  }, [phone]);
 
   useEffect(() => {
     if (!uid || !phone) return;
@@ -80,11 +95,15 @@ export function useMessages(phone: string | undefined): {
         ? where("contactPhone", "==", candidates[0])
         : where("contactPhone", "in", candidates),
       orderBy("createdAt", "desc"),
-      limit(300),
+      limit(pageLimit),
     );
     const unsub = onSnapshot(
       q,
       (snap) => {
+        // If we hit the current page cap, older messages likely exist —
+        // enable "Load older" until a fetch returns fewer than requested.
+        setHasMore(snap.docs.length >= pageLimit);
+        setLoadingMore(false);
         const allRows: Message[] = snap.docs
           .map((d) => {
             const x = d.data() as Record<string, unknown>;
@@ -214,10 +233,18 @@ export function useMessages(phone: string | undefined): {
           .sort((a, b) => (a.createdAt ?? "9999").localeCompare(b.createdAt ?? "9999"));
         setData(rows);
       },
-      (err) => setError(err.message),
+      (err) => {
+        setError(err.message);
+        setLoadingMore(false);
+      },
     );
     return () => unsub();
-  }, [uid, phone]);
+  }, [uid, phone, pageLimit]);
 
-  return { data, error };
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    setPageLimit((n) => n + PAGE_STEP);
+  }, []);
+
+  return { data, error, hasMore, loadMore, loadingMore };
 }
