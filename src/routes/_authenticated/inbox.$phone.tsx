@@ -536,6 +536,17 @@ function Thread({ phone }: { phone: string }) {
   const conv = (conversations ?? []).find((c) => normalizePhone(c.contactPhone) === normalizedPhone);
   const slaSettings = useSlaSettings();
   const csatSettings = useCsatSettings();
+  // U3: resolve the assigned agent so we can render a live presence chip
+  // in the thread header — owners immediately see who's on the case and
+  // whether that teammate is actually online right now.
+  const { data: agentsList } = useAgents();
+  const assignedAgent = conv?.assignedAgentId
+    ? (agentsList ?? []).find((a) => a.id === conv.assignedAgentId) ?? null
+    : null;
+  const assignedLabel =
+    assignedAgent?.email?.split("@")[0] ||
+    conv?.assignedAgentEmail?.split("@")[0] ||
+    (conv?.assignedAgentId ? "agent" : null);
   const isBlocked = !!conv?.isBlocked;
   const convState = conv?.state ?? "open";
   const isResolved = convState === "resolved";
