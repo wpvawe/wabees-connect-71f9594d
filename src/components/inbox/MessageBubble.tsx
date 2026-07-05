@@ -992,21 +992,22 @@ function MessageContent({
       if (m.interactiveType === "nfm_reply" && m.flowResponse) {
         return <FlowResponseCard m={m} mine={mine} />;
       }
+      const safeCta = safeHref(m.ctaUrl);
       return (
         <div>
           <p className="text-[11px] font-semibold opacity-80">
             🔘 {m.interactiveType || m.type}
           </p>
           <TextBody value={label} />
-          {m.ctaUrl && (
+          {safeCta && (
             <a
-              href={m.ctaUrl}
+              href={safeCta}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="mt-1 inline-flex items-center gap-1 text-xs underline"
             >
               <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
-              {m.ctaUrl}
+              {safeCta}
             </a>
           )}
         </div>
