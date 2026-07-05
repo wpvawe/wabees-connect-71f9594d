@@ -136,6 +136,21 @@ export function PlanCard({
       <p className="mt-3 rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground">
         {validityLabel(plan)}
       </p>
+      {plan.expiryType !== "yearly" &&
+        plan.expiryType !== "lifetime" &&
+        plan.priceYearly != null &&
+        plan.priceYearly > 0 &&
+        plan.priceMonthly > 0 && (
+          <p className="mt-2 rounded-md bg-primary/5 px-2.5 py-1.5 text-[11px] font-semibold text-primary">
+            Save {Math.max(
+              0,
+              Math.round(
+                ((plan.priceMonthly * 12 - plan.priceYearly) / (plan.priceMonthly * 12)) * 100,
+              ),
+            )}
+            % with yearly billing — {plan.currency} {plan.priceYearly.toLocaleString()}/year
+          </p>
+        )}
       <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
         <PlanStat label="Messages" value={limitLabel(plan.maxMessages)} />
         <PlanStat label="Contacts" value={limitLabel(plan.maxContacts)} />

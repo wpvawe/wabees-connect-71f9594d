@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleCheck,
@@ -7,6 +7,9 @@ import {
   faEllipsisVertical,
   faSearch,
   faEye,
+  faFileCsv,
+  faChevronLeft,
+  faChevronRight,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
@@ -17,12 +20,14 @@ import { setUserStatus } from "@/lib/admin/mutations";
 import { UserDetailDrawer } from "@/components/admin/sections/UserDetailDrawer";
 
 type Filter = "all" | "pending" | "active" | "suspended" | "deactivated";
+const PAGE_SIZE = 25;
 
 export function UsersSection() {
   const { data, error } = useAllUsers();
   const [filter, setFilter] = useState<Filter>("pending");
   const [searchQ, setSearchQ] = useState("");
   const [openUid, setOpenUid] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -37,6 +42,63 @@ export function UsersSection() {
       );
     });
   }, [data, filter, searchQ]);
+
+  // Reset to page 1 whenever filter/search changes so users don't get stuck
+  // on an empty last-page after narrowing the list.
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchQ]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paged = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  function exportCsv() {
+    const rows: string[][] = [[
+      "UID",
+      "Name",
+      "Email",
+      "Phone",
+      "Role",
+      "Status",
+      "WhatsApp Connected",
+      "Messages",
+      "Contacts",
+      "Campaigns",
+      "Bots",
+      "Created At",
+    ]];
+    for (const u of filtered) {
+      rows.push([
+        u.id,
+        u.businessName,
+        u.email,
+        u.phoneNumber,
+        u.role,
+        u.status,
+        u.whatsappConnected ? "yes" : "no",
+        String(u.totalMessages),
+        String(u.totalContacts),
+        String(u.totalCampaigns),
+        String(u.totalBots),
+        u.createdAt ?? "",
+      ]);
+    }
+    const csv = rows
+      .map((r) => r.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wabees-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filtered.length} row${filtered.length === 1 ? "" : "s"}`);
+  }
 
   const counts = useMemo(() => {
     const c = { pending: 0, active: 0, suspended: 0, deactivated: 0 };
@@ -56,17 +118,22 @@ export function UsersSection() {
           title="Users"
           subtitle={`${data?.length ?? 0} total`}
           right={
-            <div className="relative w-full max-w-xs">
-              <FontAwesomeIcon
-                icon={faSearch}
-                className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                placeholder="Search name, email, phone…"
-                className="h-9 w-full rounded-full border border-input bg-background pl-8 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative w-full max-w-xs">
+                <FontAwesomeIcon
+                  icon={faSearch}
+                  className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground"
+                />
+                <input
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Search name, email, phone…"
+                  className="h-9 w-full rounded-full border border-input bg-background pl-8 pr-3 text-sm outline-none ring-ring focus-visible:ring-2"
+                />
+              </div>
+              <WbButton size="sm" variant="secondary" onClick={exportCsv} disabled={filtered.length === 0}>
+                <FontAwesomeIcon icon={faFileCsv} className="h-3 w-3" /> CSV
+              </WbButton>
             </div>
           }
         />
@@ -123,11 +190,37 @@ export function UsersSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {filtered.map((u) => (
+                  {paged.map((u) => (
                     <UserRow key={u.id} u={u} onOpen={() => setOpenUid(u.id)} />
                   ))}
                 </tbody>
               </table>
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                  <span>
+                    Page {currentPage} of {totalPages} · {filtered.length} row
+                    {filtered.length === 1 ? "" : "s"}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <WbButton
+                      size="sm"
+                      variant="ghost"
+                      disabled={currentPage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <FontAwesomeIcon icon={faChevronLeft} className="h-3 w-3" /> Prev
+                    </WbButton>
+                    <WbButton
+                      size="sm"
+                      variant="ghost"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      Next <FontAwesomeIcon icon={faChevronRight} className="h-3 w-3" />
+                    </WbButton>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </WbCardBody>

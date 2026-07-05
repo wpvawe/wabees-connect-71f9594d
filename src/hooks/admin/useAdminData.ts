@@ -258,6 +258,8 @@ export type AdminChatRow = {
   lastMessageAt: string | null;
   unreadByAdmin: number;
   userOnline: boolean;
+  status: string;
+  priority: string;
 };
 
 export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
@@ -281,6 +283,8 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
               lastMessageAt: toIso(x.lastMessageAt),
               unreadByAdmin: (x.unreadByAdmin as number) ?? 0,
               userOnline: x.userOnline === true,
+            status: (x.status as string) ?? "open",
+            priority: (x.priority as string) ?? "normal",
             };
           }),
         );

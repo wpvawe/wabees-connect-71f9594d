@@ -17,6 +17,87 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
+import { fbAuth } from "@/integrations/firebase/client";
+import { sendPasswordResetEmail } from "firebase/auth";
+
+// ============ AUDIT LOG ============
+// Append-only trail of admin actions. Stored in `admin_audit_logs`.
+// Keep this best-effort — a logging failure must NEVER block the real
+// mutation, so every caller wraps this in a fire-and-forget catch.
+export type AuditAction =
+  | "user.status"
+  | "user.role"
+  | "user.field"
+  | "user.delete"
+  | "user.password_reset"
+  | "subscription.activate"
+  | "subscription.reject"
+  | "subscription.assign"
+  | "subscription.customize"
+  | "subscription.extend"
+  | "subscription.reset_counters"
+  | "plan.create"
+  | "plan.update"
+  | "plan.delete"
+  | "plan.toggle_active"
+  | "notification.broadcast"
+  | "support.status"
+  | "support.priority"
+  | "config.save";
+
+export async function logAudit(
+  action: AuditAction,
+  target: string,
+  meta: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const db = fbDb();
+    const actorUid = fbAuth().currentUser?.uid ?? null;
+    const actorEmail = fbAuth().currentUser?.email ?? null;
+    await addDoc(collection(db, "admin_audit_logs"), {
+      action,
+      target,
+      meta,
+      actorUid,
+      actorEmail,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* audit is best-effort */
+  }
+}
+
+// ============ PASSWORD RESET (Firebase Auth) ============
+// Client-side Firebase auth can send a reset email if we know the address.
+// The user does NOT need to be logged in as the target — Firebase accepts
+// email-based reset requests from any authenticated client.
+export async function sendUserPasswordReset(email: string, uid: string): Promise<void> {
+  if (!email) throw new Error("User has no email on file");
+  await sendPasswordResetEmail(fbAuth(), email);
+  void logAudit("user.password_reset", uid, { email });
+}
+
+// ============ SUPPORT TICKET ============
+export type SupportStatus = "open" | "pending" | "resolved" | "closed";
+export type SupportPriority = "low" | "normal" | "high" | "urgent";
+
+export async function setSupportChatStatus(chatId: string, status: SupportStatus) {
+  await setDoc(
+    doc(fbDb(), "support_chats", chatId),
+    { status, statusUpdatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  void logAudit("support.status", chatId, { status });
+}
+
+export async function setSupportChatPriority(chatId: string, priority: SupportPriority) {
+  await setDoc(
+    doc(fbDb(), "support_chats", chatId),
+    { priority, priorityUpdatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  void logAudit("support.priority", chatId, { priority });
+}
 
 // ============ USER ACTIONS ============
 export async function setUserStatus(uid: string, status: string) {
@@ -39,6 +120,7 @@ export async function setUserStatus(uid: string, status: string) {
       /* non-critical */
     }
   }
+  void logAudit("user.status", uid, { status });
 }
 
 export async function setUserRole(uid: string, role: string) {
@@ -50,6 +132,7 @@ export async function setUserRole(uid: string, role: string) {
     role,
     updatedAt: serverTimestamp(),
   });
+  void logAudit("user.role", uid, { role });
 }
 
 // Restricted whitelist to prevent arbitrary field overwrites from the admin
@@ -67,6 +150,7 @@ export async function setUserField(uid: string, field: string, value: unknown) {
     [field]: value,
     updatedAt: serverTimestamp(),
   });
+  void logAudit("user.field", uid, { field, value });
 }
 
 // Hard-delete a user + all subcollections we know about. This is destructive
@@ -121,6 +205,7 @@ export async function deleteUserData(uid: string) {
   } catch {
     /* absent */
   }
+  void logAudit("user.delete", uid, {});
 }
 
 // Broadcast a custom notification. `uids: null` means "every user" and paginates
@@ -171,6 +256,7 @@ export async function broadcastNotification(args: {
     await batch.commit();
     written += Math.min(CHUNK, targets.length - i);
   }
+  void logAudit("notification.broadcast", args.uids ? `uids:${targets.length}` : "all", { count: written, title });
   return written;
 }
 
@@ -247,6 +333,7 @@ export async function activatePendingSubscription(userId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.activate", userId, { planId, planName });
 }
 
 function buildSubFromPlan(
@@ -333,7 +420,10 @@ export async function adminAssignPlan(userId: string, planId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.assign", userId, { planId, planName: newSub.planName });
 }
+// audit
+// (kept outside the try so failure to add notification doesn't skip audit)
 
 // Per-user custom limit overrides. Only touches the user's OWN subscription
 // doc — the underlying plan and other users are unaffected. Marks the sub
@@ -383,6 +473,7 @@ export async function updateUserSubscriptionLimits(
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.customize", userId, overrides as Record<string, unknown>);
 }
 
 // Extend (or shrink, if days<0) the current subscription's end date.
@@ -422,6 +513,7 @@ export async function extendSubscriptionExpiry(userId: string, deltaDays: number
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.extend", userId, { deltaDays });
 }
 
 // Reset the "used" counters on the current sub without changing the plan
@@ -441,6 +533,7 @@ export async function resetSubscriptionCounters(userId: string) {
     { usedThisMonth: 0, currentPeriodStart: new Date().toISOString().slice(0, 7) + "-01" },
     { merge: true },
   );
+  void logAudit("subscription.reset_counters", userId, {});
 }
 
 export async function rejectPendingSubscription(userId: string) {
@@ -475,6 +568,7 @@ export async function rejectPendingSubscription(userId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.reject", userId, {});
 }
 
 // ============ PLANS ============
@@ -482,6 +576,7 @@ export type PlanInput = {
   name: string;
   description: string;
   priceMonthly: number;
+  priceYearly?: number | null;
   currency: string;
   maxMessages: number;
   maxContacts: number;
@@ -516,10 +611,12 @@ export async function createPlan(input: PlanInput) {
     isWelcomePlan: false,
     createdAt: serverTimestamp(),
   });
+  void logAudit("plan.create", ref.id, { name: input.name });
 }
 
 export async function updatePlan(planId: string, input: Partial<PlanInput>) {
   await updateDoc(doc(fbDb(), "plans", planId), input);
+  void logAudit("plan.update", planId, {});
 }
 
 export async function deletePlan(planId: string) {
@@ -529,10 +626,12 @@ export async function deletePlan(planId: string) {
     throw new Error("Cannot delete the Welcome plan");
   }
   await deleteDoc(doc(db, "plans", planId));
+  void logAudit("plan.delete", planId, {});
 }
 
 export async function togglePlanActive(planId: string, isActive: boolean) {
   await updateDoc(doc(fbDb(), "plans", planId), { isActive });
+  void logAudit("plan.toggle_active", planId, { isActive });
 }
 
 // ============ ADMIN SUPPORT ============
@@ -585,4 +684,5 @@ export async function saveConfigDoc(
     { ...data, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  void logAudit("config.save", `${path[0]}/${path[1]}`, {});
 }

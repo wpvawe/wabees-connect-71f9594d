@@ -12,6 +12,7 @@ import {
   faCalendar,
   faTriangleExclamation,
   faTrash,
+  faKey,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
@@ -29,6 +30,7 @@ import {
   activatePendingSubscription,
   rejectPendingSubscription,
   deleteUserData,
+  sendUserPasswordReset,
 } from "@/lib/admin/mutations";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format } from "date-fns";
@@ -250,6 +252,28 @@ export function UserDetailDrawer({
                         {r}
                       </button>
                     ))}
+                  </div>
+                  <div className="mt-4 border-t border-border pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Password
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Sends a Firebase password-reset email to <b>{user.email || "—"}</b>.
+                      The user will click the link to set a new password themselves.
+                    </p>
+                    <WbButton
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2"
+                      disabled={busy || !user.email}
+                      onClick={() =>
+                        void run("Password reset email sent", () =>
+                          sendUserPasswordReset(user.email, user.id),
+                        )
+                      }
+                    >
+                      <FontAwesomeIcon icon={faKey} className="h-3 w-3" /> Send password reset
+                    </WbButton>
                   </div>
                 </WbCardBody>
               </WbCard>
