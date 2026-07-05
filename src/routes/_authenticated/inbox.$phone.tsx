@@ -491,15 +491,23 @@ function Thread({ phone }: { phone: string }) {
     if (!uid) return;
     setBlockBusy(true);
     try {
-      const convId = normalizePhone(phone);
-      await setDoc(
-        doc(fbDb(), `users/${uid}/conversations/${convId}`),
-        {
-          isBlocked: !isBlocked,
-          blockedAt: !isBlocked ? serverTimestamp() : null,
-          contactPhone: convId,
-        },
-        { merge: true },
+      // Conv doc can live under any candidate id (legacy raw / +E.164 /
+      // digits-only). Update all so the actual doc — wherever it exists —
+      // gets flipped instead of orphaning a fresh normalized one.
+      const canonical = normalizePhone(phone);
+      const candidates = phoneQueryCandidates(phone);
+      await Promise.all(
+        candidates.map((c) =>
+          setDoc(
+            doc(fbDb(), `users/${uid}/conversations/${c}`),
+            {
+              isBlocked: !isBlocked,
+              blockedAt: !isBlocked ? serverTimestamp() : null,
+              contactPhone: canonical,
+            },
+            { merge: true },
+          ).catch(() => {}),
+        ),
       );
       toast.success(isBlocked ? "Contact unblocked" : "Contact blocked");
     } catch (e) {
