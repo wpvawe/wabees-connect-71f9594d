@@ -161,6 +161,15 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
     isPopular: existing?.isPopular ?? false,
     showOnPublic: existing?.showOnPublic ?? true,
     sortOrder: existing?.sortOrder ?? 0,
+    offer: existing?.offer
+      ? {
+          active: existing.offer.active,
+          label: existing.offer.label,
+          discountPct: existing.offer.discountPct,
+          priceOverride: existing.offer.priceOverride,
+          endsAt: existing.offer.endsAt,
+        }
+      : null,
   });
   const [featuresText, setFeaturesText] = useState(form.features.join("\n"));
   const [saving, setSaving] = useState(false);
@@ -180,6 +189,21 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
         .map((s) => s.trim())
         .filter(Boolean)
         .slice(0, 30),
+      offer: form.offer && form.offer.active
+        ? {
+            active: true,
+            label: (form.offer.label || "").trim().slice(0, 40) || "Special offer",
+            discountPct:
+              form.offer.discountPct != null && form.offer.discountPct > 0
+                ? Math.min(100, Math.round(form.offer.discountPct))
+                : null,
+            priceOverride:
+              form.offer.priceOverride != null && form.offer.priceOverride >= 0
+                ? Math.round(form.offer.priceOverride)
+                : null,
+            endsAt: form.offer.endsAt || null,
+          }
+        : null,
     };
     setSaving(true);
     try {
