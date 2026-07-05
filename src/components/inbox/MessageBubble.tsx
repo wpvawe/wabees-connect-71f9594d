@@ -807,9 +807,11 @@ function MessageContent({
   // silently show as a blank/broken bubble — we surface a download link
   // instead. Also used for <video>.
   const [mediaFailed, setMediaFailed] = useState(false);
-  // Inline media renderer used by image/video/audio/document/sticker.
-  const Media = () =>
-    m.mediaUrl ? (
+  // P11 fix — was `const Media = () => …`, a fresh component identity
+  // on every render caused React to remount the media subtree on every
+  // parent state change (mediaFailed, menuOpen, star toggle). Rendering
+  // JSX to a variable keeps the DOM stable.
+  const media: React.ReactNode = m.mediaUrl ? (
       <div className="mb-1 overflow-hidden rounded-md">
         {mediaFailed ? (
           <MediaFallback m={m} mine={mine} />
@@ -901,7 +903,7 @@ function MessageContent({
     case "sticker":
       return (
         <>
-          <Media />
+          {media}
           <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
@@ -909,7 +911,7 @@ function MessageContent({
     case "document":
       return (
         <>
-          <Media />
+          {media}
           <TextBody value={m.caption || cleanBody(m.body)} />
         </>
       );
