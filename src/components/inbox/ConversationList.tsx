@@ -38,6 +38,7 @@ import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { useConvTags } from "@/hooks/useConvTags";
 import { useAgentRole } from "@/hooks/useAgentRole";
+import { useMessageSearch } from "@/hooks/useMessageSearch";
 import {
   togglePin,
   addTag,
