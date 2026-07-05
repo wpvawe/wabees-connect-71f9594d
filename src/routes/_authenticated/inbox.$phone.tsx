@@ -885,6 +885,49 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faClockRotateLeft} className="h-3.5 w-3.5" />
                 Activity timeline
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStarredOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5 text-amber-500" />
+                Starred messages
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const msgs = data ?? [];
+                  if (msgs.length === 0) {
+                    toast.error("No messages to export yet");
+                    setHeaderMenu(false);
+                    return;
+                  }
+                  const meta = {
+                    contactName: conv?.contactName ?? phone,
+                    contactPhone: phone,
+                  };
+                  const base = `wabees-chat-${phone.replace(/\D/g, "")}-${new Date().toISOString().slice(0, 10)}`;
+                  downloadBlob(
+                    exportChatTxt(msgs, meta),
+                    `${base}.txt`,
+                    "text/plain;charset=utf-8",
+                  );
+                  downloadBlob(
+                    exportChatCsv(msgs),
+                    `${base}.csv`,
+                    "text/csv;charset=utf-8",
+                  );
+                  toast.success(`Exported ${msgs.length} messages`);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faFileArrowDown} className="h-3.5 w-3.5" />
+                Export chat (TXT + CSV)
+              </button>
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
