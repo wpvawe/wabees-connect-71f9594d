@@ -444,15 +444,18 @@ export function Composer({
     const convId = to;
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
+    let quotaReserved = false;
     try {
       const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
       }
+      // Atomic reserve (see reserveQuota docs) — no race window vs cap.
       try {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "messages");
+        const { reserveQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -514,15 +517,24 @@ export function Composer({
       });
       const wamid = extractWamid(res.raw);
       if (!res.success) {
+        // Refund the reservation — Meta rejected the send.
+        if (quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1).catch(() => {});
+          quotaReserved = false;
+        }
         await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
         toast.error(res.message ?? "Could not send");
         return;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
-      await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
+      // Counter already atomically bumped in reserveQuota().
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
+      if (quotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "messages", 1).catch(() => {});
+      }
       if (msgRef) {
         await updateDoc(msgRef, {
           status: "failed",
