@@ -27,6 +27,7 @@ import {
 } from "@/lib/firebase/normalizers";
 import { extractWamid, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { incrementMessagesUsed } from "@/lib/plans/limits";
 import type { ScheduledMessage } from "@/lib/firebase/scheduled";
 
 export function useScheduledMessages(phone?: string): {
