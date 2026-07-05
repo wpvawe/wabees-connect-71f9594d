@@ -37,6 +37,7 @@ import {
   faCircleExclamation,
   faStar,
 } from "@fortawesome/free-solid-svg-icons";
+import { faBagShopping, faClipboardList } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -969,6 +970,9 @@ function MessageContent({
     case "button":
     case "interactive": {
       const label = m.buttonReplyText || m.body || "Reply";
+      if (m.interactiveType === "nfm_reply" && m.flowResponse) {
+        return <FlowResponseCard m={m} mine={mine} />;
+      }
       return (
         <div>
           <p className="text-[11px] font-semibold opacity-80">
@@ -1004,7 +1008,7 @@ function MessageContent({
       );
 
     case "order":
-      return <TextBody value={m.body || "🛒 Order received"} />;
+      return <OrderCard m={m} mine={mine} />;
 
     case "poll":
     case "poll_response":
@@ -1312,6 +1316,116 @@ function ContactCard({ raw, mine }: { raw: Record<string, unknown>; mine: boolea
           <FontAwesomeIcon icon={faUserPlus} className="h-3 w-3" /> Save
         </button>
       </div>
+    </div>
+  );
+}
+
+function fmtMoney(amount: number, currency?: string | null): string {
+  const n = amount.toFixed(2);
+  return currency ? `${n} ${currency}` : n;
+}
+
+/**
+ * Structured WhatsApp catalog order (from webhook `case 'order'`). Renders a
+ * receipt-style card with line items and total. Falls back to the message
+ * body when the webhook didn't populate `orderItems` (older messages).
+ */
+function OrderCard({ m, mine }: { m: Message; mine: boolean }) {
+  const items = m.orderItems ?? [];
+  if (items.length === 0) {
+    return (
+      <p className="whitespace-pre-wrap break-words">
+        {m.body || "🛒 Order received"}
+      </p>
+    );
+  }
+  const total = m.orderTotal ?? items.reduce((s, it) => s + (it.lineTotal || 0), 0);
+  const currency = m.orderCurrency ?? items.find((it) => it.currency)?.currency ?? "";
+  return (
+    <div className="min-w-[220px]">
+      <p className="mb-1.5 flex items-center gap-1.5 font-semibold">
+        <FontAwesomeIcon icon={faBagShopping} className="h-3.5 w-3.5" />
+        Order · {items.length} item{items.length === 1 ? "" : "s"}
+      </p>
+      <ul
+        className={cn(
+          "mb-1.5 space-y-1 rounded-md p-2 text-[12px]",
+          mine ? "bg-white/15" : "bg-muted/60",
+        )}
+      >
+        {items.slice(0, 6).map((it, i) => (
+          <li key={i} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 flex-1 truncate">
+              <span className="opacity-70">{it.quantity}× </span>
+              <span className="font-mono">{it.productRetailerId}</span>
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {fmtMoney(it.lineTotal, it.currency || currency)}
+            </span>
+          </li>
+        ))}
+        {items.length > 6 && (
+          <li className="text-[11px] italic opacity-70">
+            +{items.length - 6} more
+          </li>
+        )}
+      </ul>
+      <div className="flex items-center justify-between text-sm font-semibold">
+        <span>Total</span>
+        <span className="tabular-nums">{fmtMoney(total, currency)}</span>
+      </div>
+      {m.orderNote && (
+        <p className="mt-1 whitespace-pre-wrap text-[12px] opacity-80">
+          {m.orderNote}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WhatsApp Flow submission (interactive.nfm_reply). The webhook decodes
+ * `response_json` into `flowResponse`; we render each key/value pair as a
+ * neat two-column grid so agents can read submitted form data quickly.
+ */
+function FlowResponseCard({ m, mine }: { m: Message; mine: boolean }) {
+  const resp = m.flowResponse ?? {};
+  const entries = Object.entries(resp);
+  return (
+    <div className="min-w-[220px]">
+      <p className="mb-1.5 flex items-center gap-1.5 font-semibold">
+        <FontAwesomeIcon icon={faClipboardList} className="h-3.5 w-3.5" />
+        Form submission
+      </p>
+      {entries.length === 0 ? (
+        <p className="text-[12px] italic opacity-80">Empty submission</p>
+      ) : (
+        <dl
+          className={cn(
+            "grid gap-x-2 gap-y-1 rounded-md p-2 text-[12px]",
+            mine ? "bg-white/15" : "bg-muted/60",
+          )}
+          style={{ gridTemplateColumns: "auto 1fr" }}
+        >
+          {entries.slice(0, 12).map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="truncate font-medium opacity-70">{k}</dt>
+              <dd className="min-w-0 truncate break-words">
+                {v === null || v === undefined
+                  ? "—"
+                  : typeof v === "object"
+                    ? JSON.stringify(v)
+                    : String(v)}
+              </dd>
+            </div>
+          ))}
+          {entries.length > 12 && (
+            <div className="col-span-2 text-[11px] italic opacity-70">
+              +{entries.length - 12} more fields
+            </div>
+          )}
+        </dl>
+      )}
     </div>
   );
 }

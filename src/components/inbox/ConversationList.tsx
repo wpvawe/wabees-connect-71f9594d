@@ -38,6 +38,7 @@ import { useConversations, type Conversation } from "@/hooks/useConversations";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { useConvTags } from "@/hooks/useConvTags";
 import { useAgentRole } from "@/hooks/useAgentRole";
+import { useMessageSearch } from "@/hooks/useMessageSearch";
 import {
   togglePin,
   addTag,
@@ -115,6 +116,11 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const role = useAgentRole();
   const isPrivileged = role === "owner" || role === "supervisor";
   const [q, setQ] = useState("");
+  // Inbox-wide substring search across all messages the user can read.
+  // Fires when the search box has 2+ chars; results appear in a
+  // "Messages" section above the conversation list. Firestore has no
+  // full-text index — see useMessageSearch for the fixed-window trade-off.
+  const { hits: msgHits, loading: msgSearching } = useMessageSearch(q);
   const [filter, setFilter] = useState<Filter>("all");
   const [helpOpen, setHelpOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -642,6 +648,49 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {q.trim().length >= 2 && (
+          <div className="border-b border-border bg-muted/30">
+            <div className="flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span>Messages{msgSearching ? " · searching…" : ` · ${msgHits.length}`}</span>
+              {msgHits.length >= 50 && <span>showing first 50</span>}
+            </div>
+            {msgHits.length === 0 && !msgSearching ? (
+              <p className="px-3 pb-2 text-xs italic text-muted-foreground">
+                No message text matches “{q.trim()}”.
+              </p>
+            ) : (
+              <ul className="max-h-64 overflow-y-auto">
+                {msgHits.map((h) => (
+                  <li key={h.id}>
+                    <Link
+                      to="/inbox/$phone"
+                      params={{ phone: h.phone }}
+                      className="block px-3 py-2 text-left hover:bg-muted/60"
+                    >
+                      <div className="mb-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="truncate font-medium text-foreground">
+                          {h.contactName}
+                        </span>
+                        <span className="opacity-70">·</span>
+                        <span>
+                          {h.direction === "outgoing" ? "You" : "Them"}
+                        </span>
+                        {h.createdAt && (
+                          <span className="ml-auto shrink-0">
+                            {format(new Date(h.createdAt), "d MMM")}
+                          </span>
+                        )}
+                      </div>
+                      <p className="line-clamp-2 text-xs">
+                        {highlight(h.body, q.trim())}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {error ? (
           <p className="p-4 text-sm text-destructive">{error}</p>
         ) : filtered === null ? (
@@ -1317,4 +1366,20 @@ function formatPreview(body: string | null | undefined, type: string | null | un
   }
   if (tag && !text) return tag;
   return text || "No preview";
+}
+
+/** Highlight matches of `needle` inside `body`. Case-insensitive. */
+function highlight(body: string, needle: string): React.ReactNode {
+  if (!needle) return body;
+  const idx = body.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx < 0) return body;
+  return (
+    <>
+      {body.slice(0, idx)}
+      <mark className="rounded bg-primary/20 px-0.5 text-foreground">
+        {body.slice(idx, idx + needle.length)}
+      </mark>
+      {body.slice(idx + needle.length)}
+    </>
+  );
 }

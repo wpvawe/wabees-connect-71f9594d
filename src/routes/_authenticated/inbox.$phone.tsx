@@ -24,6 +24,7 @@ import {
   faClockRotateLeft,
   faCircleInfo,
   faStar,
+  faFileArrowDown,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -37,6 +38,8 @@ import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
 import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
+import { StarredDrawer } from "@/components/inbox/StarredDrawer";
+import { exportChatTxt, exportChatCsv, downloadBlob } from "@/lib/inbox/export";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
@@ -112,6 +115,7 @@ function Thread({ phone }: { phone: string }) {
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -881,6 +885,49 @@ function Thread({ phone }: { phone: string }) {
                 <FontAwesomeIcon icon={faClockRotateLeft} className="h-3.5 w-3.5" />
                 Activity timeline
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStarredOpen(true);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5 text-amber-500" />
+                Starred messages
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const msgs = data ?? [];
+                  if (msgs.length === 0) {
+                    toast.error("No messages to export yet");
+                    setHeaderMenu(false);
+                    return;
+                  }
+                  const meta = {
+                    contactName: conv?.contactName ?? phone,
+                    contactPhone: phone,
+                  };
+                  const base = `wabees-chat-${phone.replace(/\D/g, "")}-${new Date().toISOString().slice(0, 10)}`;
+                  downloadBlob(
+                    exportChatTxt(msgs, meta),
+                    `${base}.txt`,
+                    "text/plain;charset=utf-8",
+                  );
+                  downloadBlob(
+                    exportChatCsv(msgs),
+                    `${base}.csv`,
+                    "text/csv;charset=utf-8",
+                  );
+                  toast.success(`Exported ${msgs.length} messages`);
+                  setHeaderMenu(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+              >
+                <FontAwesomeIcon icon={faFileArrowDown} className="h-3.5 w-3.5" />
+                Export chat (TXT + CSV)
+              </button>
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
@@ -1149,6 +1196,24 @@ function Thread({ phone }: { phone: string }) {
         }}
       />
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
+      <StarredDrawer
+        open={starredOpen}
+        onClose={() => setStarredOpen(false)}
+        messages={data ?? []}
+        onJump={(id) => {
+          // Scroll to the target bubble via data-msg-id set on MessageBubble
+          // wrapper. We tag it in the renderer below.
+          requestAnimationFrame(() => {
+            const el = document.querySelector(
+              `[data-msg-id="${CSS.escape(id)}"]`,
+            ) as HTMLElement | null;
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("wb-star-flash");
+            setTimeout(() => el.classList.remove("wb-star-flash"), 1500);
+          });
+        }}
+      />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
@@ -1211,7 +1276,11 @@ function renderWithDayDividers(
         </div>,
       );
     }
-    nodes.push(<MessageBubble key={m.id} m={m} actions={actions} />);
+    nodes.push(
+      <div key={m.id} data-msg-id={m.id} className="transition-colors">
+        <MessageBubble m={m} actions={actions} />
+      </div>,
+    );
   }
   return nodes;
 }

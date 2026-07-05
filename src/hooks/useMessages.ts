@@ -59,6 +59,20 @@ export type Message = {
   raw?: Record<string, unknown> | null;
   reactionAt?: string | null;
   starred?: boolean;
+  // Structured WhatsApp catalog order (webhook.php `case 'order'`).
+  orderItems?: Array<{
+    productRetailerId: string;
+    quantity: number;
+    itemPrice: number;
+    currency: string;
+    lineTotal: number;
+  }> | null;
+  orderTotal?: number | null;
+  orderCurrency?: string | null;
+  orderCatalogId?: string | null;
+  orderNote?: string | null;
+  // Decoded WhatsApp Flow (nfm_reply) response fields.
+  flowResponse?: Record<string, unknown> | null;
 };
 
 const PAGE_SIZE = 300;
@@ -193,6 +207,23 @@ export function useMessages(phone: string | undefined): {
               replyToType: strOrNull(x.replyToType),
               raw: null,
               starred: x.starred === true,
+              orderItems: Array.isArray(x.orderItems)
+                ? (x.orderItems as Array<Record<string, unknown>>).map((it) => ({
+                    productRetailerId: String(it.productRetailerId ?? ""),
+                    quantity: Number(it.quantity ?? 1),
+                    itemPrice: Number(it.itemPrice ?? 0),
+                    currency: String(it.currency ?? ""),
+                    lineTotal: Number(it.lineTotal ?? Number(it.itemPrice ?? 0) * Number(it.quantity ?? 1)),
+                  }))
+                : null,
+              orderTotal: typeof x.orderTotal === "number" ? x.orderTotal : null,
+              orderCurrency: strOrNull(x.orderCurrency),
+              orderCatalogId: strOrNull(x.orderCatalogId),
+              orderNote: strOrNull(x.orderNote),
+              flowResponse:
+                x.flowResponse && typeof x.flowResponse === "object"
+                  ? (x.flowResponse as Record<string, unknown>)
+                  : null,
             };
           });
         // Merge orphan reaction events onto the original message so the chip
