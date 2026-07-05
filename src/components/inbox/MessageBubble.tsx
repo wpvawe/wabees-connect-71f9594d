@@ -475,6 +475,22 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
               <FontAwesomeIcon icon={faShare} className="h-3.5 w-3.5" /> Forward
             </button>
           )}
+          {actions?.onToggleStar && (
+            <button
+              type="button"
+              onClick={() => {
+                actions.onToggleStar?.(m);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+            >
+              <FontAwesomeIcon
+                icon={faStar}
+                className={cn("h-3.5 w-3.5", m.starred && "text-amber-500")}
+              />{" "}
+              {m.starred ? "Unstar" : "Star"}
+            </button>
+          )}
           {m.mediaUrl && (
             <button
               type="button"
