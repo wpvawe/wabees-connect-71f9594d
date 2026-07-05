@@ -43,6 +43,11 @@ const BEARER_AUTH_ENDPOINTS = new Set<string>([
   "subscribe-webhook.php",
 ]);
 
+const CREDENTIAL_REQUIRED_ENDPOINTS = new Set<string>([
+  "verify-token.php",
+  "subscribe-webhook.php",
+]);
+
 /** Fields we scrub from the request body once a bearer token is attached. */
 const SERVER_RESOLVED_FIELDS = [
   "access_token",
@@ -88,7 +93,7 @@ async function postJson<T = unknown>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   let outboundBody: Record<string, unknown> = body;
 
-  if (BEARER_AUTH_ENDPOINTS.has(endpoint)) {
+  if (BEARER_AUTH_ENDPOINTS.has(endpoint) && !CREDENTIAL_REQUIRED_ENDPOINTS.has(endpoint)) {
     const user = fbAuth().currentUser;
     if (user) {
       if (outboundBody.auth_uid === undefined) outboundBody = { ...outboundBody, auth_uid: user.uid };
@@ -199,6 +204,22 @@ export async function clearWebhookOwnerCache(
   const ownerId =
     ownerLine?.match(/(?:ownerId|owner|userId|uid)\s*=\s*([A-Za-z0-9_-]+)/i)?.[1] ?? null;
   return { ownerId };
+}
+
+export async function repairWhatsAppConnect(args: {
+  phone_number_id: string;
+  access_token: string;
+  waba_id?: string;
+  display_phone?: string;
+  business_name?: string;
+  quality_rating?: string;
+  connected_via?: "embedded_signup" | "manual";
+}): Promise<WabeesApiResult<{ ownerId?: string; migratedFrom?: string | null }>> {
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
+  return postJson("whatsapp-connect-repair.php", {
+    ...args,
+    id_token: idToken,
+  });
 }
 
 /**

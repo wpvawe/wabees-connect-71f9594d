@@ -5,6 +5,7 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   query,
   serverTimestamp,
@@ -14,7 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { clearWebhookOwnerCache } from "@/lib/wabees/api";
+import { clearWebhookOwnerCache, repairWhatsAppConnect } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
@@ -44,6 +45,56 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
   const now = serverTimestamp();
 
+  const normalized = {
+    phoneNumberId: input.phone_number_id.trim(),
+    accessToken: input.access_token.trim(),
+    wabaId: input.waba_id?.trim() || "",
+    displayPhone: input.display_phone ?? null,
+    businessName: input.business_name ?? null,
+    qualityRating: input.quality_rating ?? null,
+    connectedVia: input.connected_via ?? "manual",
+  };
+
+  async function saveSelfOnly() {
+    await Promise.all([
+      setDoc(
+        userRef,
+        {
+          whatsappPhoneNumberId: normalized.phoneNumberId,
+          whatsappAccessToken: normalized.accessToken,
+          whatsappBusinessAccountId: normalized.wabaId || null,
+          whatsappDisplayPhone: normalized.displayPhone,
+          whatsappQualityRating: normalized.qualityRating,
+          whatsappConnected: true,
+          dataOwner: deleteField(),
+          dataOwnerJoinedAt: deleteField(),
+          dataOwnerJoinedVia: deleteField(),
+          dataOwnerClearedAt: deleteField(),
+          dataOwnerClearedReason: deleteField(),
+          updatedAt: now,
+        },
+        { merge: true },
+      ),
+      setDoc(
+        subRef,
+        {
+          phoneNumberId: normalized.phoneNumberId,
+          accessToken: normalized.accessToken,
+          businessAccountId: normalized.wabaId,
+          webhookVerifyToken: "",
+          displayPhoneNumber: normalized.displayPhone,
+          businessName: normalized.businessName,
+          qualityRating: normalized.qualityRating,
+          isConnected: true,
+          connectedVia: normalized.connectedVia,
+          connectedAt: now,
+          lastVerifiedAt: now,
+        },
+        { merge: true },
+      ),
+    ]);
+  }
+
   // Authoritative server-side ownership repair is required. The client cannot
   // safely decide whether this phone belongs to a disconnected historical
   // owner, an active workspace, or the current signed-in account.
@@ -51,20 +102,44 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     .currentUser?.getIdToken()
     .catch(() => null);
   if (!serverIdToken) throw new Error("Please sign in again before connecting WhatsApp");
+
+  const phpRepair = await repairWhatsAppConnect({
+    phone_number_id: normalized.phoneNumberId,
+    access_token: normalized.accessToken,
+    waba_id: normalized.wabaId,
+    display_phone: normalized.displayPhone ?? undefined,
+    business_name: normalized.businessName ?? undefined,
+    quality_rating: normalized.qualityRating ?? undefined,
+    connected_via: normalized.connectedVia,
+  }).catch((error) => ({
+    success: false,
+    message: error instanceof Error ? error.message : "repair endpoint unavailable",
+    raw: {},
+  }));
+
+  if (phpRepair.success) {
+    await clearWebhookOwnerCache(normalized.phoneNumberId).catch(() => null);
+    await saveSelfOnly();
+    return;
+  }
+  if (/already connected to another workspace|disconnect it there first/i.test(phpRepair.message ?? "")) {
+    throw new Error(phpRepair.message);
+  }
+
   try {
     const serverRepair = await repairWhatsAppOwnerServer({
       data: {
         idToken: serverIdToken,
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        displayPhone: input.display_phone ?? "",
-        businessName: input.business_name ?? "",
-        qualityRating: input.quality_rating ?? "",
-        connectedVia: input.connected_via ?? "manual",
+        phoneNumberId: normalized.phoneNumberId,
+        accessToken: normalized.accessToken,
+        businessAccountId: normalized.wabaId,
+        displayPhone: normalized.displayPhone ?? "",
+        businessName: normalized.businessName ?? "",
+        qualityRating: normalized.qualityRating ?? "",
+        connectedVia: normalized.connectedVia,
       },
     });
-    await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
+    await clearWebhookOwnerCache(normalized.phoneNumberId).catch(() => null);
     if (serverRepair?.ownerId) {
       // Server repair handled wa_map + owner writes. Mirror the caller's own
       // docs client-side as well so the active onSnapshot immediately switches
@@ -73,11 +148,11 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         setDoc(
           userRef,
           {
-            whatsappPhoneNumberId: input.phone_number_id,
-            whatsappAccessToken: input.access_token,
-            whatsappBusinessAccountId: input.waba_id ?? null,
-            whatsappDisplayPhone: input.display_phone ?? null,
-            whatsappQualityRating: input.quality_rating ?? null,
+            whatsappPhoneNumberId: normalized.phoneNumberId,
+            whatsappAccessToken: normalized.accessToken,
+            whatsappBusinessAccountId: normalized.wabaId || null,
+            whatsappDisplayPhone: normalized.displayPhone,
+            whatsappQualityRating: normalized.qualityRating,
             whatsappConnected: true,
             dataOwner: serverRepair.ownerId !== input.uid ? serverRepair.ownerId : deleteField(),
             updatedAt: now,
@@ -87,15 +162,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         setDoc(
           subRef,
           {
-            phoneNumberId: input.phone_number_id,
-            accessToken: input.access_token,
-            businessAccountId: input.waba_id ?? "",
+            phoneNumberId: normalized.phoneNumberId,
+            accessToken: normalized.accessToken,
+            businessAccountId: normalized.wabaId,
             webhookVerifyToken: "",
-            displayPhoneNumber: input.display_phone ?? null,
-            businessName: input.business_name ?? null,
-            qualityRating: input.quality_rating ?? null,
+            displayPhoneNumber: normalized.displayPhone,
+            businessName: normalized.businessName,
+            qualityRating: normalized.qualityRating,
             isConnected: true,
-            connectedVia: input.connected_via ?? "manual",
+            connectedVia: normalized.connectedVia,
             connectedAt: now,
             lastVerifiedAt: now,
           },
@@ -107,14 +182,37 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     throw new Error("We couldn't verify this number right now. Please try again in a moment.");
   } catch (error) {
     const emsg = error instanceof Error ? error.message : String(error ?? "");
-    if (/already connected to another workspace/i.test(emsg)) {
+    if (/already connected to another workspace|already connected to another account|send you a new invite/i.test(emsg)) {
       throw error instanceof Error ? error : new Error(emsg);
     }
     console.warn(
       "[wa-connect] server repair failed:",
       error instanceof Error ? error.message : error,
     );
-    throw new Error("We couldn't verify this number right now. Please try again in a moment.");
+    const mapRef = doc(db, "wa_map", normalized.phoneNumberId);
+    const existingMap = await getDocFromServer(mapRef).catch(() => null);
+    if (existingMap?.exists()) {
+      const map = existingMap.data() as Record<string, unknown>;
+      const ownerId = typeof map.ownerId === "string" ? map.ownerId : typeof map.userId === "string" ? map.userId : "";
+      if (ownerId && ownerId !== input.uid) {
+        throw new Error(
+          "This WhatsApp number is already connected to another workspace. Disconnect it there first, then connect here.",
+        );
+      }
+    }
+    await setDoc(
+      mapRef,
+      {
+        ownerId: input.uid,
+        userId: input.uid,
+        users: arrayUnion({ userId: input.uid }),
+        active: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    await saveSelfOnly();
+    await clearWebhookOwnerCache(normalized.phoneNumberId).catch(() => null);
   }
 
 }
