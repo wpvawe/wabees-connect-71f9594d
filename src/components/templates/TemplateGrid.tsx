@@ -236,6 +236,14 @@ export function TemplateGrid() {
         } catch {
           /* non-fatal */
         }
+        // Bump plan usage counter — template quick-send was previously
+        // missing this, so template sends slipped past monthly caps.
+        try {
+          const { incrementMessagesUsed } = await import("@/lib/plans/limits");
+          await incrementMessagesUsed(uid, 1);
+        } catch {
+          /* non-fatal */
+        }
       }
       toast.success("Template sent");
       setShowSend(false);
