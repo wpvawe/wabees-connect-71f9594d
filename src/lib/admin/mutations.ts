@@ -14,6 +14,7 @@ import {
   Timestamp,
   query,
   limit,
+  runTransaction,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 
@@ -51,7 +52,17 @@ export async function setUserRole(uid: string, role: string) {
   });
 }
 
+// Restricted whitelist to prevent arbitrary field overwrites from the admin
+// panel. Add new keys explicitly as new admin UIs need them.
+const USER_FIELD_WHITELIST = new Set<string>([
+  "aiBotEnabled",
+  "notes", // internal admin note
+  "adminFlag",
+]);
 export async function setUserField(uid: string, field: string, value: unknown) {
+  if (!USER_FIELD_WHITELIST.has(field)) {
+    throw new Error(`Field "${field}" cannot be edited from admin panel`);
+  }
   await updateDoc(doc(fbDb(), "users", uid), {
     [field]: value,
     updatedAt: serverTimestamp(),
@@ -163,41 +174,99 @@ export async function broadcastNotification(args: {
   return written;
 }
 
+// Compute the actual duration (days) from a plan's billing type. `custom`
+// respects the admin-entered day count; everything else is derived so the
+// two fields can't drift out of sync in the UI.
+export function daysForExpiryType(expiryType: string, expiryDays: number): number {
+  switch (expiryType) {
+    case "monthly": return 30;
+    case "quarterly": return 90;
+    case "yearly": return 365;
+    case "lifetime": return 0;
+    case "custom": return Math.max(1, expiryDays || 30);
+    default: return expiryDays > 0 ? expiryDays : 30;
+  }
+}
+
 // ============ PENDING SUBS ============
+// Uses a transaction so two admins clicking "Activate" at the same time
+// can't both write a fresh sub doc (which used to double-reset counters).
 export async function activatePendingSubscription(userId: string) {
   const db = fbDb();
   const pendingRef = doc(db, "pending_subscriptions", userId);
-  const pendingSnap = await getDoc(pendingRef);
-  if (!pendingSnap.exists()) throw new Error("No pending request found");
-  const raw = pendingSnap.data() as Record<string, unknown>;
-  const sub = (raw.subscription as Record<string, unknown>) ?? {};
-  const planId = (sub.planId as string) ?? "";
-  if (!planId) throw new Error("Pending request has no planId");
+  const subRef = doc(db, "users", userId, "subscription", "current");
 
-  const planSnap = await getDoc(doc(db, "plans", planId));
-  if (!planSnap.exists()) throw new Error("Plan no longer exists");
-  const plan = planSnap.data() as Record<string, unknown>;
+  const { planName, planId, maxAiMessages } = await runTransaction(db, async (tx) => {
+    const pendingSnap = await tx.get(pendingRef);
+    if (!pendingSnap.exists()) {
+      throw new Error("No pending request (already processed or removed)");
+    }
+    const raw = pendingSnap.data() as Record<string, unknown>;
+    const sub = (raw.subscription as Record<string, unknown>) ?? {};
+    const pid = (sub.planId as string) ?? "";
+    if (!pid) throw new Error("Pending request has no planId");
 
+    const planSnap = await tx.get(doc(db, "plans", pid));
+    if (!planSnap.exists()) throw new Error("Plan no longer exists");
+    const plan = planSnap.data() as Record<string, unknown>;
+
+    const currentSnap = await tx.get(subRef);
+    const current = currentSnap.exists()
+      ? (currentSnap.data() as Record<string, unknown>)
+      : {};
+
+    const newSub = buildSubFromPlan(pid, plan, current);
+    tx.set(subRef, newSub);
+    tx.delete(pendingRef);
+    return {
+      planId: pid,
+      planName: newSub.planName,
+      maxAiMessages: newSub.maxAiMessages,
+    };
+  });
+
+  // Best-effort side effects (outside tx — they don't need atomicity).
+  await setDoc(
+    doc(db, "users", userId, "bot_usage", "current"),
+    {
+      monthlyLimit: maxAiMessages,
+      usedThisMonth: 0,
+      currentPeriodStart: new Date().toISOString().slice(0, 7) + "-01",
+    },
+    { merge: true },
+  );
+  try {
+    await addDoc(collection(db, "users", userId, "notifications"), {
+      title: "Plan Activated ✅",
+      body: `Your ${planName} plan is now active.`,
+      type: "plan_activated",
+      data: { planId },
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* non-critical */
+  }
+}
+
+function buildSubFromPlan(
+  planId: string,
+  plan: Record<string, unknown>,
+  current: Record<string, unknown>,
+) {
   const expiryType = (plan.expiryType as string) ?? "monthly";
-  const expiryDays = (plan.expiryDays as number) ?? 30;
-  const days = expiryType === "yearly" ? (expiryDays <= 0 ? 365 : expiryDays) : expiryDays;
+  const expiryDays = daysForExpiryType(expiryType, (plan.expiryDays as number) ?? 30);
   const isLifetime = expiryType === "lifetime";
-
   const now = Timestamp.now();
   const endDate = isLifetime
     ? null
-    : Timestamp.fromMillis(now.toMillis() + days * 24 * 60 * 60 * 1000);
+    : Timestamp.fromMillis(now.toMillis() + expiryDays * 86_400_000);
 
-  // Carry-over counters from the user's EXISTING subscription doc, not from
-  // the pending request (which was written by the user and can be tampered).
-  const currentSnap = await getDoc(doc(db, "users", userId, "subscription", "current"));
-  const current =
-    currentSnap.exists() ? (currentSnap.data() as Record<string, unknown>) : {};
   const carriedContacts = typeof current.contactsUsed === "number" ? current.contactsUsed : 0;
   const carriedBots = typeof current.botsUsed === "number" ? current.botsUsed : 0;
   const carriedTemplates = typeof current.templatesUsed === "number" ? current.templatesUsed : 0;
 
-  const newSub = {
+  return {
     id: "current",
     planId,
     planName: (plan.name as string) ?? "",
@@ -214,18 +283,35 @@ export async function activatePendingSubscription(userId: string) {
     maxBots: (plan.maxBots as number) ?? 0,
     maxTemplates: (plan.maxTemplates as number) ?? 0,
     maxAiMessages: (plan.maxAiMessages as number) ?? 0,
+    hasAnalytics: Boolean(plan.hasAnalytics),
+    hasPrioritySupport: Boolean(plan.hasPrioritySupport),
+    hasApiAccess: Boolean(plan.hasApiAccess),
     expiryType,
     expiryDays,
     startDate: now,
     endDate,
     activatedAt: now,
     createdAt: current.createdAt ?? now,
+    isCustom: false,
+    customizedAt: null,
   };
+}
 
-  await setDoc(doc(db, "users", userId, "subscription", "current"), newSub);
-  await deleteDoc(pendingRef);
-
-  // Reset bot usage
+// Admin-side: directly assign / change any plan for any user, bypassing
+// the pending-request flow. Also clears any pending doc for cleanliness.
+export async function adminAssignPlan(userId: string, planId: string) {
+  const db = fbDb();
+  const planSnap = await getDoc(doc(db, "plans", planId));
+  if (!planSnap.exists()) throw new Error("Plan not found");
+  const plan = planSnap.data() as Record<string, unknown>;
+  const subRef = doc(db, "users", userId, "subscription", "current");
+  const currentSnap = await getDoc(subRef);
+  const current = currentSnap.exists()
+    ? (currentSnap.data() as Record<string, unknown>)
+    : {};
+  const newSub = buildSubFromPlan(planId, plan, current);
+  await setDoc(subRef, newSub);
+  await deleteDoc(doc(db, "pending_subscriptions", userId)).catch(() => undefined);
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
     {
@@ -235,13 +321,11 @@ export async function activatePendingSubscription(userId: string) {
     },
     { merge: true },
   );
-
-  // Notify user
   try {
     await addDoc(collection(db, "users", userId, "notifications"), {
-      title: "Plan Activated ✅",
-      body: `Your ${newSub.planName} plan is now active.`,
-      type: "plan_activated",
+      title: "Plan Updated by Admin",
+      body: `Your plan is now ${newSub.planName}.`,
+      type: "plan_assigned",
       data: { planId },
       read: false,
       createdAt: serverTimestamp(),
@@ -249,6 +333,114 @@ export async function activatePendingSubscription(userId: string) {
   } catch {
     /* non-critical */
   }
+}
+
+// Per-user custom limit overrides. Only touches the user's OWN subscription
+// doc — the underlying plan and other users are unaffected. Marks the sub
+// with `isCustom: true` so the UI can flag it clearly.
+export type SubscriptionOverrides = {
+  maxMessages?: number;
+  maxContacts?: number;
+  maxCampaigns?: number;
+  maxBots?: number;
+  maxTemplates?: number;
+  maxAiMessages?: number;
+  hasAnalytics?: boolean;
+  hasPrioritySupport?: boolean;
+  hasApiAccess?: boolean;
+};
+export async function updateUserSubscriptionLimits(
+  userId: string,
+  overrides: SubscriptionOverrides,
+) {
+  const db = fbDb();
+  const subRef = doc(db, "users", userId, "subscription", "current");
+  const snap = await getDoc(subRef);
+  if (!snap.exists()) throw new Error("User has no active subscription — assign a plan first");
+  const patch: Record<string, unknown> = {
+    ...overrides,
+    isCustom: true,
+    customizedAt: serverTimestamp(),
+  };
+  await updateDoc(subRef, patch);
+  // Keep AI bot cap aligned if changed.
+  if (typeof overrides.maxAiMessages === "number") {
+    await setDoc(
+      doc(db, "users", userId, "bot_usage", "current"),
+      { monthlyLimit: overrides.maxAiMessages },
+      { merge: true },
+    );
+  }
+  try {
+    await addDoc(collection(db, "users", userId, "notifications"), {
+      title: "Your Plan Limits Were Updated",
+      body: "Admin has customised your plan limits. Check the Plans page for details.",
+      type: "plan_customised",
+      data: {},
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* non-critical */
+  }
+}
+
+// Extend (or shrink, if days<0) the current subscription's end date.
+export async function extendSubscriptionExpiry(userId: string, deltaDays: number) {
+  if (!Number.isFinite(deltaDays) || deltaDays === 0) {
+    throw new Error("Enter a non-zero number of days");
+  }
+  const db = fbDb();
+  const subRef = doc(db, "users", userId, "subscription", "current");
+  const snap = await getDoc(subRef);
+  if (!snap.exists()) throw new Error("No subscription to extend");
+  const data = snap.data() as Record<string, unknown>;
+  if (data.expiryType === "lifetime") {
+    throw new Error("Lifetime plans have no expiry date");
+  }
+  const endRaw = data.endDate;
+  let endMs: number;
+  if (endRaw && typeof endRaw === "object" && "toMillis" in (endRaw as object)) {
+    endMs = (endRaw as Timestamp).toMillis();
+  } else {
+    endMs = Date.now();
+  }
+  // If the sub already expired, extend from *today* so the user actually gets
+  // the full N days — not N days into the past.
+  if (endMs < Date.now()) endMs = Date.now();
+  const newEnd = Timestamp.fromMillis(endMs + deltaDays * 86_400_000);
+  await updateDoc(subRef, { endDate: newEnd, status: "active" });
+  try {
+    await addDoc(collection(db, "users", userId, "notifications"), {
+      title: deltaDays > 0 ? "Subscription Extended" : "Subscription Adjusted",
+      body: `Your plan validity has been ${deltaDays > 0 ? "extended" : "reduced"} by ${Math.abs(deltaDays)} day${Math.abs(deltaDays) === 1 ? "" : "s"}.`,
+      type: "plan_extended",
+      data: { deltaDays },
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* non-critical */
+  }
+}
+
+// Reset the "used" counters on the current sub without changing the plan
+// — handy when admin wants to give a fresh billing cycle mid-period.
+export async function resetSubscriptionCounters(userId: string) {
+  const db = fbDb();
+  const subRef = doc(db, "users", userId, "subscription", "current");
+  const snap = await getDoc(subRef);
+  if (!snap.exists()) throw new Error("No subscription to reset");
+  await updateDoc(subRef, {
+    messagesUsed: 0,
+    campaignsUsed: 0,
+    aiMessagesUsed: 0,
+  });
+  await setDoc(
+    doc(db, "users", userId, "bot_usage", "current"),
+    { usedThisMonth: 0, currentPeriodStart: new Date().toISOString().slice(0, 7) + "-01" },
+    { merge: true },
+  );
 }
 
 export async function rejectPendingSubscription(userId: string) {

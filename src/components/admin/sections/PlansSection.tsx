@@ -235,19 +235,50 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <NumField label="Price" v={form.priceMonthly} onChange={(v) => set("priceMonthly", v)} />
-            <NumField label="Expiry days" v={form.expiryDays} onChange={(v) => set("expiryDays", v)} />
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Type</label>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Billing cycle
+              </label>
               <select
                 value={form.expiryType}
-                onChange={(e) => set("expiryType", e.target.value)}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  set("expiryType", t);
+                  // Auto-fill days from cycle so admin never has to think
+                  // about the two fields separately.
+                  const auto: Record<string, number> = {
+                    monthly: 30,
+                    quarterly: 90,
+                    yearly: 365,
+                    lifetime: 0,
+                  };
+                  if (t in auto) set("expiryDays", auto[t]);
+                }}
                 className="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
               >
-                <option value="monthly">monthly</option>
-                <option value="yearly">yearly</option>
-                <option value="lifetime">lifetime</option>
+                <option value="monthly">Monthly (30 days)</option>
+                <option value="quarterly">Quarterly (90 days)</option>
+                <option value="yearly">Yearly (365 days)</option>
+                <option value="lifetime">Lifetime (no expiry)</option>
+                <option value="custom">Custom duration…</option>
               </select>
             </div>
+            {form.expiryType === "custom" ? (
+              <NumField
+                label="Custom days"
+                v={form.expiryDays}
+                onChange={(v) => set("expiryDays", v)}
+              />
+            ) : (
+              <div className="flex flex-col justify-end">
+                <p className="mb-1.5 text-sm font-medium text-foreground">Duration</p>
+                <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  {form.expiryType === "lifetime"
+                    ? "Never expires"
+                    : `${form.expiryDays} days · auto`}
+                </p>
+              </div>
+            )}
             <NumField label="Sort order" v={form.sortOrder} onChange={(v) => set("sortOrder", v)} />
           </div>
 

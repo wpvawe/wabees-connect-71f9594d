@@ -32,6 +32,7 @@ import {
 } from "@/lib/admin/mutations";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format } from "date-fns";
+import { PlanManagementCard } from "./PlanManagementCard";
 
 export function UserDetailDrawer({
   uid,
@@ -153,6 +154,9 @@ export function UserDetailDrawer({
 
               {/* Current subscription */}
               <SubscriptionCard sub={sub} loading={subLoading} />
+
+              {/* Full plan management: assign, customise limits, extend expiry */}
+              <PlanManagementCard uid={user.id} />
 
               {/* WhatsApp */}
               <WbCard>
