@@ -76,7 +76,7 @@ export function BusinessProfileSection() {
           action: "get",
           phone_number_id: wa.phone_number_id,
           id_token: idToken,
-          access_token: creds?.access_token,
+          access_token: "",
         }),
       });
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
@@ -124,7 +124,7 @@ export function BusinessProfileSection() {
         action: "update",
         phone_number_id: wa.phone_number_id,
         id_token: idToken,
-        access_token: creds?.access_token,
+        access_token: "",
         vertical: form.vertical || "UNDEFINED",
         websites: form.website ? [form.website] : [],
       };
