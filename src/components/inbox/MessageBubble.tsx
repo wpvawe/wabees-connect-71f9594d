@@ -1007,7 +1007,7 @@ function MessageContent({
       );
 
     case "order":
-      return <TextBody value={m.body || "🛒 Order received"} />;
+      return <OrderCard m={m} mine={mine} />;
 
     case "poll":
     case "poll_response":
