@@ -1,44 +1,47 @@
+# Chat / Inbox — Baaki reh gaye kaam (sab step by step)
 
-# Baqi chat audit fixes — sequenced plan
+Ab jo aitems reh gaye the (frontend + PHP backend dono), sequence me
+karenge. Backend access `rules.md` + `HOSTINGER_SSH_*` env se hai —
+`webhook.php` (3942 lines) aur `cron/dispatch-scheduled.php` (442 lines)
+SSH ke through edit karenge. Har PHP edit ke pehle server-side `.bak`
+banega taakay rollback safe rahe.
 
-rules.md me indexes deploy section add ho gaya. Ab audit ke remaining items — scope bara hai, is liye 4 batches me karte hain. Har batch ke baad quick verify + next batch.
+## Order of execution
 
-## Batch 1 — Perf & scale (highest impact)
-- **N+1 fallback dedup** in `ConversationList` — cache resolved contact/name docs; skip re-fetching same phone on every incoming message.
-- **Messages pagination** — 300 hard cap remove. Add "Load older messages" button in `useMessages` + `inbox.$phone.tsx` (cursor-based, +200 per fetch).
-- **Conversations pagination** — 200 cap remove. Add infinite scroll / load-more in `ConversationList`.
-- **Jump to first-unread** — on thread open, auto-scroll to first unread divider (or bottom if none).
+### Batch A — Backend foundations (PHP webhook)
+1. **Inbound typing indicator persist** (`webhook.php`)
+   - Meta ke `statuses[].message_status = "typing"` / `messages[].type = "typing"` events parse karo.
+   - Conversation doc pe `typingUntil = now + 25s` + `typingWamid` write karo.
+2. **Structured order / interactive nfm_reply persist** (`webhook.php`)
+   - `messages[].order.product_items[]` → `orderItems` array (retailer_id, quantity, item_price, currency), `orderTotal`, `orderCatalogId`.
+   - `messages[].interactive.nfm_reply.response_json` → `flowResponse` object.
+3. **Cron subscription `messagesUsed` guard** (`cron/dispatch-scheduled.php`)
+   - Ensure `messagesUsed` increment fires on every server-side dispatch (currently bypasses).
 
-## Batch 2 — Composer UX
-- **Inline template picker** — `/` shows canned (already), add `#` prefix to show approved templates from `useTemplates`; on pick, if template has vars open a small dialog, else send directly via existing send-template call.
-- **Draft indicator** in `ConversationList` — italic "Draft: …" if `wb:draft:<phone>` in localStorage.
-- **Image compression** before upload — client-side resize/quality-drop to fit Meta 5MB image cap; keep original if already small.
+### Batch B — Frontend: typing + rich payloads
+4. **useConversations**: expose `typingUntil` on conversation type.
+5. **useMessages**: expose `orderItems`, `orderTotal`, `orderCatalogId`, `flowResponse`.
+6. **Thread header** — show "typing…" dot when `typingUntil > now`.
+7. **MessageBubble** — rich `order` renderer (line-items table, total), `interactive` nfm_reply renderer (key/value grid).
 
-## Batch 3 — Reliability & counters
-- **Scheduled dispatcher double-count guard** — client dispatcher only increments if `dispatchedBy !== "cron"`; server cron sets that flag.
-- **Push notification deep-link** — FCM click handler navigates to `/inbox/<phone>` if payload has `contactPhone`.
-- **Typing indicator (inbound)** — read `typing` flag written by webhook (if present) and show "typing…" dots for 5s in header.
+### Batch C — Frontend: starred, search, export
+8. **Starred messages drawer** — new right-side panel showing all starred messages for current thread, click → scroll to that message. Access from thread header.
+9. **Inbox-wide search** — extend inbox list search to also query all `messages` where body/caption contains query (limit 50), show "Messages" section with jump-to-thread.
+10. **Chat export** — TXT + CSV download of current thread from header menu. WhatsApp-style plain-text format.
 
-## Batch 4 — Rich rendering (smaller polish)
-- **Sticker rendering** in `MessageBubble` (image variant, transparent background).
-- **Catalog / product / order** minimal card renderer (name + thumb + link) — currently show as "unsupported".
-- **Message star/pin** — bubble action → writes `starred:true` on message doc; small filter chip in list header.
+### Batch D — Deploy + verify
+11. Redeploy Firestore indexes if any new composite query needed (unlikely).
+12. Playwright smoke on `/inbox` (starred toggle + drawer, `#template` picker still works, order bubble renders on a test message).
 
-## Out of scope (explicitly deferred, flag only)
-- Virtualized message list (react-virtuoso — separate migration).
-- Inbox-wide search across all conversations.
-- Export chat to PDF/CSV.
-- Business-hours customer-facing auto-reply (working-hours code hai, sender missing).
+## Out of scope (confirmed)
+- Virtualized message list (needs `@tanstack/react-virtual` + heavier refactor).
+- Business-hours auto-reply.
+- Push deep-link (already working per prior audit).
+- Whatsapp catalog product image fetch (would need Meta catalog API, separate feature).
 
-## Technical notes
-- Har feature ke liye existing `assertWithinPlanLimit` + `incrementMessagesUsed` reuse honge.
-- Pagination cursor: Firestore `startAfter(lastDoc)`. Existing `useMessages` / `useConversations` extend karte hain, new hooks nahi banate.
-- Image compress: browser Canvas API — no new npm dep.
-- Template picker: reuse `useTemplates` + existing `sendTemplateMessage` from `@/lib/wabees/api`.
+## Rollback strategy
+- Every PHP file edited via SSH gets copied to `<file>.bak.<timestamp>` first (mirrors existing `.bak` convention on the server). Frontend changes are in git.
 
-## Verify per batch
-- Typecheck auto (harness).
-- Playwright quick smoke for Batch 1 (pagination + jump-to-unread) since visible.
-- Batch 2–4 verify by opening `/inbox/<phone>` in preview after each.
-
-Confirm to start with Batch 1, ya sequence badalna hai to batao.
+## Confirm to proceed
+Bolo "haan" ya specific batch (A/B/C) pick karo — main phir order me
+execute karke har batch ke baad short summary + verification result dunga.
