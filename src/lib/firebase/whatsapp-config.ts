@@ -127,6 +127,15 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     return;
   }
 
+  // FIRST-BIND LOCK: PHP returned a hard 409 saying this phone number is
+  // permanently linked to another account. Do not fall through to the TS
+  // fallback (which would try to claim it) — surface the message as-is so the
+  // UI can tell the user which email to sign in with.
+  const phpLockMsg = phpRepair.message ?? "";
+  if (/permanently linked|linked to another account|linked to [\w.*@]+/i.test(phpLockMsg)) {
+    throw new Error(phpLockMsg);
+  }
+
   try {
     const serverRepair = await repairWhatsAppOwnerServer({
       data: {
