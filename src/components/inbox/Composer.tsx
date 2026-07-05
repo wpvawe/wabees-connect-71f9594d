@@ -1009,3 +1009,36 @@ async function maybeAutoAssignOnReply(
     { source: "auto_reply", reason: "Auto-assigned on first reply" },
   );
 }
+
+/**
+ * Downscale + re-encode an image so it fits under Meta's 5 MB image cap.
+ * Longest side is clamped to 1920 px (WhatsApp itself does the same on
+ * outbound photos). Quality steps 0.85 → 0.7 → 0.55 until the encoded
+ * result is under 3 MB, leaving headroom for the multipart wrapper.
+ */
+async function compressImage(file: File): Promise<File> {
+  if (typeof window === "undefined" || !("createImageBitmap" in window)) return file;
+  const bitmap = await createImageBitmap(file);
+  const MAX = 1920;
+  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close?.();
+  const TARGET = 3_000_000;
+  for (const q of [0.85, 0.7, 0.55, 0.4]) {
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", q),
+    );
+    if (blob && (blob.size <= TARGET || q === 0.4)) {
+      const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+      return new File([blob], name, { type: "image/jpeg", lastModified: Date.now() });
+    }
+  }
+  return file;
+}
