@@ -74,11 +74,11 @@ export async function createAgentInvite(input: {
   ownerBusinessName?: string | null;
   role: InviteRole;
   email?: string | null;
-  ttlDays?: number;
+  ttlDays?: number | null;
 }): Promise<{ invite: AgentInvite; link: string }> {
   const db = fbDb();
-  const ttl = Math.max(1, Math.min(60, input.ttlDays ?? 14));
-  const expiresAt = new Date(Date.now() + ttl * 24 * 60 * 60 * 1000);
+  const ttl = input.ttlDays === null ? null : Math.max(1, Math.min(60, input.ttlDays ?? 14));
+  const expiresAt = ttl === null ? null : new Date(Date.now() + ttl * 24 * 60 * 60 * 1000);
   const email = (input.email ?? "").trim().toLowerCase() || null;
   const role: InviteRole = input.role === "supervisor" ? "supervisor" : "agent";
 
@@ -94,7 +94,7 @@ export async function createAgentInvite(input: {
       role,
       status: "pending" as InviteStatus,
       createdAt: serverTimestamp(),
-      expiresAt: Timestamp.fromDate(expiresAt),
+      expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
       createdByEmail: input.ownerEmail ?? null,
     });
 
@@ -106,7 +106,7 @@ export async function createAgentInvite(input: {
       role,
       status: "pending" as InviteStatus,
       email,
-      expiresAt: Timestamp.fromDate(expiresAt),
+      expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
       ownerEmail: input.ownerEmail ?? null,
       ownerBusinessName: input.ownerBusinessName ?? null,
       createdAt: serverTimestamp(),
@@ -123,7 +123,7 @@ export async function createAgentInvite(input: {
         role,
         status: "pending",
         createdAt: Date.now(),
-        expiresAt: expiresAt.getTime(),
+        expiresAt: expiresAt ? expiresAt.getTime() : null,
         createdByEmail: input.ownerEmail ?? null,
       },
       link: `${origin}/join/${code}`,

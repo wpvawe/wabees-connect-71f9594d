@@ -39,6 +39,7 @@ const BEARER_AUTH_ENDPOINTS = new Set<string>([
   "send-interactive.php",
   "delete-message.php",
   "upload-media.php",
+  "message-links.php",
   "subscribe-webhook.php",
 ]);
 

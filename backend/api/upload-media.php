@@ -11,7 +11,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../config/site-config.php';
+require_once __DIR__ . '/../config/wa-bearer-auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -36,6 +37,18 @@ $file = $_FILES['file'];
 $type = $_POST['type'] ?? 'image';
 $phoneNumberId = $_POST['phone_number_id'] ?? '';
 $accessToken = $_POST['access_token'] ?? '';
+
+if (empty($phoneNumberId) || empty($accessToken)) {
+    $authInput = $_POST;
+    $auth = wabees_apply_bearer_auth($authInput);
+    if (!empty($auth['error'])) {
+        http_response_code((int)($auth['status'] ?? 401));
+        echo json_encode(['success' => false, 'message' => $auth['error']]);
+        exit;
+    }
+    $phoneNumberId = $authInput['phone_number_id'] ?? $phoneNumberId;
+    $accessToken = $authInput['access_token'] ?? $accessToken;
+}
 
 if (empty($phoneNumberId) || empty($accessToken)) {
     http_response_code(400);

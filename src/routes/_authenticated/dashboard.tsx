@@ -79,8 +79,8 @@ function DashboardPage() {
         ) : !wa && isAgent ? (
           <WbEmpty
             icon={faPlug}
-            title="Insufficient permissions"
-            description="Your access to this workspace has been revoked. Ask the owner to send you a fresh invite."
+            title="Workspace disconnected"
+            description="The owner has disconnected WhatsApp for this workspace. Ask the owner to reconnect it from the Connect page."
           />
         ) : !wa ? (
           <WbEmpty

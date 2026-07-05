@@ -51,6 +51,7 @@ import { WorkingHoursDialog } from "@/components/agents/WorkingHoursDialog";
 import { InviteAgentDialog } from "@/components/agents/InviteAgentDialog";
 import { useAgentInvites } from "@/hooks/useAgentInvites";
 import { revokeAgentInvite, createAgentInvite } from "@/lib/firebase/agent-invites";
+import { formatInviteExpiry, sendAgentInviteEmail } from "@/lib/agents/invite-email";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -71,6 +72,7 @@ function AgentsPage() {
   const [open, setOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [existingTtlDays, setExistingTtlDays] = useState<number | null>(7);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
@@ -118,21 +120,39 @@ function AgentsPage() {
       // not found"). Route this through the invite flow instead — it works
       // whether or not the invitee already has a Wabees account, and it
       // asks them to accept access rather than silently granting it.
-      const { link } = await createAgentInvite({
+      const { invite, link } = await createAgentInvite({
         ownerUid: selfUid,
         ownerEmail: currentEmail,
         ownerBusinessName: owner?.businessName ?? owner?.displayName ?? null,
         role: "agent",
         email: email.trim(),
-        ttlDays: 14,
+        ttlDays: existingTtlDays,
+      });
+      const recipient = email.trim();
+      const emailResult = await sendAgentInviteEmail({
+        recipient,
+        ownerEmail: currentEmail,
+        ownerBusinessName: owner?.businessName ?? owner?.displayName ?? null,
+        invite,
+        link,
+        ttlDays: existingTtlDays,
       });
       try {
         await navigator.clipboard.writeText(link);
-        toast.success("Invite link copied — share it with the agent to join");
+        toast.success(
+          emailResult.kind === "sent"
+            ? `Invite emailed to ${recipient}; link also copied`
+            : `Invite created, but email failed: ${emailResult.message}. Link copied.`,
+        );
       } catch {
-        toast.success("Invite created — open Invite dialog to copy the link");
+        toast.success(
+          emailResult.kind === "sent"
+            ? `Invite emailed to ${recipient}`
+            : `Invite created, but email failed: ${emailResult.message}`,
+        );
       }
       setEmail("");
+      setExistingTtlDays(7);
       setOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create invite");
@@ -392,7 +412,7 @@ function AgentsPage() {
                         <span className="font-mono tracking-widest">{inv.code}</span>
                         {inv.expiresAt
                           ? ` · Expires ${format(new Date(inv.expiresAt), "PP")}`
-                          : ""}
+                          : " · Never expires"}
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
@@ -636,6 +656,26 @@ function AgentsPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="agent@example.com"
           />
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Expires in
+            </label>
+            <select
+              value={existingTtlDays === null ? "never" : String(existingTtlDays)}
+              onChange={(e) =>
+                setExistingTtlDays(e.target.value === "never" ? null : Number(e.target.value))
+              }
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            >
+              <option value={1}>1 day</option>
+              <option value={7}>7 days</option>
+              <option value={30}>30 days</option>
+              <option value="never">Never</option>
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {formatInviteExpiry(existingTtlDays)}. We'll email the invite automatically.
+            </p>
+          </div>
           <DialogFooter>
             <WbButton variant="secondary" onClick={() => setOpen(false)}>
               Cancel

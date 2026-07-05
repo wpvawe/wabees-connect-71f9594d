@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 import type { WorkingHours } from "@/lib/firebase/working-hours";
 import type { Availability } from "@/hooks/useAgentAvailability";
@@ -23,6 +23,10 @@ export type Agent = {
 
 export function useAgents(): { data: Agent[] | null; error: string | null } {
   const uid = useEffectiveUid();
+  const session = useFirebaseSession();
+  const selfUid = session.status === "ready" ? session.uid : null;
+  const maskOtherEmails =
+    session.status === "ready" && !!session.dataOwner && session.dataOwner !== session.uid;
   const [data, setData] = useState<Agent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,9 +44,10 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
             .filter((d) => d.id !== uid)
             .map((d) => {
             const x = d.data() as Record<string, unknown>;
+            const email = str(x.email);
             return {
               id: d.id,
-              email: str(x.email),
+              email: maskOtherEmails && d.id !== selfUid ? "" : email,
               joinedAt: toIso(x.joinedAt),
               role: strOrNull(x.role),
               status: (typeof x.status === "string" && x.status) ? x.status : "active",
@@ -74,7 +79,7 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
       (err) => setError(err.message),
     );
     return () => unsub();
-  }, [uid]);
+  }, [uid, selfUid, maskOtherEmails]);
 
   return { data, error };
 }

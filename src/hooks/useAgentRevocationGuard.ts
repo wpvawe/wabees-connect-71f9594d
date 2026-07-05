@@ -35,51 +35,49 @@ export function useAgentRevocationGuard(): void {
     const key = `${uid}::${dataOwner}`;
     if (healedFor.current === key) return;
 
+    const heal = async (reason: "revoked" | "missing" | "permission_denied") => {
+      if (healedFor.current === key) return;
+      healedFor.current = key;
+      try {
+        await updateDoc(doc(db, `users/${uid}`), {
+          dataOwner: deleteField(),
+          dataOwnerJoinedAt: deleteField(),
+          dataOwnerJoinedVia: deleteField(),
+          dataOwnerClearedAt: serverTimestamp(),
+          dataOwnerClearedReason: reason,
+        });
+      } catch {
+        healedFor.current = null;
+        return;
+      }
+      try {
+        await addDoc(collection(db, `users/${uid}/notifications`), {
+          type: "agent_access_revoked",
+          title:
+            reason === "revoked" ? "You were removed from a workspace" : "Your workspace assignment ended",
+          message:
+            reason === "revoked"
+              ? "The workspace owner revoked your agent access. You now see your own account."
+              : "Your agent record is no longer available. You now see your own account.",
+          ownerId: dataOwner,
+          createdAt: serverTimestamp(),
+          read: false,
+        });
+      } catch {
+        /* best-effort */
+      }
+    };
+
     const unsub = onSnapshot(
       doc(db, `users/${dataOwner}/agents/${uid}`),
       (snap) => {
         const data = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
         const status = typeof data?.status === "string" ? data.status : data ? "active" : "missing";
         if (status !== "revoked" && status !== "missing") return;
-        if (healedFor.current === key) return;
-        healedFor.current = key;
-
-        void (async () => {
-          try {
-            await updateDoc(doc(db, `users/${uid}`), {
-              dataOwner: deleteField(),
-              dataOwnerJoinedAt: deleteField(),
-              dataOwnerJoinedVia: deleteField(),
-              dataOwnerClearedAt: serverTimestamp(),
-              dataOwnerClearedReason: status === "revoked" ? "revoked" : "missing",
-            });
-          } catch {
-            /* rules mismatch or offline — retry on next mount */
-            healedFor.current = null;
-            return;
-          }
-          try {
-            await addDoc(collection(db, `users/${uid}/notifications`), {
-              type: "agent_access_revoked",
-              title:
-                status === "revoked"
-                  ? "You were removed from a workspace"
-                  : "Your workspace assignment ended",
-              message:
-                status === "revoked"
-                  ? "The workspace owner revoked your agent access. You now see your own account."
-                  : "Your agent record is no longer available. You now see your own account.",
-              ownerId: dataOwner,
-              createdAt: serverTimestamp(),
-              read: false,
-            });
-          } catch {
-            /* best-effort */
-          }
-        })();
+        void heal(status === "revoked" ? "revoked" : "missing");
       },
       () => {
-        /* transient permission error while owner tree flips — ignore */
+        void heal("permission_denied");
       },
     );
     return () => unsub();
