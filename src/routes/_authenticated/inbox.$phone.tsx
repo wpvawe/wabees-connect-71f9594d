@@ -125,20 +125,22 @@ function Thread({ phone }: { phone: string }) {
   const firstUnreadRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
   const dragCounterRef = useRef(0);
-  // Compute the id of the first unread incoming message (in chronological
-  // order). Reset when the thread changes so the marker only tracks
-  // messages that were unread when the user opened this conversation.
-  const initialUnreadRef = useRef<string | null>(null);
-  useEffect(() => {
-    initialUnreadRef.current = null;
-  }, [phone]);
-  if (data && initialUnreadRef.current === null) {
+  // B4: compute the first-unread anchor via useMemo keyed on the thread
+  // phone. Mutating a ref during render (previous approach) violates React
+  // rules and could produce stale ids under Strict Mode double-invoke.
+  //
+  // We intentionally ignore `data` in the dep list so the marker snapshots
+  // the unread state at thread-open time — new incoming messages that
+  // arrive while the thread is focused shouldn't scroll the "Unread"
+  // divider to newer positions.
+  const firstUnreadId = useMemo(() => {
+    if (!data) return null;
     const first = data.find(
       (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
     );
-    initialUnreadRef.current = first ? first.id : "";
-  }
-  const firstUnreadId = initialUnreadRef.current || null;
+    return first ? first.id : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
   // Auto-scroll only when (a) the thread just opened or (b) the user is
   // already near the bottom. Otherwise scrolling jumps the viewport away
   // from messages they were reading.
