@@ -498,26 +498,39 @@ function Thread({ phone }: { phone: string }) {
       return body.includes(s) || cap.includes(s) || fn.includes(s);
     });
   }, [data, searchQuery]);
+  // P5: cache the rendered day-divider list. Recomputing on every parent
+  // state change (menu toggles, atBottom flips, unread ticks) was
+  // O(n) per keystroke — memoize on the inputs that actually affect it.
+  const renderedMessages = useMemo(
+    () => renderWithDayDividers(visibleData ?? [], actions, firstUnreadId, firstUnreadRef),
+    [visibleData, actions, firstUnreadId],
+  );
 
-  const lightboxItems: LightboxItem[] = (data ?? [])
-    .filter(
-      (m) =>
-        !!m.mediaUrl &&
-        (m.type === "image" ||
-          m.type === "video" ||
-          m.type === "sticker" ||
-          m.mimeType?.startsWith("image/") ||
-          m.mimeType?.startsWith("video/")),
-    )
-    .map((m) => ({
-      id: m.id,
-      url: m.mediaUrl!,
-      kind:
-        m.type === "video" || m.mimeType?.startsWith("video/") ? "video" : "image",
-      caption: m.caption ?? m.body ?? null,
-      fileName: m.fileName ?? null,
-      mime: m.mimeType ?? null,
-    }));
+  // P6: derived list — memoize so the lightbox array isn't reallocated on
+  // every parent state change (menus, scroll, delivery-status ticks).
+  const lightboxItems: LightboxItem[] = useMemo(
+    () =>
+      (data ?? [])
+        .filter(
+          (m) =>
+            !!m.mediaUrl &&
+            (m.type === "image" ||
+              m.type === "video" ||
+              m.type === "sticker" ||
+              m.mimeType?.startsWith("image/") ||
+              m.mimeType?.startsWith("video/")),
+        )
+        .map((m) => ({
+          id: m.id,
+          url: m.mediaUrl!,
+          kind:
+            m.type === "video" || m.mimeType?.startsWith("video/") ? "video" : "image",
+          caption: m.caption ?? m.body ?? null,
+          fileName: m.fileName ?? null,
+          mime: m.mimeType ?? null,
+        })),
+    [data],
+  );
 
   // H-4 fix: walk newest→oldest and pick the freshest real (non-phone) name.
   // `data` is sorted ascending by createdAt, so the contact-name on data[0]
@@ -1240,7 +1253,7 @@ function Thread({ phone }: { phone: string }) {
             {searchQuery ? "No matching messages" : "No messages yet. Say hi 👋"}
           </p>
         ) : (
-          renderWithDayDividers(visibleData, actions, firstUnreadId, firstUnreadRef)
+          renderedMessages
         )}
         <div ref={bottomRef} />
       </div>
