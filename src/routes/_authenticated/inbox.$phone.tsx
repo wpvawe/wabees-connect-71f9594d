@@ -183,7 +183,10 @@ function Thread({ phone }: { phone: string }) {
     if (!headerMenu) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement;
-      if (!t.closest?.("[data-header-menu]")) setHeaderMenu(false);
+      if (!t.closest?.("[data-header-menu]") && !t.closest?.("[data-snooze-menu]")) {
+        setHeaderMenu(false);
+        setSnoozeOpen(false);
+      }
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -411,12 +414,15 @@ function Thread({ phone }: { phone: string }) {
           m.type === "audio" ||
           m.type === "sticker"
         ) {
+          // B8: prefer media_url on resend. Meta expires uploaded media_ids
+          // ~30 days after upload, so an old mediaId will fail with
+          // "media not found" while the proxy URL keeps working.
           res = await sendMediaMessage({
             phone_number_id: creds.phone_number_id,
             access_token: "",
             to,
             type: m.type,
-            ...(m.mediaId ? { media_id: m.mediaId } : m.mediaUrl ? { media_url: m.mediaUrl } : {}),
+            ...(m.mediaUrl ? { media_url: m.mediaUrl } : m.mediaId ? { media_id: m.mediaId } : {}),
             ...(m.caption ? { caption: m.caption } : {}),
             ...(m.fileName ? { filename: m.fileName } : {}),
             context_message_id: m.replyToWamid ?? null,
@@ -656,12 +662,22 @@ function Thread({ phone }: { phone: string }) {
   );
 
   // Auto-wake: if snoozed and snoozeUntil is in the past, self-heal to open.
+  // B2: guard so a rapid burst of snapshot updates (unreadCount / lastMessageAt
+  // flipping while we're mid-write) doesn't retrigger setConversationState 2-3
+  // times before Firestore reflects the state="open" change.
+  const didWakeRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Reset the guard whenever a new snooze window is set.
+    if (isSnoozed && snoozeUntilIso) didWakeRef.current = null;
+  }, [isSnoozed, snoozeUntilIso]);
   useEffect(() => {
     if (!uid || !selfUid) return;
     if (!isSnoozed || !snoozeUntilIso) return;
     const until = Date.parse(snoozeUntilIso);
     if (!Number.isFinite(until)) return;
     if (until > Date.now()) return;
+    if (didWakeRef.current === snoozeUntilIso) return;
+    didWakeRef.current = snoozeUntilIso;
     setConversationState(
       uid,
       normalizePhone(phone),
@@ -671,7 +687,10 @@ function Thread({ phone }: { phone: string }) {
         assignedAgentId: conv?.assignedAgentId ?? null,
         previousState: "snoozed",
       },
-    ).catch(() => {});
+    ).catch(() => {
+      // Allow retry on the next tick if the write actually failed.
+      didWakeRef.current = null;
+    });
   }, [uid, selfUid, selfEmail, phone, isSnoozed, snoozeUntilIso, conv?.assignedAgentId]);
 
   const photo = contact?.profileImageUrl ?? conv?.profileImageUrl ?? null;
@@ -983,7 +1002,7 @@ function Thread({ phone }: { phone: string }) {
                   Send CSAT survey now
                 </button>
               )}
-              <div className="relative" data-header-menu>
+              <div className="relative" data-snooze-menu>
                 <button
                   type="button"
                   disabled={stateBusy}

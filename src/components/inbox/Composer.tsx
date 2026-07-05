@@ -629,7 +629,13 @@ export function Composer({
         },
         { merge: true },
       );
-      setText("");
+      // B7: only clear the composer draft when the caption actually came
+      // from the textarea. If the user supplied their own caption via the
+      // attachment sheet (`captionOverride`), whatever they were typing in
+      // the composer is a separate draft — don't wipe it.
+      if (typeof captionOverride !== "string") {
+        setText("");
+      }
       onClearReply?.();
       const res = await sendMediaMessage({
         phone_number_id: creds.phone_number_id,
