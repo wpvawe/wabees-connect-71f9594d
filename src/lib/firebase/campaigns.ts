@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 
 export type VariableSource = "static" | "contact";
 
@@ -238,7 +238,7 @@ export async function runCampaign(
     contactsByPhone?: Record<string, Record<string, string>>;
   },
 ): Promise<{ sent: number; failed: number }> {
-  const creds = await loadWaCredentials(credentialUid);
+  const creds = await loadWaConnection(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
   await assertWithinPlanLimit(uid, "messages", audience.length);
@@ -319,7 +319,7 @@ export async function runCampaign(
         }
         res = await sendTemplateMessage({
           phone_number_id: creds.phone_number_id,
-          access_token: creds.access_token,
+          access_token: "",
           to,
           template_name: opts!.templateName!,
           language_code: opts?.templateLanguage || "en_US",
@@ -328,7 +328,7 @@ export async function runCampaign(
       } else {
         res = await sendTextMessage({
           phone_number_id: creds.phone_number_id,
-          access_token: creds.access_token,
+          access_token: "",
           to,
           message: messageBody,
         });

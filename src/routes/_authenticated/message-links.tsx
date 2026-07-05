@@ -8,7 +8,7 @@ import { WbEmpty } from "@/components/wb/WbEmpty";
 import { WbButton } from "@/components/wb/WbButton";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import {
   createMessageLink,
   deleteMessageLink,
@@ -49,11 +49,11 @@ function MessageLinksPage() {
     if (!uid || !wa?.phone_number_id) return;
     setLoading(true);
     try {
-      const creds = await loadWaCredentials(uid);
-      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const creds = await loadWaConnection(uid);
+      if (!creds) throw new Error("WhatsApp not connected");
       const result = await listMessageLinks({
         phone_number_id: wa.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
       });
       if (!result.success) throw new Error(result.message || "Failed to fetch links");
       const next = Array.isArray(result.data?.links) ? result.data.links.map(mapLink) : [];
@@ -81,11 +81,11 @@ function MessageLinksPage() {
     const phoneNumberId = wa.phone_number_id;
     setSaving(true);
     try {
-      const creds = await loadWaCredentials(uid);
-      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const creds = await loadWaConnection(uid);
+      if (!creds) throw new Error("WhatsApp not connected");
       const result = await createMessageLink({
         phone_number_id: phoneNumberId,
-        access_token: creds.access_token,
+        access_token: "",
         prefilled_message: message.trim(),
       });
       if (!result.success) throw new Error(result.message || "Failed to create link");
@@ -103,11 +103,11 @@ function MessageLinksPage() {
     if (!uid || !wa?.phone_number_id) return;
     const phoneNumberId = wa.phone_number_id;
     try {
-      const creds = await loadWaCredentials(uid);
-      if (!creds?.access_token) throw new Error("WhatsApp not connected");
+      const creds = await loadWaConnection(uid);
+      if (!creds) throw new Error("WhatsApp not connected");
       const result = await deleteMessageLink({
         phone_number_id: phoneNumberId,
-        access_token: creds.access_token,
+        access_token: "",
         link_id: code,
       });
       if (!result.success) throw new Error(result.message || "Failed to delete link");

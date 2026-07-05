@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { fetchMetaTemplates } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 
 type MetaTemplate = {
   id?: string;
@@ -67,7 +67,7 @@ export async function syncTemplatesFromMeta(
   uid: string,
   credentialUid = uid,
 ): Promise<{ synced: number; deleted: number }> {
-  const creds = await loadWaCredentials(credentialUid);
+  const creds = await loadWaConnection(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
   // Load WABA id from the same config doc the Flutter app uses. The PHP
   // backend expects `business_account_id`; direct browser → Meta calls are
@@ -84,7 +84,7 @@ export async function syncTemplatesFromMeta(
 
   const res = await fetchMetaTemplates({
     business_account_id: waba_id,
-    access_token: creds.access_token,
+    access_token: "",
   });
   if (res.raw.error && typeof res.raw.error === "object") {
     const msg = (res.raw.error as { message?: string }).message;

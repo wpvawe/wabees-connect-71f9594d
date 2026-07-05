@@ -18,7 +18,7 @@ import {
   sendCtaUrlMessage,
   sendListMessage,
 } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { whatsappRecipientId, normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { fbDb } from "@/integrations/firebase/client";
 import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
@@ -273,11 +273,11 @@ function LocationForm(p: {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
       }
-      const creds = await loadWaCredentials(p.selfUid);
+      const creds = await loadWaConnection(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendLocationMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(p.phone),
         latitude,
         longitude,
@@ -364,11 +364,11 @@ function ButtonsForm(p: {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
       }
-      const creds = await loadWaCredentials(p.selfUid);
+      const creds = await loadWaConnection(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendReplyButtonsMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(p.phone),
         body_text: body.trim(),
         header_text: header || undefined,
@@ -479,11 +479,11 @@ function CtaForm(p: {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
       }
-      const creds = await loadWaCredentials(p.selfUid);
+      const creds = await loadWaConnection(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendCtaUrlMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(p.phone),
         body_text: body.trim(),
         display_text: displayText.trim(),
@@ -568,11 +568,11 @@ function ListForm(p: {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
       }
-      const creds = await loadWaCredentials(p.selfUid);
+      const creds = await loadWaConnection(p.selfUid);
       if (!creds) return toast.error("Connect WhatsApp first");
       const res = await sendListMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(p.phone),
         body_text: body.trim(),
         button_text: buttonText.trim() || "Choose",

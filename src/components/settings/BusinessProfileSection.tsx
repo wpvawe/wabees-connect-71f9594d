@@ -8,7 +8,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { toast } from "sonner";
 
 const VERTICALS = [
@@ -68,15 +68,15 @@ export function BusinessProfileSection() {
     if (!silent) setLoading(true);
     try {
       const idToken = await fbAuth().currentUser!.getIdToken();
-      const creds = await loadWaCredentials(uid);
       const res = await fetch(`${WABEES_API_BASE}/business-profile.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           action: "get",
           phone_number_id: wa.phone_number_id,
-          id_token: idToken,
-          access_token: creds?.access_token,
         }),
       });
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);
@@ -118,13 +118,10 @@ export function BusinessProfileSection() {
     setSaving(true);
     try {
       const idToken = await fbAuth().currentUser!.getIdToken();
-      const creds = await loadWaCredentials(uid);
       // Meta Graph rejects empty strings for some fields — only send non-empty.
       const body: Record<string, unknown> = {
         action: "update",
         phone_number_id: wa.phone_number_id,
-        id_token: idToken,
-        access_token: creds?.access_token,
         vertical: form.vertical || "UNDEFINED",
         websites: form.website ? [form.website] : [],
       };
@@ -134,7 +131,10 @@ export function BusinessProfileSection() {
       if (form.address.trim()) body.address = form.address.trim();
       const res = await fetch(`${WABEES_API_BASE}/business-profile.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify(body),
       });
       const raw = await res.json().catch(() => ({}) as Record<string, unknown>);

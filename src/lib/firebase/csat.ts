@@ -22,7 +22,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { incrementMessagesUsed } from "@/lib/plans/limits";
 
 export const CSAT_ROW_PREFIX = "csat:";
@@ -135,8 +135,8 @@ export async function sendCsatSurvey(args: {
     respondedAt: null,
   });
 
-  const creds = await loadWaCredentials(ownerUid).catch(() => null);
-  if (!creds?.phone_number_id || !creds?.access_token) {
+  const creds = await loadWaConnection(ownerUid).catch(() => null);
+  if (!creds?.phone_number_id) {
     await updateDoc(surveyRef, {
       status: "failed",
       error: "WhatsApp not connected",
@@ -154,7 +154,7 @@ export async function sendCsatSurvey(args: {
 
   const res = await sendListMessage({
     phone_number_id: creds.phone_number_id,
-    access_token: creds.access_token,
+    access_token: "",
     to: whatsappRecipientId(phone),
     body_text: settings.question || DEFAULT_CSAT.question,
     button_text: "Rate 1–5",
@@ -228,11 +228,11 @@ export async function recordCsatRating(args: {
     respondedAt: serverTimestamp(),
   });
   if (!askComment) return;
-  const creds = await loadWaCredentials(ownerUid).catch(() => null);
-  if (!creds?.phone_number_id || !creds?.access_token) return;
+  const creds = await loadWaConnection(ownerUid).catch(() => null);
+  if (!creds?.phone_number_id) return;
   await sendTextMessage({
     phone_number_id: creds.phone_number_id,
-    access_token: creds.access_token,
+    access_token: "",
     to: whatsappRecipientId(phone),
     message: commentPrompt || DEFAULT_CSAT.commentPrompt,
   })

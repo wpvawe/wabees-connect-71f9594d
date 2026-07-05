@@ -25,7 +25,7 @@ import {
   whatsappRecipientId,
 } from "@/lib/firebase/normalizers";
 import { extractWamid, sendTextMessage } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { incrementMessagesUsed } from "@/lib/plans/limits";
 import type { ScheduledMessage } from "@/lib/firebase/scheduled";
 
@@ -105,7 +105,7 @@ export function useScheduledDispatcher() {
         );
         const snap = await getDocs(snapRef);
         if (!alive) return;
-        const creds = await loadWaCredentials(selfUid!).catch(() => null);
+        const creds = await loadWaConnection(selfUid!).catch(() => null);
         if (!creds) return;
         const STALE_SENDING_MS = 5 * 60 * 1000;
         for (const d of snap.docs) {
@@ -162,7 +162,7 @@ export function useScheduledDispatcher() {
             try {
               const res = await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
-                access_token: creds.access_token,
+                access_token: "",
                 to: whatsappRecipientId(phone),
                 message: body,
               });

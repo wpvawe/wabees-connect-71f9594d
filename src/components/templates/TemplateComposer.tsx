@@ -14,7 +14,7 @@ import { WhatsAppPreview, type HeaderFormat } from "@/components/shared/WhatsApp
 import { cn } from "@/lib/utils";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { createMetaTemplate, editMetaTemplate } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import type { Template } from "@/hooks/useTemplates";
@@ -288,7 +288,7 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
     }
     setSubmitting(true);
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) throw new Error("Connect WhatsApp first (Connect page).");
       const db = fbDb();
       const cfg = await getDoc(doc(db, "users", selfUid, "whatsapp_config", "config"));
@@ -306,7 +306,7 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
         }
         const res = await editMetaTemplate({
           business_account_id: waba_id,
-          access_token: creds.access_token,
+          access_token: "",
           hsm_id: initial.metaTemplateId,
           category,
           components,
@@ -336,7 +336,7 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
         await assertWithinPlanLimit(uid, "templates");
         const res = await createMetaTemplate({
           business_account_id: waba_id,
-          access_token: creds.access_token,
+          access_token: "",
           name,
           category,
           language,
