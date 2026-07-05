@@ -340,6 +340,89 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
             <Toggle label="Priority support" checked={form.hasPrioritySupport} onChange={(v) => set("hasPrioritySupport", v)} />
             <Toggle label="API access" checked={form.hasApiAccess} onChange={(v) => set("hasApiAccess", v)} />
           </div>
+
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Limited-time offer</p>
+                <p className="text-xs text-muted-foreground">
+                  Show a promo badge, discount price, and countdown on this plan card.
+                </p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={Boolean(form.offer?.active)}
+                  onChange={(e) =>
+                    set(
+                      "offer",
+                      e.target.checked
+                        ? {
+                            active: true,
+                            label: form.offer?.label ?? "Limited offer",
+                            discountPct: form.offer?.discountPct ?? null,
+                            priceOverride: form.offer?.priceOverride ?? null,
+                            endsAt: form.offer?.endsAt ?? null,
+                          }
+                        : null,
+                    )
+                  }
+                />
+                Enable offer
+              </label>
+            </div>
+            {form.offer?.active && (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <WbInput
+                  label="Badge label"
+                  value={form.offer.label}
+                  placeholder="e.g. Limited offer, 50% OFF"
+                  onChange={(e) =>
+                    set("offer", { ...form.offer!, label: e.target.value.slice(0, 40) })
+                  }
+                />
+                <WbInput
+                  label="Ends at (optional)"
+                  type="datetime-local"
+                  value={form.offer.endsAt ? toLocalInput(form.offer.endsAt) : ""}
+                  onChange={(e) =>
+                    set("offer", {
+                      ...form.offer!,
+                      endsAt: e.target.value ? new Date(e.target.value).toISOString() : null,
+                    })
+                  }
+                />
+                <WbInput
+                  label="Discount %"
+                  type="number"
+                  value={form.offer.discountPct != null ? String(form.offer.discountPct) : ""}
+                  placeholder="e.g. 20"
+                  onChange={(e) =>
+                    set("offer", {
+                      ...form.offer!,
+                      discountPct: e.target.value ? Number(e.target.value) : null,
+                      priceOverride: e.target.value ? null : form.offer!.priceOverride,
+                    })
+                  }
+                  hint="Use either discount % OR a fixed price override — not both."
+                />
+                <WbInput
+                  label={`Price override (${form.currency})`}
+                  type="number"
+                  value={form.offer.priceOverride != null ? String(form.offer.priceOverride) : ""}
+                  placeholder={String(form.priceMonthly)}
+                  onChange={(e) =>
+                    set("offer", {
+                      ...form.offer!,
+                      priceOverride: e.target.value ? Number(e.target.value) : null,
+                      discountPct: e.target.value ? null : form.offer!.discountPct,
+                    })
+                  }
+                />
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-border bg-muted/40 px-5 py-3">
           <WbButton variant="secondary" onClick={onClose} disabled={saving}>
