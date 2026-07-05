@@ -62,6 +62,7 @@ import {
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
+import { useAgents } from "@/hooks/useAgents";
 import { useSlaSettings } from "@/hooks/useSlaSettings";
 import { SlaBadge } from "@/components/inbox/SlaBadge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
