@@ -24,6 +24,7 @@ import {
   faClockRotateLeft,
   faCircleInfo,
   faStar,
+  faFileArrowDown,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { MessageBubble, type MessageActions } from "@/components/inbox/MessageBubble";
@@ -37,6 +38,8 @@ import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
 import { ShortcutsHelp } from "@/components/inbox/ShortcutsHelp";
+import { StarredDrawer } from "@/components/inbox/StarredDrawer";
+import { exportChatTxt, exportChatCsv, downloadBlob } from "@/lib/inbox/export";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { setConversationState } from "@/lib/firebase/assignments";
 import { addSystemNote } from "@/lib/firebase/notes";
@@ -112,6 +115,7 @@ function Thread({ phone }: { phone: string }) {
   const [blockBusy, setBlockBusy] = useState(false);
   const [stateBusy, setStateBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
