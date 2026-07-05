@@ -270,6 +270,8 @@ export function Composer({
     const convId = phoneDocId(phone);
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
+    // Hoisted so both the `catch` and the inline failure branches can refund.
+    let quotaReserved = false;
     try {
       const creds = await loadWaConnection(selfUid);
       if (!creds) {
@@ -278,7 +280,6 @@ export function Composer({
       }
       // Atomic reserve — closes the race window so N parallel sends can't
       // collectively exceed the plan cap. Released on send failure below.
-      let quotaReserved = false;
       try {
         const { reserveQuota } = await import("@/lib/plans/limits");
         await reserveQuota(uid, "messages", 1);
