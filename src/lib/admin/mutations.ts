@@ -204,6 +204,7 @@ export async function deleteUserData(uid: string) {
   } catch {
     /* absent */
   }
+  void logAudit("user.delete", uid, {});
 }
 
 // Broadcast a custom notification. `uids: null` means "every user" and paginates
@@ -565,6 +566,7 @@ export type PlanInput = {
   name: string;
   description: string;
   priceMonthly: number;
+  priceYearly?: number | null;
   currency: string;
   maxMessages: number;
   maxContacts: number;
@@ -599,10 +601,12 @@ export async function createPlan(input: PlanInput) {
     isWelcomePlan: false,
     createdAt: serverTimestamp(),
   });
+  void logAudit("plan.create", ref.id, { name: input.name });
 }
 
 export async function updatePlan(planId: string, input: Partial<PlanInput>) {
   await updateDoc(doc(fbDb(), "plans", planId), input);
+  void logAudit("plan.update", planId, {});
 }
 
 export async function deletePlan(planId: string) {
@@ -612,10 +616,12 @@ export async function deletePlan(planId: string) {
     throw new Error("Cannot delete the Welcome plan");
   }
   await deleteDoc(doc(db, "plans", planId));
+  void logAudit("plan.delete", planId, {});
 }
 
 export async function togglePlanActive(planId: string, isActive: boolean) {
   await updateDoc(doc(fbDb(), "plans", planId), { isActive });
+  void logAudit("plan.toggle_active", planId, { isActive });
 }
 
 // ============ ADMIN SUPPORT ============
