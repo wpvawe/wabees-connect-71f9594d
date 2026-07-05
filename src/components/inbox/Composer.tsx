@@ -826,7 +826,10 @@ export function Composer({
     return { hasInbound: true, open: remainingMs > 0, expiresAt, remainingMs };
   })();
   const windowClosed = !windowInfo.open;
-  const disabled = sending || uploading || recording || windowClosed;
+  // Textarea stays enabled when the 24h window is closed so users can still
+  // trigger the "#" template picker (templates always send). Free-text send
+ // itself is blocked inside send() with a clear toast.
+  const disabled = sending || uploading || recording;
 
   return (
     <div className="border-t border-border bg-card">
