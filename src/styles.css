@@ -194,3 +194,14 @@
   backdrop-filter: saturate(140%) blur(12px);
   -webkit-backdrop-filter: saturate(140%) blur(12px);
 }
+
+/* Jump-to-message highlight — used when a user clicks a starred message
+ * in the drawer and we scroll the thread to that bubble. */
+@keyframes wb-star-flash {
+  0%   { background-color: color-mix(in oklab, var(--wb-green) 25%, transparent); }
+  100% { background-color: transparent; }
+}
+.wb-star-flash {
+  animation: wb-star-flash 1.5s ease-out;
+  border-radius: 12px;
+}
