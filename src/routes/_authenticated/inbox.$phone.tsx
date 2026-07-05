@@ -59,7 +59,7 @@ import {
   sendMediaMessage,
   extractWamid,
 } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
 import { useSlaSettings } from "@/hooks/useSlaSettings";
@@ -255,7 +255,7 @@ function Thread({ phone }: { phone: string }) {
         // burned rate-limit on high-traffic threads (B-9).
         if (selfUid) {
           try {
-            const creds = await loadWaCredentials(selfUid);
+            const creds = await loadWaConnection(selfUid);
             if (creds) {
               // Newest unread with a wamid (unread is sorted ascending by
               // createdAt in useMessages, so scan from the end).
@@ -269,7 +269,7 @@ function Thread({ phone }: { phone: string }) {
               if (newestWamid) {
                 await markMessageRead({
                   phone_number_id: creds.phone_number_id,
-                  access_token: creds.access_token,
+                  access_token: "",
                   message_id: newestWamid,
                 }).catch(() => {});
               }
@@ -305,11 +305,11 @@ function Thread({ phone }: { phone: string }) {
       }
       if (wamid) {
         try {
-          const creds = await loadWaCredentials(selfUid);
+          const creds = await loadWaConnection(selfUid);
           if (!creds) return;
           await sendReactionMessage({
             phone_number_id: creds.phone_number_id,
-            access_token: creds.access_token,
+            access_token: "",
             to: whatsappRecipientId(phone),
             message_id: wamid,
             emoji: nextEmoji,
@@ -343,11 +343,11 @@ function Thread({ phone }: { phone: string }) {
       try {
         if (canRevoke && selfUid && m.whatsappMessageId) {
           try {
-            const creds = await loadWaCredentials(selfUid);
+            const creds = await loadWaConnection(selfUid);
             if (creds) {
               const res = await deleteWhatsAppMessage({
                 phone_number_id: creds.phone_number_id,
-                access_token: creds.access_token,
+                access_token: "",
                 message_id: m.whatsappMessageId,
               });
               if (!res.success) {
@@ -375,7 +375,7 @@ function Thread({ phone }: { phone: string }) {
   const onResend = useCallback(
     async (m: Message) => {
       if (!uid || !selfUid) return;
-      const creds = await loadWaCredentials(selfUid).catch(() => null);
+      const creds = await loadWaConnection(selfUid).catch(() => null);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
@@ -399,7 +399,7 @@ function Thread({ phone }: { phone: string }) {
         if (m.type === "text") {
           res = await sendTextMessage({
             phone_number_id: creds.phone_number_id,
-            access_token: creds.access_token,
+            access_token: "",
             to,
             message: m.body,
             context_message_id: m.replyToWamid ?? null,
@@ -413,7 +413,7 @@ function Thread({ phone }: { phone: string }) {
         ) {
           res = await sendMediaMessage({
             phone_number_id: creds.phone_number_id,
-            access_token: creds.access_token,
+            access_token: "",
             to,
             type: m.type,
             ...(m.mediaId ? { media_id: m.mediaId } : m.mediaUrl ? { media_url: m.mediaUrl } : {}),

@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { cn } from "@/lib/utils";
 
 type Health = {
@@ -48,8 +48,8 @@ export function PhoneHealthCard({
     setLoading(true);
     setError(null);
     try {
-      const creds = await loadWaCredentials(user.uid);
-      if (!creds?.access_token) {
+      const creds = await loadWaConnection(user.uid);
+      if (!creds) {
         throw new Error("WhatsApp access token not available for this account");
       }
       const res = await fetch(ENDPOINT, {
@@ -57,7 +57,7 @@ export function PhoneHealthCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone_number_id: phoneNumberId || creds.phone_number_id,
-          access_token: creds.access_token,
+          access_token: "",
         }),
       });
       const json = (await res.json()) as Health & { error?: unknown };

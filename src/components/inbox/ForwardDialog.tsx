@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import {
   extractWamid,
   sendMediaMessage,
@@ -78,7 +78,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
     if (list.length === 0 || !uid || !selfUid) return;
     setSending(true);
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
@@ -131,7 +131,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
           const res = mediaKind
             ? await sendMediaMessage({
                 phone_number_id: creds.phone_number_id,
-                access_token: creds.access_token,
+                access_token: "",
                 to,
                 type: mediaKind,
                 ...(message.mediaId
@@ -144,7 +144,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
               })
             : await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
-                access_token: creds.access_token,
+                access_token: "",
                 to,
                 message: body,
               });

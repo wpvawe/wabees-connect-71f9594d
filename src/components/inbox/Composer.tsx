@@ -46,7 +46,7 @@ import {
   sendTypingIndicator,
   sendTemplateMessage,
 } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
@@ -271,7 +271,7 @@ export function Composer({
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
@@ -318,7 +318,7 @@ export function Composer({
       );
       const res = await sendTemplateMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(phone),
         template_name: t.name,
         language_code: t.languageCode,
@@ -432,7 +432,7 @@ export function Composer({
     const db = fbDb();
     let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
@@ -494,7 +494,7 @@ export function Composer({
       onClearReply?.();
       const res = await sendTextMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(phone),
         message: body,
         context_message_id: whatsappContextMessageId(replyTo),
@@ -569,14 +569,14 @@ export function Composer({
       file.type.startsWith("audio/ogg") &&
       file.name.startsWith("voice-");
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
         return;
       }
       const up = await uploadMedia({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         file,
         kind,
       });
@@ -633,7 +633,7 @@ export function Composer({
       onClearReply?.();
       const res = await sendMediaMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(phone),
         type: kind,
         ...(mediaId ? { media_id: mediaId } : mediaUrl ? { media_url: mediaUrl } : {}),
@@ -974,11 +974,11 @@ export function Composer({
                 typingSentRef.current = { wamid: lastInboundWamid, ts: now };
                 void (async () => {
                   try {
-                    const creds = await loadWaCredentials(selfUid);
+                    const creds = await loadWaConnection(selfUid);
                     if (!creds) return;
                     await sendTypingIndicator({
                       phone_number_id: creds.phone_number_id,
-                      access_token: creds.access_token,
+                      access_token: "",
                       message_id: lastInboundWamid,
                     });
                   } catch {

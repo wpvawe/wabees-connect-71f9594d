@@ -25,7 +25,7 @@ import { deleteDoc, doc } from "firebase/firestore";
 import { addDoc, collection, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { deleteMetaTemplate, extractWamid, sendTemplateMessage } from "@/lib/wabees/api";
-import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { WbInput } from "@/components/wb/WbInput";
 import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
@@ -119,7 +119,7 @@ export function TemplateGrid() {
       //    so ghost rows can still be removed from this workspace.
       let metaMessage = "Template deleted";
       try {
-        const creds = await loadWaCredentials(selfUid);
+        const creds = await loadWaConnection(selfUid);
         const cfg = await getDoc(doc(fbDb(), "users", selfUid, "whatsapp_config", "config"));
         const userDoc = await getDoc(doc(fbDb(), "users", selfUid));
         const wabaId =
@@ -131,7 +131,7 @@ export function TemplateGrid() {
         } else {
           const metaRes = await deleteMetaTemplate({
             business_account_id: wabaId,
-            access_token: creds.access_token,
+            access_token: "",
             name: t.name,
             hsm_id: t.metaTemplateId ?? null,
           });
@@ -166,7 +166,7 @@ export function TemplateGrid() {
     }
     setSending(true);
     try {
-      const creds = await loadWaCredentials(selfUid);
+      const creds = await loadWaConnection(selfUid);
       if (!creds) throw new Error("Connect WhatsApp first");
       if (uid) {
         const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
@@ -186,7 +186,7 @@ export function TemplateGrid() {
           : [];
       const res = await sendTemplateMessage({
         phone_number_id: creds.phone_number_id,
-        access_token: creds.access_token,
+        access_token: "",
         to: whatsappRecipientId(phone),
         template_name: selected.name,
         language_code: selected.languageCode || "en_US",
