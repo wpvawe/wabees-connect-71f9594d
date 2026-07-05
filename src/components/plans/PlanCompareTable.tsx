@@ -4,7 +4,6 @@ import type { Plan } from "@/hooks/usePlans";
 import {
   billingCycleLabel,
   limitLabel,
-  perCycleSuffix,
   pricePeriodSuffix,
   resolvePricing,
 } from "@/lib/plans/pricing";
@@ -38,9 +37,6 @@ function priceCell(p: Plan) {
     </span>
   );
 }
-
-// Unused, keep to avoid lint noise if perCycleSuffix later reused inline.
-void perCycleSuffix;
 
 function yesNo(v: boolean) {
   return v ? (
