@@ -1064,7 +1064,7 @@ function MessageContent({
       // Never blank — fall back to whatever payload we have.
       return (
         <>
-          <Media />
+          {media}
           {cleanBody(m.body) ? (
             <TextBody value={cleanBody(m.body)} />
           ) : (
