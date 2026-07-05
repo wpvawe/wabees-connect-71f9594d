@@ -75,6 +75,11 @@ export function PlansSection() {
                       {p.maxMessages === 0 ? "∞" : p.maxMessages} msgs · {p.maxAiMessages === 0 ? "∞" : p.maxAiMessages}{" "}
                       AI
                     </p>
+                    {p.description && (
+                      <p className="mt-1 line-clamp-2 max-w-2xl text-xs leading-relaxed text-muted-foreground/80">
+                        {p.description}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1 text-xs text-muted-foreground">
