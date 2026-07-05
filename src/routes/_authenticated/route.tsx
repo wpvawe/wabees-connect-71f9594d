@@ -10,6 +10,7 @@ import { useAgentPresence } from "@/hooks/useAgentPresence";
 import { useAgentAvailability } from "@/hooks/useAgentAvailability";
 import { useAutoTriage } from "@/hooks/useAutoTriage";
 import { useCsatCapture } from "@/hooks/useCsatCapture";
+import { useUnreadTitle } from "@/hooks/useUnreadTitle";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
@@ -57,6 +58,9 @@ function AuthenticatedShell() {
   useAutoTriage();
   // Owner-only listener that turns inbound CSAT list-replies into ratings.
   useCsatCapture();
+  // U1: mirror unread conversation count into the browser tab title so
+  // agents notice new messages when the inbox tab is backgrounded.
+  useUnreadTitle();
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
