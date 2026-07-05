@@ -319,6 +319,13 @@ export function MessageBubble({ m, actions }: { m: Message; actions?: MessageAct
           )}
         >
           <span>{time}</span>
+          {m.starred && (
+            <FontAwesomeIcon
+              icon={faStar}
+              className={cn("h-2.5 w-2.5", mine ? "text-amber-200" : "text-amber-500")}
+              title="Starred"
+            />
+          )}
           {mine && <StatusIcon status={m.status} />}
         </div>
       </div>
