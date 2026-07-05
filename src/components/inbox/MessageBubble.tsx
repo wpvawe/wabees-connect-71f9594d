@@ -35,7 +35,10 @@ import {
   faUpRightFromSquare,
   faRotateRight,
   faCircleExclamation,
+  faStar,
+  faStar as faStarSolid,
 } from "@fortawesome/free-solid-svg-icons";
+import { faStar as faStarRegular } from "@fortawesome/free-regular-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -187,6 +190,7 @@ export type MessageActions = {
   onForward?: (m: Message) => void;
   onOpenMedia?: (m: Message) => void;
   onResend?: (m: Message) => void;
+  onToggleStar?: (m: Message) => void;
 };
 
 export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
