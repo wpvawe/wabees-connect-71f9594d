@@ -18,10 +18,16 @@ const HEARTBEAT_MS = 45_000;
 
 export function useAgentPresence(): void {
   const session = useFirebaseSession();
+  // P-perf — depend on primitive fields so a new session object identity
+  // on every render doesn't tear down + re-attach the interval and 3
+  // event listeners on every parent state change.
+  const ready = session.status === "ready";
+  const uid = ready ? session.uid : null;
+  const dataOwner = ready ? session.dataOwner : null;
+  const email = ready ? session.user.email ?? null : null;
 
   useEffect(() => {
-    if (session.status !== "ready") return;
-    const { uid, dataOwner } = session;
+    if (!ready || !uid) return;
     const ownerUid = dataOwner || uid;
     const db = fbDbOrNull();
     if (!db) return;
@@ -37,7 +43,7 @@ export function useAgentPresence(): void {
           {
             isOnline: online,
             lastSeenAt: serverTimestamp(),
-            email: session.user.email ?? null,
+            email,
           },
           { merge: true },
         );
@@ -67,5 +73,5 @@ export function useAgentPresence(): void {
         () => {},
       );
     };
-  }, [session]);
+  }, [ready, uid, dataOwner, email]);
 }
