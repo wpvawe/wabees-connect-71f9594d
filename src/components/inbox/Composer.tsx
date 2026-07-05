@@ -343,11 +343,13 @@ export function Composer({
         return;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
-      await updateDoc(doc(db, "users", uid, "subscription", "current"), {
-        messagesUsed: increment(1),
-      }).catch(() => {});
+      // Counter already bumped atomically by reserveQuota() above.
     } catch (err) {
+      // Release the reservation if we never actually sent (Meta call threw).
+      if (quotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "messages", 1).catch(() => {});
+      }
       if (msgRef) {
         await updateDoc(msgRef, {
           status: "failed",
