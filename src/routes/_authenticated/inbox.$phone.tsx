@@ -414,12 +414,15 @@ function Thread({ phone }: { phone: string }) {
           m.type === "audio" ||
           m.type === "sticker"
         ) {
+          // B8: prefer media_url on resend. Meta expires uploaded media_ids
+          // ~30 days after upload, so an old mediaId will fail with
+          // "media not found" while the proxy URL keeps working.
           res = await sendMediaMessage({
             phone_number_id: creds.phone_number_id,
             access_token: "",
             to,
             type: m.type,
-            ...(m.mediaId ? { media_id: m.mediaId } : m.mediaUrl ? { media_url: m.mediaUrl } : {}),
+            ...(m.mediaUrl ? { media_url: m.mediaUrl } : m.mediaId ? { media_id: m.mediaId } : {}),
             ...(m.caption ? { caption: m.caption } : {}),
             ...(m.fileName ? { filename: m.fileName } : {}),
             context_message_id: m.replyToWamid ?? null,
