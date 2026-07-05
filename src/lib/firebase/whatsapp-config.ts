@@ -42,13 +42,11 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const db = fbDb();
   const userRef = doc(db, "users", input.uid);
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
-  const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  // Try server-side repair first (best-effort). If backend credentials are
-  // not configured on the Worker, fall through to the client-side flow which
-  // now works because Firestore rules allow authenticated reads of wa_map and
-  // agent reads via `dataOwner`. Never block the connect flow on this.
+  // Authoritative server-side ownership repair is required. The client cannot
+  // safely decide whether this phone belongs to a disconnected historical
+  // owner, an active workspace, or the current signed-in account.
   const serverIdToken = await fbAuth()
     .currentUser?.getIdToken()
     .catch(() => null);
