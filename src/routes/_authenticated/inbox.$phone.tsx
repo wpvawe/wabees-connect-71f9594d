@@ -1276,7 +1276,11 @@ function renderWithDayDividers(
         </div>,
       );
     }
-    nodes.push(<MessageBubble key={m.id} m={m} actions={actions} />);
+    nodes.push(
+      <div key={m.id} data-msg-id={m.id} className="transition-colors">
+        <MessageBubble m={m} actions={actions} />
+      </div>,
+    );
   }
   return nodes;
 }
