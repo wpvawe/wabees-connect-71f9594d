@@ -111,6 +111,11 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const { data, error, hasMore, loadMore, loadingMore } = useConversations();
   const { data: contacts } = useContacts();
   const { data: tags } = useConvTags();
+  // Inbox-wide substring search. Only fires when the search box has 2+
+  // chars; results are shown as a separate "Messages" section above the
+  // conversation list. Firestore has no full-text index — see
+  // useMessageSearch for the fixed-window trade-off.
+  const { hits: msgHits, loading: msgSearching } = useMessageSearch("" /* placeholder */);
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const role = useAgentRole();
