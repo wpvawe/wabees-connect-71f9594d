@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import Papa from "papaparse";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -35,6 +34,12 @@ import {
 } from "@/lib/firebase/contacts";
 import { cn } from "@/lib/utils";
 import { useCan } from "@/lib/auth/permissions";
+
+// P-perf — lazy-load papaparse only when the user actually clicks
+// import / export / sample. Keeps ~50KB out of the /contacts route bundle.
+async function loadPapa() {
+  return (await import("papaparse")).default;
+}
 
 type CsvRow = {
   name?: string;
