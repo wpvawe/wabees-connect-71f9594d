@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
+  collectionGroup,
   doc,
   getDocs,
   getCountFromServer,
+  getAggregateFromServer,
+  sum,
   limit,
   onSnapshot,
   orderBy,
@@ -355,6 +358,8 @@ export type PlatformCounts = {
   pending: number;
   suspended: number;
   connected: number;
+  agents: number;
+  totalMessages: number;
   loading: boolean;
 };
 
@@ -365,6 +370,8 @@ export function usePlatformCounts(): PlatformCounts {
     pending: 0,
     suspended: 0,
     connected: 0,
+    agents: 0,
+    totalMessages: 0,
     loading: true,
   });
   useEffect(() => {
@@ -374,12 +381,14 @@ export function usePlatformCounts(): PlatformCounts {
     (async () => {
       try {
         const users = collection(db, "users");
-        const [total, active, pending, suspended, connected] = await Promise.all([
+        const [total, active, pending, suspended, connected, agents, msgSum] = await Promise.all([
           getCountFromServer(users),
           getCountFromServer(query(users, where("status", "==", "active"))),
           getCountFromServer(query(users, where("status", "==", "pending"))),
           getCountFromServer(query(users, where("status", "==", "suspended"))),
           getCountFromServer(query(users, where("whatsappConnected", "==", true))),
+          getCountFromServer(collectionGroup(db, "agents")).catch(() => null),
+          getAggregateFromServer(users, { total: sum("totalMessages") }).catch(() => null),
         ]);
         if (cancelled) return;
         setCounts({
@@ -388,6 +397,8 @@ export function usePlatformCounts(): PlatformCounts {
           pending: pending.data().count,
           suspended: suspended.data().count,
           connected: connected.data().count,
+          agents: agents ? agents.data().count : 0,
+          totalMessages: msgSum ? Number(msgSum.data().total ?? 0) : 0,
           loading: false,
         });
       } catch {

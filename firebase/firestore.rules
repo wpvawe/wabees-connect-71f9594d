@@ -112,7 +112,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create, update: if isOwner(userId) || isAgentOf(userId);
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // ============ Conversations ============
@@ -121,7 +121,7 @@ service cloud.firestore {
       match /conversations/{convId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create, update: if isOwner(userId) || isAgentOf(userId);
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // ============ Contacts ============
@@ -130,23 +130,23 @@ service cloud.firestore {
       // rules enforce it against direct REST calls.
       match /contacts/{contactId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Bots ============ (owner-only writes)
       match /bots/{botId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Campaigns ============ (owner-only writes)
       match /campaigns/{campaignId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
 
         match /logs/{logId} {
           allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdmin();
         }
       }
 
@@ -154,21 +154,21 @@ service cloud.firestore {
       // Agents may read + send but not create/edit/delete templates.
       match /templates/{templateId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Canned Responses (Quick Replies) ============
       // Owner-managed library, agents read only (they trigger from composer).
       match /canned/{cannedId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Settings (SLA targets, etc.) ============
       // Owner writes; agents inherit read-only so the badge renders.
       match /settings/{docId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Subscription ============
@@ -204,23 +204,25 @@ service cloud.firestore {
       // ============ Scheduled Messages ============
       match /scheduled_messages/{msgId} {
         allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
 
       // ============ Tags ============
       match /tags/{tagId} {
         allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read, write: if isAdmin();
       }
 
       // ============ Products (Catalog) ============
       match /products/{productId} {
         allow read, write: if isOwner(userId);
+        allow read, write: if isAdmin();
       }
 
       // ============ Call Logs ============
       match /call_logs/{callId} {
         allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
 
       // ============ CSAT Surveys ============
@@ -228,7 +230,7 @@ service cloud.firestore {
       match /csat_surveys/{surveyId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create, update: if isOwner(userId) || isAgentOf(userId);
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // ============ Calls (active/signaling) ============
@@ -239,19 +241,19 @@ service cloud.firestore {
       // ============ AI Bot Config (owner-only, NO agent access) ============
       match /bot_config/{docId} {
         allow read, write: if isOwner(userId);
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
 
       // ============ AI Bot Usage (owner-only, NO agent access) ============
       match /bot_usage/{docId} {
         allow read, write: if isOwner(userId);
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
 
       // ============ AI Bot Leads (owner-only, NO agent access) ============
       match /bot_leads/{docId} {
         allow read, write: if isOwner(userId);
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
 
       // ============ Agent Invites (owner's own list) ============
