@@ -228,8 +228,12 @@ export function useMessages(phone: string | undefined): {
           });
         // Merge orphan reaction events onto the original message so the chip
         // shows even when the webhook stored them as separate docs.
+        // P-perf: build a doc-id map alongside the wamid map so the
+        // fallback lookup is O(1) instead of O(n) `find` per reaction.
         const byWamid = new Map<string, Message>();
+        const byId = new Map<string, Message>();
         for (const m of allRows) {
+          byId.set(m.id, m);
           if (m.whatsappMessageId) byWamid.set(m.whatsappMessageId, m);
         }
         for (const m of allRows) {
@@ -240,7 +244,7 @@ export function useMessages(phone: string | undefined): {
               m.reactionMsgId.replace(/^msg_/, ""),
             ];
             for (const k of candidates) {
-              const parent = byWamid.get(k) ?? allRows.find((p) => p.id === k);
+              const parent = byWamid.get(k) ?? byId.get(k);
               if (parent) {
                 // Newer reaction wins. Parent.reactionAt is set when the
                 // website/app writes a reaction directly on the parent doc,
@@ -258,12 +262,14 @@ export function useMessages(phone: string | undefined): {
             }
           }
         }
-        const rows: Message[] = allRows
-          .filter(
-            (m) =>
-              !(m.type === "reaction" && !m.mediaUrl),
-          )
-          .sort((a, b) => (a.createdAt ?? "9999").localeCompare(b.createdAt ?? "9999"));
+        // P9 fix: Firestore already returns docs in `orderBy("createdAt","desc")`
+        // order, so a full O(n log n) sort on every delivery-status tick is
+        // wasted work. Filter + reverse is O(n) and produces the same
+        // ascending order the UI expects.
+        const filtered = allRows.filter(
+          (m) => !(m.type === "reaction" && !m.mediaUrl),
+        );
+        const rows: Message[] = filtered.reverse();
         setData(rows);
       },
       (err) => {
