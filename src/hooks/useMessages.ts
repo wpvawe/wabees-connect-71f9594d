@@ -58,6 +58,7 @@ export type Message = {
   replyToType?: string | null;
   raw?: Record<string, unknown> | null;
   reactionAt?: string | null;
+  starred?: boolean;
 };
 
 const PAGE_SIZE = 300;
@@ -191,6 +192,7 @@ export function useMessages(phone: string | undefined): {
               replyToWamid: strOrNull(x.replyToWamid),
               replyToType: strOrNull(x.replyToType),
               raw: null,
+              starred: x.starred === true,
             };
           });
         // Merge orphan reaction events onto the original message so the chip

@@ -16,7 +16,9 @@ import { toast } from "sonner";
 import { AttachmentSheet, type AttachKind } from "@/components/inbox/AttachmentSheet";
 import { InteractiveDialog } from "@/components/inbox/InteractiveDialog";
 import { CannedPicker } from "@/components/inbox/CannedPicker";
+import { TemplatePicker, templateNeedsForm } from "@/components/inbox/TemplatePicker";
 import { useCannedResponses } from "@/hooks/useCannedResponses";
+import { useTemplates } from "@/hooks/useTemplates";
 import { useContacts } from "@/hooks/useContacts";
 import {
   expandCanned,
@@ -42,6 +44,7 @@ import {
   uploadMedia,
   mediaProxyUrl,
   sendTypingIndicator,
+  sendTemplateMessage,
 } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
@@ -131,6 +134,25 @@ export function Composer({
     ? filterCanned(cannedList ?? [], cannedQuery)
     : [];
 
+  // Template picker: opens when the composer value starts with "#". Filters
+  // by template name (case-insensitive prefix / includes match). Only
+  // APPROVED + synced templates are eligible for inline send.
+  const { data: templatesList } = useTemplates();
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateIndex, setTemplateIndex] = useState(0);
+  const templateQuery =
+    templateOpen && text.startsWith("#") ? text.slice(1).trim().toLowerCase() : "";
+  const templateMatches = templateOpen
+    ? (templatesList ?? [])
+        .filter(
+          (t) =>
+            (t.status ?? "").toUpperCase() === "APPROVED" &&
+            (templateQuery === "" ||
+              t.name.toLowerCase().includes(templateQuery)),
+        )
+        .slice(0, 30)
+    : [];
+
   // Live personalisation context for the quick-reply picker + insert.
   // Sourced from the matching contact (email/company) and the conversation
   // doc (display name), with the signed-in user's name as `{{agent}}`.
@@ -204,6 +226,129 @@ export function Composer({
     if (!cannedOpen) setCannedOpen(true);
     setCannedIndex(0);
   }, [text, cannedList, cannedOpen]);
+
+  // Mirror trigger logic for the "#" template picker.
+  useEffect(() => {
+    if (!text.startsWith("#")) {
+      if (templateOpen) setTemplateOpen(false);
+      return;
+    }
+    if ((templatesList?.length ?? 0) === 0) {
+      if (templateOpen) setTemplateOpen(false);
+      return;
+    }
+    if (!templateOpen) setTemplateOpen(true);
+    setTemplateIndex(0);
+  }, [text, templatesList, templateOpen]);
+
+  async function insertTemplate(t: import("@/hooks/useTemplates").Template) {
+    if (templateNeedsForm(t)) {
+      toast.info(`"${t.name}" needs variables — opening Templates page`, {
+        duration: 3500,
+      });
+      setTemplateOpen(false);
+      setText("");
+      // Best-effort: navigate the user to the Templates page. They can
+      // paste the phone (already in the URL) and select the template.
+      try {
+        window.location.href = "/templates";
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    // No variables / no media header → send inline immediately.
+    setTemplateOpen(false);
+    setText("");
+    await sendTemplateNow(t);
+  }
+
+  async function sendTemplateNow(t: import("@/hooks/useTemplates").Template) {
+    if (!uid || !selfUid || sending) return;
+    setSending(true);
+    const normalizedPhone = normalizePhone(phone);
+    const convId = phoneDocId(phone);
+    const db = fbDb();
+    let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
+    try {
+      const creds = await loadWaCredentials(selfUid);
+      if (!creds) {
+        toast.error("Connect WhatsApp first");
+        return;
+      }
+      try {
+        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+        await assertWithinPlanLimit(uid, "messages");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        return;
+      }
+      let knownName = normalizedPhone;
+      try {
+        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
+        const existing = snap.data()?.contactName;
+        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
+          knownName = existing;
+        }
+      } catch {
+        /* ignore */
+      }
+      msgRef = await addDoc(collection(db, "users", uid, "messages"), {
+        contactPhone: normalizedPhone,
+        contactName: knownName,
+        type: "template",
+        direction: "outgoing",
+        status: "pending",
+        body: t.body,
+        templateName: t.name,
+        headerText: t.header ?? null,
+        footerText: t.footer ?? null,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(
+        doc(db, "users", uid, "conversations", convId),
+        {
+          contactPhone: normalizedPhone,
+          contactName: knownName,
+          lastMessage: t.body,
+          lastMessageType: "template",
+          lastMessageAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      const res = await sendTemplateMessage({
+        phone_number_id: creds.phone_number_id,
+        access_token: creds.access_token,
+        to: whatsappRecipientId(phone),
+        template_name: t.name,
+        language_code: t.languageCode,
+      });
+      const wamid = extractWamid(res.raw);
+      if (!res.success) {
+        await updateDoc(msgRef, {
+          status: "failed",
+          errorReason: res.message ?? "Send failed",
+        });
+        toast.error(res.message ?? "Could not send template");
+        return;
+      }
+      await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
+      await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
+      await updateDoc(doc(db, "users", uid, "subscription", "current"), {
+        messagesUsed: increment(1),
+      }).catch(() => {});
+    } catch (err) {
+      if (msgRef) {
+        await updateDoc(msgRef, {
+          status: "failed",
+          errorReason: err instanceof Error ? err.message : "Send failed",
+        }).catch(() => {});
+      }
+      toast.error(err instanceof Error ? err.message : "Could not send template");
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function insertCanned(item: CannedResponse) {
     // Contacts-hook first (already streaming); fall back to the conversation
@@ -628,6 +773,31 @@ export function Composer({
         return;
       }
     }
+    if (templateOpen && templateMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setTemplateIndex((i) => (i + 1) % templateMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setTemplateIndex(
+          (i) => (i - 1 + templateMatches.length) % templateMatches.length,
+        );
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const pick = templateMatches[templateIndex] ?? templateMatches[0];
+        void insertTemplate(pick);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setTemplateOpen(false);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send();
@@ -656,7 +826,10 @@ export function Composer({
     return { hasInbound: true, open: remainingMs > 0, expiresAt, remainingMs };
   })();
   const windowClosed = !windowInfo.open;
-  const disabled = sending || uploading || recording || windowClosed;
+  // Textarea stays enabled when the 24h window is closed so users can still
+  // trigger the "#" template picker (templates always send). Free-text send
+ // itself is blocked inside send() with a clear toast.
+  const disabled = sending || uploading || recording;
 
   return (
     <div className="border-t border-border bg-card">
@@ -708,6 +881,12 @@ export function Composer({
             onHover={setCannedIndex}
             onPick={(item) => void insertCanned(item)}
             ctx={cannedCtx}
+          />
+          <TemplatePicker
+            matches={templateMatches}
+            activeIndex={templateIndex}
+            onHover={setTemplateIndex}
+            onPick={(t) => void insertTemplate(t)}
           />
           {/* WhatsApp-style single "+" that reveals attach / interactive / emoji */}
           <div className="relative" ref={plusWrapRef}>

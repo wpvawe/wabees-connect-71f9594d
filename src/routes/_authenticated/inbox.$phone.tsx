@@ -451,6 +451,17 @@ function Thread({ phone }: { phone: string }) {
     onForward: setForwardMsg,
     onOpenMedia: (m) => setLightboxId(m.id),
     onResend,
+    onToggleStar: async (m) => {
+      if (!uid) return;
+      try {
+        await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
+          starred: !m.starred,
+          starredAt: !m.starred ? serverTimestamp() : null,
+        });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Couldn't star message");
+      }
+    },
   };
 
   // Filter thread by in-chat search.
