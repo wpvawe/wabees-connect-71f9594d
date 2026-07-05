@@ -36,9 +36,7 @@ import {
   faRotateRight,
   faCircleExclamation,
   faStar,
-  faStar as faStarSolid,
 } from "@fortawesome/free-solid-svg-icons";
-import { faStar as faStarRegular } from "@fortawesome/free-regular-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
