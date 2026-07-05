@@ -4,7 +4,6 @@ import {
   collection,
   doc,
   getDocs,
-  increment,
   limit,
   onSnapshot,
   orderBy,
