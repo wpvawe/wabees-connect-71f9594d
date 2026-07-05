@@ -1367,3 +1367,19 @@ function formatPreview(body: string | null | undefined, type: string | null | un
   if (tag && !text) return tag;
   return text || "No preview";
 }
+
+/** Highlight matches of `needle` inside `body`. Case-insensitive. */
+function highlight(body: string, needle: string): React.ReactNode {
+  if (!needle) return body;
+  const idx = body.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx < 0) return body;
+  return (
+    <>
+      {body.slice(0, idx)}
+      <mark className="rounded bg-primary/20 px-0.5 text-foreground">
+        {body.slice(idx, idx + needle.length)}
+      </mark>
+      {body.slice(idx + needle.length)}
+    </>
+  );
+}
