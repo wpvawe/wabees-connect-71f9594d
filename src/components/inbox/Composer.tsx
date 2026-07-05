@@ -776,6 +776,9 @@ export function Composer({
       if (e.key === "Escape") {
         e.preventDefault();
         setCannedOpen(false);
+        // Clear the leading "/" so the trigger effect doesn't immediately
+        // re-open the picker. Same reason applies to the "#" template picker.
+        setText("");
         return;
       }
     }
@@ -801,6 +804,7 @@ export function Composer({
       if (e.key === "Escape") {
         e.preventDefault();
         setTemplateOpen(false);
+        setText("");
         return;
       }
     }

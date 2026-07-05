@@ -1,7 +1,7 @@
 # Chat / Inbox audit — DONE
 
 Ab jo aitems reh gaye the (frontend + PHP backend dono), sequence me
-karenge. Backend access `rules.md` + `HOSTINGER_SSH_*` env se hai —
+karenge. Backend access `docs/RULES.md` + `HOSTINGER_SSH_*` env se hai —
 `webhook.php` (3942 lines) aur `cron/dispatch-scheduled.php` (442 lines)
 SSH ke through edit karenge. Har PHP edit ke pehle server-side `.bak`
 banega taakay rollback safe rahe.
