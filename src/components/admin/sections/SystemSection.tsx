@@ -15,7 +15,6 @@ import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
 import { useConfigDoc } from "@/hooks/admin/useAdminData";
-import { useAllUsers } from "@/hooks/admin/useAdminData";
 import { saveConfigDoc, broadcastNotification } from "@/lib/admin/mutations";
 
 export function SystemSection() {
@@ -30,7 +29,6 @@ export function SystemSection() {
 }
 
 function BroadcastCard() {
-  const { data: allUsers } = useAllUsers();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [uidsRaw, setUidsRaw] = useState("");
@@ -56,7 +54,6 @@ function BroadcastCard() {
     try {
       const n = await broadcastNotification({
         uids: scope,
-        allUidsHint: scope === null ? (allUsers ?? []).map((u) => u.id) : undefined,
         title: title.trim(),
         body: body.trim(),
       });
