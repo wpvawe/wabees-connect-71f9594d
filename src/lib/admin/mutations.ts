@@ -150,6 +150,7 @@ export async function setUserField(uid: string, field: string, value: unknown) {
     [field]: value,
     updatedAt: serverTimestamp(),
   });
+  void logAudit("user.field", uid, { field, value });
 }
 
 // Hard-delete a user + all subcollections we know about. This is destructive
@@ -255,6 +256,7 @@ export async function broadcastNotification(args: {
     await batch.commit();
     written += Math.min(CHUNK, targets.length - i);
   }
+  void logAudit("notification.broadcast", args.uids ? `uids:${targets.length}` : "all", { count: written, title });
   return written;
 }
 
@@ -418,6 +420,7 @@ export async function adminAssignPlan(userId: string, planId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.assign", userId, { planId, planName: newSub.planName });
 }
 // audit
 // (kept outside the try so failure to add notification doesn't skip audit)
@@ -470,6 +473,7 @@ export async function updateUserSubscriptionLimits(
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.customize", userId, overrides as Record<string, unknown>);
 }
 
 // Extend (or shrink, if days<0) the current subscription's end date.
@@ -509,6 +513,7 @@ export async function extendSubscriptionExpiry(userId: string, deltaDays: number
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.extend", userId, { deltaDays });
 }
 
 // Reset the "used" counters on the current sub without changing the plan
@@ -528,6 +533,7 @@ export async function resetSubscriptionCounters(userId: string) {
     { usedThisMonth: 0, currentPeriodStart: new Date().toISOString().slice(0, 7) + "-01" },
     { merge: true },
   );
+  void logAudit("subscription.reset_counters", userId, {});
 }
 
 export async function rejectPendingSubscription(userId: string) {
@@ -562,6 +568,7 @@ export async function rejectPendingSubscription(userId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.reject", userId, {});
 }
 
 // ============ PLANS ============
@@ -677,4 +684,5 @@ export async function saveConfigDoc(
     { ...data, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  void logAudit("config.save", `${path[0]}/${path[1]}`, {});
 }
