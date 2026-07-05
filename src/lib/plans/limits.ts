@@ -4,6 +4,7 @@ import {
   getCountFromServer,
   getDoc,
   increment,
+  runTransaction,
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
@@ -226,4 +227,126 @@ export async function incrementAiMessagesUsed(uid: string, n = 1): Promise<void>
   await updateDoc(doc(db, "users", uid, "subscription", "current"), {
     aiMessagesUsed: increment(n),
   }).catch(() => {});
+}
+
+/**
+ * ATOMIC reserve-and-increment. Wraps the cap check + counter increment in a
+ * single Firestore transaction so N parallel requests can't all pass the
+ * check and slip past `maxMessages`. This closes the race window that
+ * `assertWithinPlanLimit` + separate `incrementMessagesUsed` had.
+ *
+ * Usage pattern for a send path:
+ *   const released = { done: false };
+ *   await reserveQuota(uid, "messages", 1);   // throws if over cap / expired
+ *   try {
+ *     const res = await sendToMeta(...);
+ *     if (!res.success) throw new Error(res.message);
+ *   } catch (err) {
+ *     if (!released.done) await releaseQuota(uid, "messages", 1);
+ *     throw err;
+ *   }
+ *
+ * For kinds that have a `profileField` (messages/contacts/campaigns/bots),
+ * we also update the mirrored counter on the users doc so admin dashboards
+ * stay in sync with subscription.usedField.
+ */
+export async function reserveQuota(
+  uid: string,
+  kind: LimitKind,
+  n = 1,
+): Promise<void> {
+  if (!uid || n <= 0) return;
+  const cfg = CONFIG[kind];
+  const db = fbDb();
+  const subRef = doc(db, "users", uid, "subscription", "current");
+  const userRef = doc(db, "users", uid);
+
+  // Live-count fallback (only agents today) is not atomic-safe inside
+  // a transaction — the subcollection count is a query, not a doc read.
+  // We pre-fetch it once and pass it in as a floor; the transaction still
+  // does the atomic write on the counter field.
+  const liveFloor = await liveCount(uid, kind);
+
+  await runTransaction(db, async (tx) => {
+    const subSnap = await tx.get(subRef);
+    if (!subSnap.exists()) return; // legacy account without sub doc — skip
+    const sub = subSnap.data() as Record<string, unknown>;
+
+    // Expiry / status guard (same rules as assertPlanActive).
+    const status = String(sub.status ?? "active").toLowerCase();
+    if (status === "cancelled" || status === "canceled" || status === "expired") {
+      throw new Error(
+        "Your subscription is inactive. Please renew or upgrade your plan to continue.",
+      );
+    }
+    const expiryType = String(sub.expiryType ?? "").toLowerCase();
+    if (expiryType !== "lifetime") {
+      const endMs = toMillis(sub.endDate);
+      if (endMs !== null && Date.now() - EXPIRY_SKEW_MS > endMs) {
+        throw new Error(
+          "Your plan has expired. Please renew or upgrade to continue using this feature.",
+        );
+      }
+    }
+
+    const max = num(sub[cfg.maxField]);
+    if (max > 0) {
+      const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
+      // Profile counter read is best-effort; we only need it for a tighter
+      // floor. Skip inside the tx to keep it single-doc atomic.
+      const used = Math.max(subUsed, liveFloor ?? 0);
+      if (used + n > max) {
+        const remaining = Math.max(0, max - used);
+        const planName =
+          (sub.planName as string) || (sub.planId as string) || "current plan";
+        throw new Error(
+          n === 1
+            ? `Your ${planName} allows ${max} ${cfg.label} (${used}/${max} used). Upgrade to create more.`
+            : `Your ${planName} allows ${max} ${cfg.label}. Only ${remaining} slot(s) left — tried to add ${n}. Upgrade to add more.`,
+        );
+      }
+    }
+
+    // Atomic increment inside the same transaction — no race window.
+    if (cfg.usedField) {
+      tx.update(subRef, { [cfg.usedField]: increment(n) });
+    }
+  });
+
+  // Mirror to the profile counter (best-effort, outside tx — the sub doc
+  // is the source of truth for enforcement).
+  if (cfg.profileField) {
+    await updateDoc(userRef, { [cfg.profileField]: increment(n) }).catch(() => {});
+  }
+}
+
+/**
+ * Compensating write for reserveQuota when the downstream action failed
+ * (Meta rejected the send, media upload crashed, etc.). Decrements both
+ * the subscription counter and the mirrored profile counter.
+ */
+export async function releaseQuota(
+  uid: string,
+  kind: LimitKind,
+  n = 1,
+): Promise<void> {
+  if (!uid || n <= 0) return;
+  const cfg = CONFIG[kind];
+  const db = fbDb();
+  const jobs: Promise<unknown>[] = [];
+  if (cfg.usedField) {
+    jobs.push(
+      updateDoc(doc(db, "users", uid, "subscription", "current"), {
+        [cfg.usedField]: increment(-n),
+      }).catch(() => {}),
+    );
+  }
+  if (cfg.profileField) {
+    jobs.push(
+      updateDoc(doc(db, "users", uid), {
+        [cfg.profileField]: increment(-n),
+      }).catch(() => {}),
+    );
+  }
+  await Promise.all(jobs);
 }
