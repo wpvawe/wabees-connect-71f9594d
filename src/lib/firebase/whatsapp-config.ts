@@ -199,9 +199,36 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       const map = existingMap.data() as Record<string, unknown>;
       const ownerId = typeof map.ownerId === "string" ? map.ownerId : typeof map.userId === "string" ? map.userId : "";
       if (ownerId && ownerId !== input.uid) {
-        throw new Error(
-          "This WhatsApp number is already connected to another workspace. Disconnect it there first, then connect here.",
-        );
+        const [ownerSnap, ownerCfgSnap] = await Promise.all([
+          getDocFromServer(doc(db, "users", ownerId)).catch(() => null),
+          getDocFromServer(doc(db, "users", ownerId, "whatsapp_config", "config")).catch(
+            () => null,
+          ),
+        ]);
+        const ownerData = ownerSnap?.exists() ? (ownerSnap.data() as Record<string, unknown>) : {};
+        const ownerCfg = ownerCfgSnap?.exists()
+          ? (ownerCfgSnap.data() as Record<string, unknown>)
+          : {};
+        const ownerHasPhone =
+          ownerData.whatsappPhoneNumberId === normalized.phoneNumberId ||
+          ownerCfg.phoneNumberId === normalized.phoneNumberId;
+        const ownerHasToken =
+          typeof ownerData.whatsappAccessToken === "string" ||
+          typeof ownerCfg.accessToken === "string";
+        const ownerDisconnected =
+          ownerData.whatsappConnected === false ||
+          ownerCfg.isConnected === false ||
+          typeof ownerData.dataOwner === "string";
+        const ownerIsActive =
+          ownerHasPhone &&
+          ownerHasToken &&
+          !ownerDisconnected &&
+          (ownerData.whatsappConnected === true || ownerCfg.isConnected === true);
+        if (ownerIsActive) {
+          throw new Error(
+            "This WhatsApp number is already connected to another workspace. Disconnect it there first, then connect here.",
+          );
+        }
       }
     }
     await setDoc(
