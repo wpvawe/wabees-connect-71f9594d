@@ -498,6 +498,13 @@ function Thread({ phone }: { phone: string }) {
       return body.includes(s) || cap.includes(s) || fn.includes(s);
     });
   }, [data, searchQuery]);
+  // P5: cache the rendered day-divider list. Recomputing on every parent
+  // state change (menu toggles, atBottom flips, unread ticks) was
+  // O(n) per keystroke — memoize on the inputs that actually affect it.
+  const renderedMessages = useMemo(
+    () => renderWithDayDividers(visibleData ?? [], actions, firstUnreadId, firstUnreadRef),
+    [visibleData, actions, firstUnreadId],
+  );
 
   // P6: derived list — memoize so the lightbox array isn't reallocated on
   // every parent state change (menus, scroll, delivery-status ticks).
