@@ -15,7 +15,6 @@ import { useMutation } from "@tanstack/react-query";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
-import { checkExistingWhatsAppOwner } from "@/lib/firebase/owner-repair.functions";
 import { smartConnectWhatsApp, verifyWhatsAppToken } from "@/lib/wabees/api";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -124,28 +123,8 @@ export function ManualTokenForm() {
     setChecking(true);
     try {
       const idToken = await fbAuth().currentUser?.getIdToken();
-      if (!idToken) {
-        toast.error("Please sign in again");
-        return;
-      }
-      let check: Awaited<ReturnType<typeof checkExistingWhatsAppOwner>> | null = null;
-      try {
-        check = await checkExistingWhatsAppOwner({
-          data: { idToken, phoneNumberId: v.phone_number_id.trim() },
-        });
-      } catch (e) {
-        if (e instanceof Error) console.warn("ownership precheck failed:", e.message);
-        toast.error("We couldn't verify this number right now. Please try again in a moment.");
-        return;
-      }
-      if (check?.existingOwnerId && !check.isSelf) {
-        const who = check.existingOwnerEmail || check.existingOwnerBusinessName || "another account";
-        toast.error(
-          `This WhatsApp number is already connected to ${who}. Ask the workspace owner to send you an invite link to join as an agent.`,
-          { duration: 8000 },
-        );
-        return;
-      }
+      if (!idToken) toast.error("Please sign in again");
+      if (!idToken) return;
     } finally {
       setChecking(false);
     }

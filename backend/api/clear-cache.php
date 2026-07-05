@@ -15,7 +15,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -35,8 +35,18 @@ $phoneNumberId = $input['phone_number_id'] ?? ($_GET['phone_number_id'] ?? '');
 $secret = $input['secret'] ?? ($_GET['secret'] ?? '');
 $clearAll = isset($input['clear_all']) || isset($_GET['clear_all']);
 
-// Auth check
+// Auth check. Browser calls use Firebase bearer auth; operational scripts may
+// still use the legacy static secret.
+$bearerOk = false;
 if ($secret !== CACHE_CLEAR_SECRET) {
+    require_once __DIR__ . '/../config/firebase-auth.php';
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
+        $err = null;
+        $bearerOk = (bool) verify_firebase_id_token(trim($m[1]), $err);
+    }
+}
+if ($secret !== CACHE_CLEAR_SECRET && !$bearerOk) {
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Invalid secret']);
     exit;
