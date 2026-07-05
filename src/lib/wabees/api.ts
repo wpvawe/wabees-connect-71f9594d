@@ -19,7 +19,7 @@ export type WabeesApiResult<T = unknown> = {
  * Endpoints that were patched in Batch 5A to accept
  * `Authorization: Bearer <FirebaseIdToken>` and resolve
  * `phone_number_id` + `access_token` server-side from Firestore
- * (via `_wa_auth.php::wabees_apply_bearer_auth`).
+ * (via `wa-bearer-auth.php::wabees_apply_bearer_auth`).
  *
  * For these endpoints the browser MUST NOT send the Meta access token in
  * the request body — PHP will pull it from Firestore using the verified

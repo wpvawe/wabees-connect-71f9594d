@@ -523,7 +523,7 @@ export async function loadWaCredentials(
  * `phone_number_id` (public routing id already visible in wa_map / webhook
  * URLs). The Meta `access_token` is intentionally NOT read into the
  * browser: PHP endpoints resolve it server-side from Firestore via the
- * verified Firebase bearer token (`_wa_auth.php::wabees_apply_bearer_auth`).
+ * verified Firebase bearer token (`wa-bearer-auth.php::wabees_apply_bearer_auth`).
  *
  * Use this in place of `loadWaCredentials` anywhere the UI just needs to
  * (a) gate an action on "is WhatsApp connected?" and (b) know which phone

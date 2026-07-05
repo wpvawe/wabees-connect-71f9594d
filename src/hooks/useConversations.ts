@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import {
   listOfStrings,
   normalizePhone,
@@ -126,6 +126,10 @@ export function useConversations(): {
   loadingMore: boolean;
 } {
   const uid = useEffectiveUid();
+  const session = useFirebaseSession();
+  const selfUid = session.status === "ready" ? session.uid : null;
+  const maskOtherAgentEmails =
+    session.status === "ready" && !!session.dataOwner && session.dataOwner !== session.uid;
   const [data, setData] = useState<Conversation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pageLimit, setPageLimit] = useState<number>(CONV_PAGE);
@@ -180,7 +184,10 @@ export function useConversations(): {
             isBlocked: Boolean(x.isBlocked),
             tags: listOfStrings(x.tags),
             assignedAgentId: strOrNull(x.assignedAgentId),
-            assignedAgentEmail: strOrNull(x.assignedAgentEmail),
+            assignedAgentEmail:
+              maskOtherAgentEmails && strOrNull(x.assignedAgentId) !== selfUid
+                ? null
+                : strOrNull(x.assignedAgentEmail),
             isDeleted: x.isDeleted === true,
             notesCount: typeof x.notesCount === "number" ? Math.max(0, x.notesCount) : 0,
             state: (() => {
@@ -246,7 +253,7 @@ export function useConversations(): {
       },
     );
     return () => unsub();
-  }, [uid, pageLimit]);
+  }, [uid, pageLimit, selfUid, maskOtherAgentEmails]);
 
   const loadMore = useCallback(() => {
     setLoadingMore(true);
