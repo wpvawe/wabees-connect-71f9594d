@@ -35,9 +35,16 @@ export function useAgentRevocationGuard(): void {
     const key = `${uid}::${dataOwner}`;
     if (healedFor.current === key) return;
 
-    const heal = async (reason: "revoked" | "missing" | "permission_denied") => {
+    const heal = async (reason: "revoked" | "missing" | "permission_denied" | "implicit_connect") => {
       if (healedFor.current === key) return;
       healedFor.current = key;
+      if (reason === "implicit_connect") {
+        await updateDoc(doc(db, `users/${dataOwner}/agents/${uid}`), {
+          status: "left",
+          leftAt: serverTimestamp(),
+          leftReason: "implicit_connect_cleanup",
+        }).catch(() => undefined);
+      }
       try {
         await updateDoc(doc(db, `users/${uid}`), {
           dataOwner: deleteField(),
@@ -54,10 +61,14 @@ export function useAgentRevocationGuard(): void {
         await addDoc(collection(db, `users/${uid}/notifications`), {
           type: "agent_access_revoked",
           title:
-            reason === "revoked" ? "You were removed from a workspace" : "Your workspace assignment ended",
+            reason === "revoked"
+              ? "You were removed from a workspace"
+              : "Your workspace assignment ended",
           message:
             reason === "revoked"
               ? "The workspace owner revoked your agent access. You now see your own account."
+              : reason === "implicit_connect"
+                ? "Your previous WhatsApp connection was moved to another account. You now see your own account."
               : "Your agent record is no longer available. You now see your own account.",
           ownerId: dataOwner,
           createdAt: serverTimestamp(),
@@ -73,6 +84,12 @@ export function useAgentRevocationGuard(): void {
       (snap) => {
         const data = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
         const status = typeof data?.status === "string" ? data.status : data ? "active" : "missing";
+        const hasInvite =
+          typeof data?.inviteCode === "string" || data?.joinedVia === "invite" || typeof data?.role === "string";
+        if (data && status === "active" && !hasInvite) {
+          void heal("implicit_connect");
+          return;
+        }
         if (status !== "revoked" && status !== "missing") return;
         void heal(status === "revoked" ? "revoked" : "missing");
       },
