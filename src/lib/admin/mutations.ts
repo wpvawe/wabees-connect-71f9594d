@@ -419,6 +419,8 @@ export async function adminAssignPlan(userId: string, planId: string) {
     /* non-critical */
   }
 }
+// audit
+// (kept outside the try so failure to add notification doesn't skip audit)
 
 // Per-user custom limit overrides. Only touches the user's OWN subscription
 // doc — the underlying plan and other users are unaffected. Marks the sub
