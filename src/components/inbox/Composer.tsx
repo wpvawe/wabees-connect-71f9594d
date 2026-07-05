@@ -65,7 +65,40 @@ export function Composer({
   lastInboundWamid?: string | null;
   lastInboundAt?: string | null;
 }) {
-  const [text, setText] = useState("");
+  // Draft persistence: rehydrate any unsent text for this thread so
+  // switching conversations doesn't drop what the user was typing.
+  const draftKey = `wb:draft:${phone}`;
+  const [text, setText] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(draftKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  // Swap draft when the thread changes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setText(window.localStorage.getItem(draftKey) ?? "");
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
+  // Persist while typing (debounced).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = setTimeout(() => {
+      try {
+        if (text) window.localStorage.setItem(draftKey, text);
+        else window.localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [text, draftKey]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
