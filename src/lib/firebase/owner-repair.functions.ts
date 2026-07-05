@@ -866,6 +866,19 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
 
+    // Collect prior-owner UIDs that once had this phone connected (even if
+    // currently disconnected). Used to migrate historical data into the new
+    // owner when this reconnect makes the caller the fresh workspace owner.
+    const priorOwnerCandidates = new Map<string, Candidate>();
+    for (const row of topLevelMatches) {
+      const id = uidFromUserDocName(row.name);
+      if (id) mergeCandidate(priorOwnerCandidates, id, { fields: row.fields, fromTopLevel: true });
+    }
+    for (const row of configMatches) {
+      const id = uidFromConfigDocName(row.name);
+      if (id) mergeCandidate(priorOwnerCandidates, id, { fields: row.fields, fromConfig: true });
+    }
+
     for (const row of topLevelMatches) {
       if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
@@ -979,6 +992,40 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       active: boolValue(true),
       updatedAt: timestampValue(),
     });
+    // Fresh takeover: no active historical owner picked, but this phone may
+    // have had a prior (now-disconnected) owner whose Firestore subtree still
+    // holds conversations/messages/contacts/templates/bots/campaigns. Move
+    // that data under the new caller so the workspace picks up where it left
+    // off, matching the "data follows the phone" contract.
+    priorOwnerCandidates.delete(uid);
+    if (priorOwnerCandidates.size > 0) {
+      await enrichCandidates(projectId, accessToken, priorOwnerCandidates);
+      const best = Array.from(priorOwnerCandidates.values())
+        .filter((c) => {
+          const s = c.samples ?? {};
+          return (
+            (s.conversations ?? 0) +
+              (s.messages ?? 0) +
+              (s.contacts ?? 0) +
+              (s.templates ?? 0) +
+              (s.bots ?? 0) +
+              (s.campaigns ?? 0) >
+            0
+          );
+        })
+        .sort((a, b) => {
+          const sa = a.samples ?? {};
+          const sb = b.samples ?? {};
+          const na =
+            (sa.conversations ?? 0) * 5 + (sa.messages ?? 0) + (sa.contacts ?? 0) * 3;
+          const nb =
+            (sb.conversations ?? 0) * 5 + (sb.messages ?? 0) + (sb.contacts ?? 0) * 3;
+          return nb - na;
+        })[0];
+      if (best) {
+        await mergeDataIsland(projectId, accessToken, best.id, uid).catch(() => undefined);
+      }
+    }
     const ownAccessToken = getString(cfgPatch, "accessToken");
     await subscribeWebhook(data.phoneNumberId, ownAccessToken);
     await clearRemoteCache(data.phoneNumberId);
