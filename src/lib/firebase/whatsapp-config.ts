@@ -310,10 +310,10 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     // a revoked access token, and the user sees clear "cancelled — WhatsApp
     // disconnected" state instead of a silent retry loop.
     await pauseOutboundWorkOnDisconnect(uid).catch(() => undefined);
-    // Disconnect means the number is no longer owned by this workspace.
-    // Always remove webhook routing so another account can connect the same
-    // phone cleanly; agents will see the disconnected-workspace gate.
-    await deleteDoc(doc(db, "wa_map", phoneId)).catch(() => {});
+    // Server (whatsapp-disconnect.php) already patched wa_map to inactive
+    // while preserving originalOwnerUid — the first-bind lock. Do NOT
+    // deleteDoc here or the permanent lock record is wiped and any other
+    // account could steal the number on the next connect.
     await clearWebhookOwnerCache(phoneId).catch(() => null);
   }
 }
