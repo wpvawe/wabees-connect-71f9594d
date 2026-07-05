@@ -67,9 +67,10 @@ function parseOffer(x: unknown): PlanOffer | null {
 }
 
 export function usePlans(
-  opts?: { includeInactive?: boolean },
+  opts?: { includeInactive?: boolean; publicOnly?: boolean },
 ): { data: Plan[] | null; error: string | null } {
   const includeInactive = opts?.includeInactive === true;
+  const publicOnly = opts?.publicOnly === true;
   const [data, setData] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,13 +114,14 @@ export function usePlans(
             };
           })
           .filter((p) => includeInactive || p.isActive)
+          .filter((p) => !publicOnly || p.showOnPublic)
           .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
         setData(rows);
       },
       (err) => setError(err.message),
     );
     return () => unsub();
-  }, [includeInactive]);
+  }, [includeInactive, publicOnly]);
 
   return { data, error };
 }
