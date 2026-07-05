@@ -61,6 +61,7 @@ export function PhoneHealthCard({
         },
         body: JSON.stringify({
           phone_number_id: phoneNumberId || creds.phone_number_id,
+          id_token: idToken ?? "",
         }),
       });
       const json = (await res.json()) as Health & { error?: unknown };
