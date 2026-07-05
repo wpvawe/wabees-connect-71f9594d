@@ -1,4 +1,4 @@
-# Chat / Inbox — Baaki reh gaye kaam (sab step by step)
+# Chat / Inbox audit — DONE
 
 Ab jo aitems reh gaye the (frontend + PHP backend dono), sequence me
 karenge. Backend access `rules.md` + `HOSTINGER_SSH_*` env se hai —
@@ -8,30 +8,25 @@ banega taakay rollback safe rahe.
 
 ## Order of execution
 
-### Batch A — Backend foundations (PHP webhook)
-1. **Inbound typing indicator persist** (`webhook.php`)
-   - Meta ke `statuses[].message_status = "typing"` / `messages[].type = "typing"` events parse karo.
-   - Conversation doc pe `typingUntil = now + 25s` + `typingWamid` write karo.
-2. **Structured order / interactive nfm_reply persist** (`webhook.php`)
-   - `messages[].order.product_items[]` → `orderItems` array (retailer_id, quantity, item_price, currency), `orderTotal`, `orderCatalogId`.
-   - `messages[].interactive.nfm_reply.response_json` → `flowResponse` object.
-3. **Cron subscription `messagesUsed` guard** (`cron/dispatch-scheduled.php`)
-   - Ensure `messagesUsed` increment fires on every server-side dispatch (currently bypasses).
+### Batch A — Backend (PHP webhook + cron)
+1. **Structured order persistence** — `webhook.php` case 'order' now parses `product_items[]`, computes total, persists `orderItems / orderTotal / orderCurrency / orderCatalogId / orderNote`.
+2. **Flow (nfm_reply) response persistence** — decodes `response_json` into `flowResponse` for interactive bubble rendering.
+3. **Cron subscription counter** — `dispatch-scheduled.php` now increments `subscription/current.messagesUsed` on every server-side send.
+4. Backups: `webhook.php.bak.1783225747`, `cron/dispatch-scheduled.php.bak.1783225747`.
 
-### Batch B — Frontend: typing + rich payloads
-4. **useConversations**: expose `typingUntil` on conversation type.
-5. **useMessages**: expose `orderItems`, `orderTotal`, `orderCatalogId`, `flowResponse`.
-6. **Thread header** — show "typing…" dot when `typingUntil > now`.
-7. **MessageBubble** — rich `order` renderer (line-items table, total), `interactive` nfm_reply renderer (key/value grid).
+### Batch B — Frontend rich payloads
+5. **useMessages**: exposes `orderItems / orderTotal / orderCurrency / orderCatalogId / orderNote / flowResponse`.
+6. **MessageBubble**: new `OrderCard` (receipt with line items + total) and `FlowResponseCard` (key/value grid) renderers.
 
-### Batch C — Frontend: starred, search, export
-8. **Starred messages drawer** — new right-side panel showing all starred messages for current thread, click → scroll to that message. Access from thread header.
-9. **Inbox-wide search** — extend inbox list search to also query all `messages` where body/caption contains query (limit 50), show "Messages" section with jump-to-thread.
-10. **Chat export** — TXT + CSV download of current thread from header menu. WhatsApp-style plain-text format.
+### Batch C — Frontend UX
+7. **StarredDrawer**: right-side panel with all starred messages, click → smooth scroll + `wb-star-flash` highlight.
+8. **Inbox-wide message search**: `useMessageSearch` hook + "Messages" section in `ConversationList` (2+ chars, 250 ms debounce, last 1000 messages, top 50 shown, match highlighted).
+9. **Chat export**: `lib/inbox/export.ts` (TXT WhatsApp-style + CSV RFC-4180). Header menu item downloads both.
+10. **Bubble anchors** (`data-msg-id`) for jump-to-message.
 
-### Batch D — Deploy + verify
-11. Redeploy Firestore indexes if any new composite query needed (unlikely).
-12. Playwright smoke on `/inbox` (starred toggle + drawer, `#template` picker still works, order bubble renders on a test message).
+## Skipped (documented reasons)
+- **Inbound typing indicator** — WhatsApp Cloud API does NOT forward customer typing to businesses. No webhook signal exists to render it. Meta limitation, not our bug.
+- **Virtualized list**, **business-hours auto-reply** — out of plan scope.
 
 ## Out of scope (confirmed)
 - Virtualized message list (needs `@tanstack/react-virtual` + heavier refactor).
