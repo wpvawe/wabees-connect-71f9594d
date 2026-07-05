@@ -177,6 +177,7 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
     name: existing?.name ?? "",
     description: existing?.description ?? "",
     priceMonthly: existing?.priceMonthly ?? 0,
+    priceYearly: existing?.priceYearly ?? null,
     currency: existing?.currency ?? "PKR",
     maxMessages: existing?.maxMessages ?? 1000,
     maxContacts: existing?.maxContacts ?? 500,
@@ -342,6 +343,50 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
               </div>
             )}
             <NumField label="Sort order" v={form.sortOrder} onChange={(v) => set("sortOrder", v)} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Yearly price (optional)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={form.priceYearly ?? ""}
+                onChange={(e) =>
+                  set("priceYearly", e.target.value ? Number(e.target.value) : null)
+                }
+                placeholder={`e.g. ${form.priceMonthly * 10}`}
+                className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none ring-ring focus-visible:ring-2"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Only used when the plan cycle is not already yearly — shown as a
+                "Save X%" cross-sell on the plan card.
+              </p>
+            </div>
+            {form.priceYearly != null && form.priceYearly > 0 && form.priceMonthly > 0 && (
+              <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <p className="font-semibold text-foreground">
+                  Yearly vs 12x monthly
+                </p>
+                <p className="mt-1">
+                  12x monthly = {form.currency} {(form.priceMonthly * 12).toLocaleString()} —
+                  yearly saves{" "}
+                  <b className="text-primary">
+                    {Math.max(
+                      0,
+                      Math.round(
+                        ((form.priceMonthly * 12 - form.priceYearly) /
+                          (form.priceMonthly * 12)) *
+                          100,
+                      ),
+                    )}
+                    %
+                  </b>
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
