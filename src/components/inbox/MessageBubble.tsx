@@ -969,6 +969,9 @@ function MessageContent({
     case "button":
     case "interactive": {
       const label = m.buttonReplyText || m.body || "Reply";
+      if (m.interactiveType === "nfm_reply" && m.flowResponse) {
+        return <FlowResponseCard m={m} mine={mine} />;
+      }
       return (
         <div>
           <p className="text-[11px] font-semibold opacity-80">
