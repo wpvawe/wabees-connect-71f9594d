@@ -276,9 +276,13 @@ export function Composer({
         toast.error("Connect WhatsApp first");
         return;
       }
+      // Atomic reserve — closes the race window so N parallel sends can't
+      // collectively exceed the plan cap. Released on send failure below.
+      let quotaReserved = false;
       try {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "messages");
+        const { reserveQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -325,6 +329,12 @@ export function Composer({
       });
       const wamid = extractWamid(res.raw);
       if (!res.success) {
+        // Meta rejected — refund the reserved quota so counter stays accurate.
+        if (quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1);
+          quotaReserved = false;
+        }
         await updateDoc(msgRef, {
           status: "failed",
           errorReason: res.message ?? "Send failed",
