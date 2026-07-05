@@ -179,7 +179,7 @@ export function SideRail() {
       </div>
       <nav
         className={cn(
-          "flex flex-1 flex-col overflow-y-auto",
+          "flex flex-1 flex-col overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
           collapsed ? "items-center gap-1 px-0" : "gap-4 px-2",
         )}
       >
