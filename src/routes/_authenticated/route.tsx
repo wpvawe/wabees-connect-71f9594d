@@ -14,6 +14,9 @@ import { useUnreadTitle } from "@/hooks/useUnreadTitle";
 import { useEffect } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
+import { useAnnouncement } from "@/hooks/useAnnouncement";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBullhorn } from "@fortawesome/free-solid-svg-icons";
 
 function waitForFirebaseUser(): Promise<User | null> {
   const auth = fbAuth();
@@ -68,9 +71,21 @@ function AuthenticatedShell() {
     <div className="flex min-h-screen bg-background text-foreground">
       <SideRail />
       <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
+        <AnnouncementBanner />
         <Outlet />
       </main>
       <MobileTabBar />
+    </div>
+  );
+}
+
+function AnnouncementBanner() {
+  const ann = useAnnouncement();
+  if (!ann) return null;
+  return (
+    <div className="flex items-start gap-3 border-b border-primary/20 bg-primary/10 px-4 py-2.5 text-xs text-foreground sm:px-6">
+      <FontAwesomeIcon icon={faBullhorn} className="mt-0.5 h-3.5 w-3.5 text-primary" />
+      <p className="flex-1 whitespace-pre-wrap">{ann.message}</p>
     </div>
   );
 }
