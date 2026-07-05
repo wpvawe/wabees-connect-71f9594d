@@ -1169,7 +1169,7 @@ function renderWithDayDividers(
   msgs: Message[],
   actions: MessageActions,
   firstUnreadId: string | null,
-  firstUnreadRef: React.RefObject<HTMLDivElement>,
+  firstUnreadRef: React.RefObject<HTMLDivElement | null>,
 ) {
   const nodes: ReactNode[] = [];
   let prev: Date | null = null;
