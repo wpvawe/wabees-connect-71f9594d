@@ -18,6 +18,16 @@ import {
   resolvePricing,
 } from "@/lib/plans/pricing";
 
+function validityLabel(plan: import("@/hooks/usePlans").Plan): string {
+  const t = (plan.expiryType || "").toLowerCase();
+  if (t === "lifetime") return "Lifetime access — never expires";
+  if (t === "monthly") return "Valid for 30 days";
+  if (t === "quarterly") return "Valid for 90 days";
+  if (t === "yearly") return "Valid for 365 days";
+  if (plan.expiryDays > 0) return `Valid for ${plan.expiryDays} days`;
+  return "";
+}
+
 export function PlanCard({
   plan,
   active,
@@ -123,6 +133,9 @@ export function PlanCard({
           {formatEndsIn(plan.offer.endsAt)}
         </p>
       )}
+      <p className="mt-3 rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground">
+        {validityLabel(plan)}
+      </p>
       <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
         <PlanStat label="Messages" value={limitLabel(plan.maxMessages)} />
         <PlanStat label="Contacts" value={limitLabel(plan.maxContacts)} />
