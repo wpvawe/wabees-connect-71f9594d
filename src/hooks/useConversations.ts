@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -115,10 +115,22 @@ function priorityRank(p: Conversation["priority"]): number {
   return 0;
 }
 
-export function useConversations(): { data: Conversation[] | null; error: string | null } {
+const CONV_PAGE = 200;
+const CONV_STEP = 100;
+
+export function useConversations(): {
+  data: Conversation[] | null;
+  error: string | null;
+  hasMore: boolean;
+  loadMore: () => void;
+  loadingMore: boolean;
+} {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Conversation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageLimit, setPageLimit] = useState<number>(CONV_PAGE);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
     if (!uid) return;
@@ -132,12 +144,15 @@ export function useConversations(): { data: Conversation[] | null; error: string
       // Cap realtime stream: most inboxes only ever look at the top ~200
       // most-recent threads. Anything older is still writable via direct
       // doc paths; the list just doesn't pin them into a live listener.
+      // Grows in +100 steps via loadMore() when the user hits "Show more".
       query(
         collection(db, `users/${uid}/conversations`),
         orderBy("lastMessageAt", "desc"),
-        limit(200),
+        limit(pageLimit),
       ),
       (snap) => {
+        setHasMore(snap.docs.length >= pageLimit);
+        setLoadingMore(false);
         const grouped = new Map<string, Conversation>();
         // Track which raw doc IDs belong to each canonical phone, so we can
         // self-heal "+92..." vs "92..." duplicates created by older clients.
@@ -225,10 +240,18 @@ export function useConversations(): { data: Conversation[] | null; error: string
         });
         setData(rows);
       },
-      (err) => setError(err.message),
+      (err) => {
+        setError(err.message);
+        setLoadingMore(false);
+      },
     );
     return () => unsub();
-  }, [uid]);
+  }, [uid, pageLimit]);
 
-  return { data, error };
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    setPageLimit((n) => n + CONV_STEP);
+  }, []);
+
+  return { data, error, hasMore, loadMore, loadingMore };
 }
