@@ -133,8 +133,20 @@ if ($phone !== '') {
         $fields = $map['data']['fields'] ?? [];
         $knownUids = array_values(array_unique(array_merge($knownUids, wa_disc_map_user_ids($fields))));
         $owner = wa_disc_string($fields, 'ownerId') ?: wa_disc_string($fields, 'userId');
+        $original = wa_disc_string($fields, 'originalOwnerUid');
         if ($owner === $uid || !$owner) {
-            wa_disc_delete_doc('wa_map/' . rawurlencode($phone));
+            // First-bind lock: preserve originalOwnerUid across disconnects so
+            // no other account can steal the number. Only clear active-owner
+            // fields; keep the map doc alive as a permanent lock record.
+            firestore_update('wa_map/' . rawurlencode($phone), [
+                'ownerId' => null,
+                'userId' => null,
+                'users' => [],
+                'active' => false,
+                'originalOwnerUid' => $original !== '' ? $original : $uid,
+                'disconnectedAt' => firestore_timestamp(),
+                'updatedAt' => firestore_timestamp(),
+            ], ['ownerId','userId','users','active','originalOwnerUid','disconnectedAt','updatedAt']);
             $released = true;
         }
     }
