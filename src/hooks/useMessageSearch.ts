@@ -19,6 +19,16 @@ export type MessageSearchHit = {
   createdAt: string | null;
 };
 
+// P6 fix — cache the last N-doc window per uid so a user typing a
+// query fires ONE Firestore fetch, not one per debounced keystroke.
+type CacheEntry = {
+  ts: number;
+  size: number;
+  docs: Array<{ id: string; data: Record<string, unknown> }>;
+};
+const WINDOW_CACHE = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 60_000;
+
 /**
  * Inbox-wide substring search across all messages the current user can
  * read. Firestore has no full-text index, so we pull the last N=1000
