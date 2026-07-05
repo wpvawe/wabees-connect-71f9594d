@@ -1,7 +1,12 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faXmark } from "@fortawesome/free-solid-svg-icons";
 import type { Plan } from "@/hooks/usePlans";
-import { limitLabel, resolvePricing } from "@/lib/plans/pricing";
+import {
+  billingCycleLabel,
+  limitLabel,
+  pricePeriodSuffix,
+  resolvePricing,
+} from "@/lib/plans/pricing";
 
 type Row = {
   label: string;
@@ -9,13 +14,14 @@ type Row = {
 };
 
 const ROWS: Row[] = [
-  { label: "Monthly price", render: (p) => priceCell(p) },
-  { label: "Messages / month", render: (p) => limitLabel(p.maxMessages) },
+  { label: "Price", render: (p) => priceCell(p) },
+  { label: "Billing cycle", render: (p) => <span className="capitalize">{billingCycleLabel(p)}</span> },
+  { label: "Messages", render: (p) => limitLabel(p.maxMessages) },
   { label: "Contacts", render: (p) => limitLabel(p.maxContacts) },
   { label: "Broadcast campaigns", render: (p) => limitLabel(p.maxCampaigns) },
   { label: "Chatbots", render: (p) => limitLabel(p.maxBots) },
   { label: "Message templates", render: (p) => limitLabel(p.maxTemplates) },
-  { label: "AI replies / month", render: (p) => limitLabel(p.maxAiMessages) },
+  { label: "AI replies", render: (p) => limitLabel(p.maxAiMessages) },
   { label: "Analytics dashboard", render: (p) => yesNo(p.hasAnalytics) },
   { label: "Priority support", render: (p) => yesNo(p.hasPrioritySupport) },
   { label: "Developer API access", render: (p) => yesNo(p.hasApiAccess) },
@@ -27,7 +33,7 @@ function priceCell(p: Plan) {
   return (
     <span className="font-semibold text-foreground tabular-nums">
       {p.currency} {priced.effectivePrice.toLocaleString()}
-      <span className="font-normal text-muted-foreground">/mo</span>
+      <span className="font-normal text-muted-foreground"> {pricePeriodSuffix(p)}</span>
     </span>
   );
 }

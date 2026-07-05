@@ -9,7 +9,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { Plan } from "@/hooks/usePlans";
 import { WbButton } from "@/components/wb/WbButton";
-import { formatEndsIn, limitLabel, resolvePricing } from "@/lib/plans/pricing";
+import {
+  billingCycleLabel,
+  formatEndsIn,
+  limitLabel,
+  perCycleSuffix,
+  pricePeriodSuffix,
+  resolvePricing,
+} from "@/lib/plans/pricing";
 
 export function PlanCard({
   plan,
@@ -76,7 +83,7 @@ export function PlanCard({
           <p className="text-4xl font-black tracking-tight text-foreground">
             Free
             <span className="ml-1 align-top text-sm font-normal text-muted-foreground">
-              forever
+              {plan.expiryType === "lifetime" ? "forever" : billingCycleLabel(plan)}
             </span>
           </p>
         ) : (
@@ -87,8 +94,15 @@ export function PlanCard({
             <span className="text-4xl font-black tracking-tight text-foreground tabular-nums">
               {priced.effectivePrice.toLocaleString()}
             </span>
-            <span className="text-sm font-normal text-muted-foreground">/mo</span>
+            <span className="text-sm font-normal text-muted-foreground">
+              {pricePeriodSuffix(plan)}
+            </span>
           </div>
+        )}
+        {priced.effectivePrice > 0 && plan.expiryType !== "monthly" && (
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Billed {billingCycleLabel(plan)}
+          </p>
         )}
         {priced.offerActive && priced.effectivePrice < plan.priceMonthly && (
           <div className="mt-1 flex items-center gap-2">
@@ -158,12 +172,14 @@ export function PlanCard({
 function deriveFeatures(plan: Plan): string[] {
   // Fallback when admin hasn't set features[] — auto-generate from limits.
   const out: string[] = [];
-  out.push(`${limitLabel(plan.maxMessages)} messages / month`);
+  const per = perCycleSuffix(plan);
+  out.push(`${limitLabel(plan.maxMessages)} messages ${per}`.trim());
   out.push(`${limitLabel(plan.maxContacts)} contacts`);
-  out.push(`${limitLabel(plan.maxCampaigns)} broadcast campaigns`);
+  out.push(`${limitLabel(plan.maxCampaigns)} broadcast campaigns ${per}`.trim());
   if (plan.maxBots > 0) out.push(`${limitLabel(plan.maxBots)} chatbots`);
   if (plan.maxTemplates > 0) out.push(`${limitLabel(plan.maxTemplates)} message templates`);
-  if (plan.maxAiMessages > 0) out.push(`${limitLabel(plan.maxAiMessages)} AI replies / month`);
+  if (plan.maxAiMessages > 0)
+    out.push(`${limitLabel(plan.maxAiMessages)} AI replies ${per}`.trim());
   if (plan.hasAnalytics) out.push("Analytics dashboard");
   if (plan.hasPrioritySupport) out.push("Priority support");
   if (plan.hasApiAccess) out.push("Developer API access");
