@@ -37,6 +37,7 @@ import {
   faCircleExclamation,
   faStar,
 } from "@fortawesome/free-solid-svg-icons";
+import { faBagShopping, faClipboardList } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
