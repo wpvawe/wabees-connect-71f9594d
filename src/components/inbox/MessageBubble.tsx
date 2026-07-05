@@ -40,7 +40,7 @@ import {
 import { faBagShopping, faClipboardList } from "@fortawesome/free-solid-svg-icons";
 import type { Message } from "@/hooks/useMessages";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const linkifyOpts = {
@@ -49,6 +49,16 @@ const linkifyOpts = {
   className: "underline underline-offset-2",
   defaultProtocol: "https",
 };
+
+// S6 fix — allowlist link schemes so a Firestore-stored `ctaUrl` /
+// interactive URL from a hostile WhatsApp sender cannot become
+// `javascript:` and execute in the agent's tab.
+function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed;
+}
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -192,7 +202,7 @@ export type MessageActions = {
   onToggleStar?: (m: Message) => void;
 };
 
-export function MessageBubble({ m, actions }: { m: Message; actions?: MessageActions }) {
+function MessageBubbleImpl({ m, actions }: { m: Message; actions?: MessageActions }) {
   const mine = m.direction === "outgoing";
   const time = m.createdAt ? format(new Date(m.createdAt), "p") : "";
   const [menuOpen, setMenuOpen] = useState(false);
