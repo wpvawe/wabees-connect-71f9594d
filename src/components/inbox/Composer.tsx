@@ -388,6 +388,17 @@ export function Composer({
       return;
     }
     setUploading(true);
+    // Client-side image compression: Meta caps images at 5 MB and rejects
+    // anything larger with a silent failure. Downscale + re-encode as JPEG
+    // so users can send photos straight from a modern phone camera
+    // (which routinely produce 6–12 MB files) without hitting the limit.
+    if (kind === "image" && file.size > 1_500_000 && file.type.startsWith("image/")) {
+      try {
+        file = await compressImage(file);
+      } catch {
+        /* fall back to original file on any encode error */
+      }
+    }
     const normalizedPhone = normalizePhone(phone);
     const convId = phoneDocId(phone);
     const db = fbDb();
