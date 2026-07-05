@@ -1066,7 +1066,7 @@ function Thread({ phone }: { phone: string }) {
             {searchQuery ? "No matching messages" : "No messages yet. Say hi 👋"}
           </p>
         ) : (
-          renderWithDayDividers(visibleData, actions)
+          renderWithDayDividers(visibleData, actions, firstUnreadId, firstUnreadRef)
         )}
         <div ref={bottomRef} />
       </div>
@@ -1165,7 +1165,12 @@ function dayLabel(d: Date): string {
   return format(d, "d MMM yyyy");
 }
 
-function renderWithDayDividers(msgs: Message[], actions: MessageActions) {
+function renderWithDayDividers(
+  msgs: Message[],
+  actions: MessageActions,
+  firstUnreadId: string | null,
+  firstUnreadRef: React.RefObject<HTMLDivElement>,
+) {
   const nodes: ReactNode[] = [];
   let prev: Date | null = null;
   for (const m of msgs) {
@@ -1179,6 +1184,21 @@ function renderWithDayDividers(msgs: Message[], actions: MessageActions) {
         </div>,
       );
       prev = d;
+    }
+    if (firstUnreadId && m.id === firstUnreadId) {
+      nodes.push(
+        <div
+          key={`unread-${m.id}`}
+          ref={firstUnreadRef}
+          className="my-2 flex items-center gap-2"
+        >
+          <div className="h-px flex-1 bg-primary/40" />
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            Unread messages
+          </span>
+          <div className="h-px flex-1 bg-primary/40" />
+        </div>,
+      );
     }
     nodes.push(<MessageBubble key={m.id} m={m} actions={actions} />);
   }
