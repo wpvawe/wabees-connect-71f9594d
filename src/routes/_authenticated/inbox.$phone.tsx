@@ -88,7 +88,7 @@ function Thread({ phone }: { phone: string }) {
   // (Kept as a plain function — pure, deterministic per call, no hooks needed.)
   //
   // Extracted below into module scope for stability across renders.
-  const { data, error } = useMessages(phone);
+  const { data, error, hasMore, loadMore, loadingMore } = useMessages(phone);
   const { data: contacts } = useContacts();
   const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
@@ -115,8 +115,25 @@ function Thread({ phone }: { phone: string }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  // First unread anchor — used to jump the viewport to the first unread
+  // incoming message on thread open (instead of always jumping to bottom).
+  const firstUnreadRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
   const dragCounterRef = useRef(0);
+  // Compute the id of the first unread incoming message (in chronological
+  // order). Reset when the thread changes so the marker only tracks
+  // messages that were unread when the user opened this conversation.
+  const initialUnreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    initialUnreadRef.current = null;
+  }, [phone]);
+  if (data && initialUnreadRef.current === null) {
+    const first = data.find(
+      (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
+    );
+    initialUnreadRef.current = first ? first.id : "";
+  }
+  const firstUnreadId = initialUnreadRef.current || null;
   // Auto-scroll only when (a) the thread just opened or (b) the user is
   // already near the bottom. Otherwise scrolling jumps the viewport away
   // from messages they were reading.
@@ -129,7 +146,14 @@ function Thread({ phone }: { phone: string }) {
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const nearBottom = distanceFromBottom < 160;
     if (prevLen === 0 || nearBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: prevLen === 0 ? "auto" : "smooth", block: "end" });
+      if (prevLen === 0 && firstUnreadRef.current) {
+        firstUnreadRef.current.scrollIntoView({ behavior: "auto", block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({
+          behavior: prevLen === 0 ? "auto" : "smooth",
+          block: "end",
+        });
+      }
       setNewSinceScroll(0);
     } else if (len > prevLen) {
       setNewSinceScroll((n) => n + (len - prevLen));
@@ -1013,6 +1037,25 @@ function Thread({ phone }: { phone: string }) {
         className="relative flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background"
       >
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {hasMore && visibleData && visibleData.length > 0 && (
+          <div className="flex justify-center pb-2">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded-full border border-border bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft hover:bg-muted disabled:opacity-60"
+            >
+              {loadingMore ? (
+                <>
+                  <FontAwesomeIcon icon={faCircleNotch} className="mr-1.5 h-3 w-3 animate-spin" />
+                  Loading…
+                </>
+              ) : (
+                "Load older messages"
+              )}
+            </button>
+          </div>
+        )}
         {visibleData === null ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
             <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
@@ -1023,7 +1066,7 @@ function Thread({ phone }: { phone: string }) {
             {searchQuery ? "No matching messages" : "No messages yet. Say hi 👋"}
           </p>
         ) : (
-          renderWithDayDividers(visibleData, actions)
+          renderWithDayDividers(visibleData, actions, firstUnreadId, firstUnreadRef)
         )}
         <div ref={bottomRef} />
       </div>
@@ -1122,7 +1165,12 @@ function dayLabel(d: Date): string {
   return format(d, "d MMM yyyy");
 }
 
-function renderWithDayDividers(msgs: Message[], actions: MessageActions) {
+function renderWithDayDividers(
+  msgs: Message[],
+  actions: MessageActions,
+  firstUnreadId: string | null,
+  firstUnreadRef: React.RefObject<HTMLDivElement | null>,
+) {
   const nodes: ReactNode[] = [];
   let prev: Date | null = null;
   for (const m of msgs) {
@@ -1136,6 +1184,21 @@ function renderWithDayDividers(msgs: Message[], actions: MessageActions) {
         </div>,
       );
       prev = d;
+    }
+    if (firstUnreadId && m.id === firstUnreadId) {
+      nodes.push(
+        <div
+          key={`unread-${m.id}`}
+          ref={firstUnreadRef}
+          className="my-2 flex items-center gap-2"
+        >
+          <div className="h-px flex-1 bg-primary/40" />
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            Unread messages
+          </span>
+          <div className="h-px flex-1 bg-primary/40" />
+        </div>,
+      );
     }
     nodes.push(<MessageBubble key={m.id} m={m} actions={actions} />);
   }

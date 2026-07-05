@@ -4,7 +4,6 @@ import {
   collection,
   doc,
   getDocs,
-  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/firebase/normalizers";
 import { extractWamid, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaCredentials } from "@/lib/firebase/whatsapp-config";
+import { incrementMessagesUsed } from "@/lib/plans/limits";
 import type { ScheduledMessage } from "@/lib/firebase/scheduled";
 
 export function useScheduledMessages(phone?: string): {
@@ -201,13 +201,12 @@ export function useScheduledDispatcher() {
                 status: "sent",
                 sentMessageId: msgRef.id,
                 updatedAt: serverTimestamp(),
+                dispatchedBy: "client",
               });
-              await updateDoc(doc(db!, `users/${uid}`), {
-                totalMessages: increment(1),
-              }).catch(() => {});
-              await updateDoc(doc(db!, `users/${uid}/subscription/current`), {
-                messagesUsed: increment(1),
-              }).catch(() => {});
+              // Shared helper — mirrors every other outbound path so plan
+              // limits stay accurate whether the message was sent inline,
+              // via forward, interactive, resend, or scheduled dispatcher.
+              await incrementMessagesUsed(uid!, 1).catch(() => {});
             } catch (e) {
               await updateDoc(d.ref, {
                 status: "failed",

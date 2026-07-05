@@ -107,7 +107,7 @@ function isConvInFreeWindow(c: {
 const previewCache = new Map<string, { body: string; type: string; at: string | null } | null>();
 
 export function ConversationList({ activePhone }: { activePhone?: string }) {
-  const { data, error } = useConversations();
+  const { data, error, hasMore, loadMore, loadingMore } = useConversations();
   const { data: contacts } = useContacts();
   const { data: tags } = useConvTags();
   const uid = useEffectiveUid();
@@ -701,6 +701,18 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
                 onLongPress={() => enterSelect(c.contactPhone)}
               />
             ))}
+            {hasMore && (
+              <li className="flex justify-center py-3">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="rounded-full border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-soft hover:bg-muted disabled:opacity-60"
+                >
+                  {loadingMore ? "Loading…" : "Show more conversations"}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>
