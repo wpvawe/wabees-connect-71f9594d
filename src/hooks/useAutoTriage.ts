@@ -39,6 +39,16 @@ export function useAutoTriage(): void {
   // backfill (only classify NEW inbound after mount).
   const seen = useRef<Set<string>>(new Set());
   const inFlight = useRef<Set<string>>(new Set());
+  // P-perf — bounded FIFO so long-running tabs don't leak memory.
+  const SEEN_CAP = 500;
+  const rememberSeen = (id: string) => {
+    const s = seen.current;
+    if (s.size >= SEEN_CAP) {
+      const first = s.values().next().value;
+      if (first) s.delete(first);
+    }
+    s.add(id);
+  };
   // Per-conversation throttle: once we classify a phone, skip further
   // messages from the same conversation for TRIAGE_THROTTLE_MS. Keeps
   // AI cost bounded on chatty threads.
@@ -64,7 +74,7 @@ export function useAutoTriage(): void {
       q,
       async (snap) => {
         if (first) {
-          for (const d of snap.docs) seen.current.add(d.id);
+          for (const d of snap.docs) rememberSeen(d.id);
           first = false;
           return;
         }
@@ -81,21 +91,21 @@ export function useAutoTriage(): void {
 
           // Skip anything without a phone or with no text worth classifying.
           if (!phone || !TRIAGEABLE_TYPES.has(type) || body.length < 2) {
-            seen.current.add(d.id);
+            rememberSeen(d.id);
             continue;
           }
           // Skip messages that pre-date this listener (backfill guard).
           if (created && created.getTime() < subscribedAt - 5_000) {
-            seen.current.add(d.id);
+            rememberSeen(d.id);
             continue;
           }
           const lastAt = lastByPhone.current.get(phone) ?? 0;
           if (Date.now() - lastAt < TRIAGE_THROTTLE_MS) {
-            seen.current.add(d.id);
+            rememberSeen(d.id);
             continue;
           }
 
-          seen.current.add(d.id);
+          rememberSeen(d.id);
           inFlight.current.add(d.id);
           // Fire and forget — the settings hook already restricts to owner,
           // and Firestore write is idempotent.
