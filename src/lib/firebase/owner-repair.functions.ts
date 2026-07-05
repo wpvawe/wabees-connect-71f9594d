@@ -273,8 +273,9 @@ async function patchDoc(
   accessToken: string,
   path: string,
   fields: FsFields,
+  deleteFields: string[] = [],
 ): Promise<void> {
-  const mask = Object.keys(fields)
+  const mask = Array.from(new Set([...Object.keys(fields), ...deleteFields]))
     .map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`)
     .join("&");
   const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${mask}`, {
@@ -982,7 +983,13 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     }
 
     await Promise.all([
-      patchDoc(projectId, accessToken, `users/${uid}`, topPatch),
+      patchDoc(projectId, accessToken, `users/${uid}`, topPatch, [
+        "dataOwner",
+        "dataOwnerJoinedAt",
+        "dataOwnerJoinedVia",
+        "dataOwnerClearedAt",
+        "dataOwnerClearedReason",
+      ]),
       patchDoc(projectId, accessToken, `users/${uid}/whatsapp_config/config`, cfgPatch),
     ]);
     await patchDoc(projectId, accessToken, `wa_map/${data.phoneNumberId}`, {

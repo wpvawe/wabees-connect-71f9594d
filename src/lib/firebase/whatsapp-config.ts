@@ -385,7 +385,17 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     }),
     setDoc(
       doc(db, "users", uid, "whatsapp_config", "config"),
-      { isConnected: false, accessToken: "", updatedAt: serverTimestamp() },
+      {
+        phoneNumberId: deleteField(),
+        accessToken: "",
+        businessAccountId: "",
+        displayPhoneNumber: null,
+        businessName: null,
+        qualityRating: null,
+        isConnected: false,
+        disconnectedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
       { merge: true },
     ),
   ]);
@@ -576,13 +586,21 @@ export async function repairWhatsAppOwnership(uid: string): Promise<string | nul
   );
   const cfg = cfgSnap?.exists() ? (cfgSnap.data() as Record<string, unknown>) : {};
   const phoneNumberId =
-    (typeof user.whatsappPhoneNumberId === "string" && user.whatsappPhoneNumberId) ||
-    (typeof cfg.phoneNumberId === "string" && cfg.phoneNumberId) ||
+    (user.whatsappConnected !== false &&
+      typeof user.whatsappPhoneNumberId === "string" &&
+      user.whatsappPhoneNumberId) ||
+    (cfg.isConnected !== false && typeof cfg.phoneNumberId === "string" && cfg.phoneNumberId) ||
     "";
   if (!phoneNumberId) return null;
 
   const ownerId = await resolveExistingOwnerForPhone(phoneNumberId, uid);
   if (!ownerId || ownerId === uid) return uid;
+
+  const agentSnap = await getDoc(doc(db, "users", ownerId, "agents", uid)).catch(() => null);
+  const agentStatus = agentSnap?.exists()
+    ? ((agentSnap.data() as Record<string, unknown>).status as string | undefined) || "active"
+    : "missing";
+  if (!agentSnap?.exists() || agentStatus === "revoked" || agentStatus === "left") return null;
 
   const accessToken =
     (typeof user.whatsappAccessToken === "string" && user.whatsappAccessToken) ||
