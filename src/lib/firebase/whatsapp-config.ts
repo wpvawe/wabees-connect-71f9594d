@@ -145,8 +145,35 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
       ? currentUserData.dataOwner.trim()
       : null;
-  const existingOwnerId =
-    existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
+
+  async function activeAgentOwner(ownerId: string | null): Promise<string | null> {
+    if (!ownerId || ownerId === input.uid) return null;
+    const agentSnap = await getDoc(doc(db, "users", ownerId, "agents", input.uid)).catch(() => null);
+    if (!agentSnap?.exists()) return null;
+    const agent = agentSnap.data() as Record<string, unknown>;
+    const status = typeof agent.status === "string" ? agent.status : "active";
+    return status === "revoked" || status === "left" ? null : ownerId;
+  }
+
+  const validExistingDataOwner = await activeAgentOwner(existingDataOwner);
+  if (existingDataOwner && !validExistingDataOwner) {
+    await updateDoc(userRef, {
+      dataOwner: deleteField(),
+      dataOwnerJoinedAt: deleteField(),
+      dataOwnerJoinedVia: deleteField(),
+      dataOwnerClearedAt: serverTimestamp(),
+      dataOwnerClearedReason: "stale_agent_assignment",
+    }).catch(() => undefined);
+  }
+
+  const resolvedPhoneOwner = await resolveExistingOwnerForPhone(input.phone_number_id, input.uid);
+  const validResolvedOwner = await activeAgentOwner(resolvedPhoneOwner);
+  if (resolvedPhoneOwner && resolvedPhoneOwner !== input.uid && !validResolvedOwner) {
+    throw new Error(
+      "This WhatsApp number is already connected to another workspace. Ask that workspace's owner to disconnect it or send you a new invite.",
+    );
+  }
+  const existingOwnerId = validExistingDataOwner ?? validResolvedOwner;
 
   const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
 
