@@ -8,6 +8,8 @@ import {
   faStar,
   faFloppyDisk,
   faCircleNotch,
+  faFire,
+  faHourglassHalf,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -22,6 +24,7 @@ import {
   type PlanInput,
 } from "@/lib/admin/mutations";
 import { cn } from "@/lib/utils";
+import { resolvePricing, billingCycleLabel, formatEndsIn } from "@/lib/plans/pricing";
 
 export function PlansSection() {
   // Admin view must see inactive plans too (otherwise the count and the
@@ -69,11 +72,41 @@ export function PlansSection() {
                           Welcome
                         </span>
                       )}
+                      {(() => {
+                        const pr = resolvePricing(p);
+                        if (!pr.offerActive || !p.offer) return null;
+                        return (
+                          <span className="rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            <FontAwesomeIcon icon={faFire} className="mr-1 h-2.5 w-2.5" />
+                            {p.offer.label}
+                            {pr.discountPct != null ? ` · ${pr.discountPct}% OFF` : ""}
+                          </span>
+                        );
+                      })()}
+                      {p.offer?.active === true && p.offer?.endsAt && (
+                        <span className="rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-600 dark:text-orange-400">
+                          <FontAwesomeIcon icon={faHourglassHalf} className="mr-1 h-2.5 w-2.5" />
+                          {formatEndsIn(p.offer.endsAt)}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {p.currency} {p.priceMonthly} · {p.expiryType} ·{" "}
-                      {p.maxMessages === 0 ? "∞" : p.maxMessages} msgs · {p.maxAiMessages === 0 ? "∞" : p.maxAiMessages}{" "}
-                      AI
+                      {(() => {
+                        const pr = resolvePricing(p);
+                        const priceStr =
+                          pr.effectivePrice === 0
+                            ? "Free"
+                            : `${p.currency} ${pr.effectivePrice.toLocaleString()}`;
+                        const orig =
+                          pr.offerActive && pr.effectivePrice < p.priceMonthly
+                            ? ` (was ${p.currency} ${p.priceMonthly.toLocaleString()})`
+                            : "";
+                        const validity =
+                          p.expiryType === "lifetime"
+                            ? "lifetime"
+                            : `${billingCycleLabel(p)} · ${p.expiryDays}d`;
+                        return `${priceStr}${orig} · ${validity} · ${p.maxMessages === 0 ? "∞" : p.maxMessages} msgs · ${p.maxAiMessages === 0 ? "∞" : p.maxAiMessages} AI`;
+                      })()}
                     </p>
                     {p.description && (
                       <p className="mt-1 line-clamp-2 max-w-2xl text-xs leading-relaxed text-muted-foreground/80">
