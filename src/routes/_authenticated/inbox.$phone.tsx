@@ -1373,6 +1373,44 @@ function Thread({ phone }: { phone: string }) {
           </div>
         </div>
       )}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingCanRevoke
+                ? "Delete this message for everyone?"
+                : pendingDelete?.direction === "outgoing"
+                  ? "Delete from your inbox?"
+                  : "Hide this incoming message?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingCanRevoke
+                ? "It will be removed from the recipient's WhatsApp and from your inbox."
+                : pendingDelete?.direction === "outgoing"
+                  ? "This message is older than 48h or has no WhatsApp ID, so it can only be hidden on your side — the recipient's copy will remain."
+                  : "It will be removed from your inbox only. WhatsApp does not let businesses delete messages from a customer's phone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                const m = pendingDelete;
+                setPendingDelete(null);
+                if (m) void performDelete(m);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
