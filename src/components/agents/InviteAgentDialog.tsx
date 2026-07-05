@@ -61,6 +61,11 @@ export function InviteAgentDialog({
   async function generate() {
     setBusy(true);
     try {
+      // Enforce plan limit: block if the owner has hit their maxAgents cap
+      // (or the plan is expired). Uses live subcollection count so it stays
+      // accurate even if the maintained counter drifts.
+      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+      await assertWithinPlanLimit(ownerUid, "agents", 1);
       const { invite, link: url } = await createAgentInvite({
         ownerUid,
         ownerEmail,

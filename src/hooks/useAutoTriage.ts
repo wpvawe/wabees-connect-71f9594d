@@ -135,6 +135,17 @@ export function useAutoTriage(): void {
               lastByPhone.current.set(phone, Date.now());
               const user = fbAuth().currentUser;
               if (!user) return;
+              // Enforce AI-messages cap + plan expiry before spending a
+              // classification credit. If the plan is expired or the user
+              // has hit their maxAiMessages, skip triage silently.
+              try {
+                const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+                await assertWithinPlanLimit(uid, "aiMessages", 1);
+              } catch (limitErr) {
+                // eslint-disable-next-line no-console
+                console.warn("auto-triage skipped (plan limit)", limitErr);
+                return;
+              }
               const idToken = await user.getIdToken();
               const result = await classifyMessage({
                 data: {
@@ -144,6 +155,13 @@ export function useAutoTriage(): void {
                   contactName,
                 },
               });
+              // Bump AI usage counter only after a successful classification.
+              try {
+                const { incrementAiMessagesUsed } = await import("@/lib/plans/limits");
+                await incrementAiMessagesUsed(uid, 1);
+              } catch {
+                /* non-fatal */
+              }
               await applyTriageToConversation(
                 uid,
                 phone,

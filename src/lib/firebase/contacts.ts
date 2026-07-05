@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
-import { assertWithinPlanLimit } from "@/lib/plans/limits";
+import { assertWithinPlanLimit, incrementContactsUsed } from "@/lib/plans/limits";
 
 export async function upsertContact(
   uid: string,
@@ -53,11 +53,18 @@ export async function upsertContact(
     payload.createdAt = serverTimestamp();
   }
   await setDoc(ref, payload, { merge: true });
+  if (!isUpdate) {
+    // Keep subscription.contactsUsed + users.totalContacts in sync with
+    // the actual contacts subcollection size so plan caps stay accurate.
+    await incrementContactsUsed(uid, 1);
+  }
   return { id: ref.id };
 }
 
 export async function deleteContact(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "contacts", id));
+  // Decrement counters so users can free up cap slots by cleaning contacts.
+  await incrementContactsUsed(uid, -1).catch(() => {});
 }
 
 export async function bulkImportContacts(
@@ -95,6 +102,9 @@ export async function bulkImportContacts(
     }
     await batch.commit();
     imported += chunk.length;
+  }
+  if (imported > 0) {
+    await incrementContactsUsed(uid, imported);
   }
   return { imported };
 }
