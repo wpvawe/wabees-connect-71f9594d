@@ -115,8 +115,25 @@ function Thread({ phone }: { phone: string }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  // First unread anchor — used to jump the viewport to the first unread
+  // incoming message on thread open (instead of always jumping to bottom).
+  const firstUnreadRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
   const dragCounterRef = useRef(0);
+  // Compute the id of the first unread incoming message (in chronological
+  // order). Reset when the thread changes so the marker only tracks
+  // messages that were unread when the user opened this conversation.
+  const initialUnreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    initialUnreadRef.current = null;
+  }, [phone]);
+  if (data && initialUnreadRef.current === null) {
+    const first = data.find(
+      (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
+    );
+    initialUnreadRef.current = first ? first.id : "";
+  }
+  const firstUnreadId = initialUnreadRef.current || null;
   // Auto-scroll only when (a) the thread just opened or (b) the user is
   // already near the bottom. Otherwise scrolling jumps the viewport away
   // from messages they were reading.
@@ -129,7 +146,14 @@ function Thread({ phone }: { phone: string }) {
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const nearBottom = distanceFromBottom < 160;
     if (prevLen === 0 || nearBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: prevLen === 0 ? "auto" : "smooth", block: "end" });
+      if (prevLen === 0 && firstUnreadRef.current) {
+        firstUnreadRef.current.scrollIntoView({ behavior: "auto", block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({
+          behavior: prevLen === 0 ? "auto" : "smooth",
+          block: "end",
+        });
+      }
       setNewSinceScroll(0);
     } else if (len > prevLen) {
       setNewSinceScroll((n) => n + (len - prevLen));
