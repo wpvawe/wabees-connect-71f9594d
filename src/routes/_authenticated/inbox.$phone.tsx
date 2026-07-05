@@ -827,6 +827,7 @@ function Thread({ phone }: { phone: string }) {
       <header className="flex items-center gap-3 border-b border-border bg-card px-3 py-3">
         <Link
           to="/inbox"
+          aria-label="Back to inbox"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden"
         >
           <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
@@ -867,6 +868,7 @@ function Thread({ phone }: { phone: string }) {
           <button
             type="button"
             onClick={() => setAssignOpen(true)}
+            aria-label={conv?.assignedAgentEmail ? `Assigned to ${conv.assignedAgentEmail} — reassign` : "Assign to agent"}
             title={conv?.assignedAgentEmail ? `Assigned: ${conv.assignedAgentEmail}` : "Assign to agent"}
             className="hidden h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:grid"
           >
@@ -878,6 +880,9 @@ function Thread({ phone }: { phone: string }) {
             type="button"
             disabled={stateBusy}
             onClick={() => setSnoozeOpen((v) => !v)}
+            aria-label={isSnoozed ? "Snoozed — change duration" : "Snooze conversation"}
+            aria-haspopup="menu"
+            aria-expanded={snoozeOpen}
             title={isSnoozed ? "Snoozed — change" : "Snooze"}
             className={`grid h-9 w-9 place-items-center rounded-full hover:bg-muted disabled:opacity-50 ${
               isSnoozed ? "text-amber-500" : "text-muted-foreground"
@@ -924,6 +929,8 @@ function Thread({ phone }: { phone: string }) {
             setSearchOpen((v) => !v);
             if (searchOpen) setSearchQuery("");
           }}
+          aria-label="Search in chat"
+          aria-pressed={searchOpen}
           title="Search in chat"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -931,6 +938,7 @@ function Thread({ phone }: { phone: string }) {
         </button>
         <a
           href={`tel:${phone}`}
+          aria-label={`Call ${phone}`}
           title="Call"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -939,6 +947,7 @@ function Thread({ phone }: { phone: string }) {
         <button
           type="button"
           onClick={() => setDetailsOpen(true)}
+          aria-label="Contact details"
           title="Contact details"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -948,6 +957,9 @@ function Thread({ phone }: { phone: string }) {
           <button
             type="button"
             onClick={() => setHeaderMenu((v) => !v)}
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={headerMenu}
             title="More"
             className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
           >
