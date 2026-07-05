@@ -386,7 +386,10 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     setDoc(
       doc(db, "users", uid, "whatsapp_config", "config"),
       {
-        phoneNumberId: deleteField(),
+        // Keep the phone id as disconnected history so a later reconnect of
+        // the same WhatsApp number can find and move the existing workspace
+        // data. Runtime session repair ignores this because isConnected=false.
+        phoneNumberId: phoneId ?? deleteField(),
         accessToken: "",
         businessAccountId: "",
         displayPhoneNumber: null,
