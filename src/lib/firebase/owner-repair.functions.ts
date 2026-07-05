@@ -776,6 +776,7 @@ export const checkExistingWhatsAppOwner = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
     for (const row of topLevelMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromTopLevel: true });
     }
@@ -866,6 +867,7 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     ]);
 
     for (const row of topLevelMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromTopLevel: true });
     }
@@ -875,12 +877,14 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromConfig: true });
     }
     for (const row of topLevelTokenMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromToken: true });
     }
     for (const row of configTokenMatches) {
+      if (row.fields?.isConnected?.booleanValue === false) continue;
       const id = uidFromConfigDocName(row.name);
-      if (id) mergeCandidate(candidates, id, { fromToken: true });
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromToken: true });
     }
     for (const row of emailMatches) {
       const id = uidFromUserDocName(row.name);
