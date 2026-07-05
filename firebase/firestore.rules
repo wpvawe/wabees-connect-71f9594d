@@ -174,7 +174,20 @@ service cloud.firestore {
       // ============ Subscription ============
       match /subscription/{docId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
+        // Admin has full control (assign / extend / change plan).
+        // Owner may only:
+        //   - CREATE the initial welcome subscription doc (bootstrap on signup)
+        //   - UPDATE the *Used counter fields and updatedAt (usage bookkeeping)
+        // Owner CANNOT modify max*, endDate, status, planId, expiryType/Days
+        // — otherwise a user could raise their own cap or reset the counter.
+        allow create: if isOwner(userId) || isAdmin();
+        allow update: if isAdmin()
+          || (isOwner(userId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['messagesUsed','contactsUsed','campaignsUsed',
+                             'botsUsed','templatesUsed','aiMessagesUsed',
+                             'agentsUsed','updatedAt']));
+        allow delete: if isAdmin();
       }
 
       // ============ Notifications ============

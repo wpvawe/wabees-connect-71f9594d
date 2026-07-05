@@ -15,12 +15,14 @@ export type Subscription = {
   botsUsed: number;
   templatesUsed: number;
   aiMessagesUsed: number;
+  agentsUsed: number;
   maxMessages: number;
   maxContacts: number;
   maxCampaigns: number;
   maxBots: number;
   maxTemplates: number;
   maxAiMessages: number;
+  maxAgents: number;
   expiryType: string;
   expiryDays: number;
   startDate: string | null;
@@ -81,12 +83,14 @@ export function useSubscription(): {
           botsUsed: num(x.botsUsed),
           templatesUsed: num(x.templatesUsed),
           aiMessagesUsed: num(x.aiMessagesUsed),
+          agentsUsed: num(x.agentsUsed),
           maxMessages: num(x.maxMessages, 1000),
           maxContacts: num(x.maxContacts, 100),
           maxCampaigns: num(x.maxCampaigns, 5),
           maxBots: num(x.maxBots, 2),
           maxTemplates: num(x.maxTemplates, 10),
           maxAiMessages: num(x.maxAiMessages, 300),
+          maxAgents: num(x.maxAgents, 0),
           expiryType: str(x.expiryType, "monthly"),
           expiryDays: num(x.expiryDays, 30),
           startDate: toIso(x.startDate),
