@@ -499,6 +499,13 @@ export type PlanInput = {
   isPopular: boolean;
   showOnPublic: boolean;
   sortOrder: number;
+  offer?: {
+    active: boolean;
+    label: string;
+    discountPct: number | null;
+    priceOverride: number | null;
+    endsAt: string | null;
+  } | null;
 };
 
 export async function createPlan(input: PlanInput) {
