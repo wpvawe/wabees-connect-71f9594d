@@ -64,7 +64,7 @@ if ($subject === '' || ($html === '' && $text === '')) {
     exit;
 }
 
-$fromAddress = 'no-reply@wabees.live';
+$fromAddress = 'noreply@wabees.live';
 $boundary = 'wabees_' . bin2hex(random_bytes(8));
 $headers  = 'From: ' . mb_encode_mimeheader($fromName) . ' <' . $fromAddress . ">\r\n";
 $headers .= 'MIME-Version: 1.0' . "\r\n";
