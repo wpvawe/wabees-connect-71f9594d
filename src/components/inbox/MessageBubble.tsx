@@ -585,6 +585,13 @@ function MessageBubbleImpl({ m, actions }: { m: Message; actions?: MessageAction
   );
 }
 
+export const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
+  // Fast path — same message reference and same actions object means
+  // nothing meaningful changed. Callers memoize `actions` via useMemo
+  // in inbox.$phone.tsx, so this is stable across renders.
+  return prev.m === next.m && prev.actions === next.actions;
+});
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
