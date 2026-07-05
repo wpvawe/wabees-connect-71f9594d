@@ -46,3 +46,46 @@ export function formatEndsIn(iso: string): string {
 export function limitLabel(value: number): string {
   return value <= 0 ? "Unlimited" : String(value);
 }
+
+/**
+ * Short billing-cycle label for badges/table headers (e.g. "monthly",
+ * "quarterly", "yearly", "lifetime", or a "90-day" fallback for custom).
+ */
+export function billingCycleLabel(plan: Plan): string {
+  const t = (plan.expiryType || "").toLowerCase();
+  if (t === "monthly") return "monthly";
+  if (t === "quarterly") return "quarterly";
+  if (t === "yearly") return "yearly";
+  if (t === "lifetime") return "lifetime";
+  if (plan.expiryDays > 0) return `${plan.expiryDays}-day`;
+  return "custom";
+}
+
+/**
+ * Suffix used next to the price, e.g. "/mo", "/quarter", "/year",
+ * "one-time" for lifetime. Falls back to "/{N}d" for custom durations.
+ */
+export function pricePeriodSuffix(plan: Plan): string {
+  const t = (plan.expiryType || "").toLowerCase();
+  if (t === "monthly") return "/mo";
+  if (t === "quarterly") return "/quarter";
+  if (t === "yearly") return "/year";
+  if (t === "lifetime") return "one-time";
+  if (plan.expiryDays > 0) return `/${plan.expiryDays}d`;
+  return "";
+}
+
+/**
+ * Per-cycle usage suffix, e.g. "/month", "/quarter", "/year", "total"
+ * for lifetime, or "/{N} days" for custom durations. Used for
+ * "Messages / month" style labels on the comparison table.
+ */
+export function perCycleSuffix(plan: Plan): string {
+  const t = (plan.expiryType || "").toLowerCase();
+  if (t === "monthly") return "/month";
+  if (t === "quarterly") return "/quarter";
+  if (t === "yearly") return "/year";
+  if (t === "lifetime") return "total";
+  if (plan.expiryDays > 0) return `/${plan.expiryDays} days`;
+  return "";
+}
