@@ -17,6 +17,87 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
+import { fbAuth } from "@/integrations/firebase/client";
+import { sendPasswordResetEmail } from "firebase/auth";
+
+// ============ AUDIT LOG ============
+// Append-only trail of admin actions. Stored in `admin_audit_logs`.
+// Keep this best-effort — a logging failure must NEVER block the real
+// mutation, so every caller wraps this in a fire-and-forget catch.
+export type AuditAction =
+  | "user.status"
+  | "user.role"
+  | "user.field"
+  | "user.delete"
+  | "user.password_reset"
+  | "subscription.activate"
+  | "subscription.reject"
+  | "subscription.assign"
+  | "subscription.customize"
+  | "subscription.extend"
+  | "subscription.reset_counters"
+  | "plan.create"
+  | "plan.update"
+  | "plan.delete"
+  | "plan.toggle_active"
+  | "notification.broadcast"
+  | "support.status"
+  | "support.priority"
+  | "config.save";
+
+export async function logAudit(
+  action: AuditAction,
+  target: string,
+  meta: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const db = fbDb();
+    const actorUid = fbAuth().currentUser?.uid ?? null;
+    const actorEmail = fbAuth().currentUser?.email ?? null;
+    await addDoc(collection(db, "admin_audit_logs"), {
+      action,
+      target,
+      meta,
+      actorUid,
+      actorEmail,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* audit is best-effort */
+  }
+}
+
+// ============ PASSWORD RESET (Firebase Auth) ============
+// Client-side Firebase auth can send a reset email if we know the address.
+// The user does NOT need to be logged in as the target — Firebase accepts
+// email-based reset requests from any authenticated client.
+export async function sendUserPasswordReset(email: string, uid: string): Promise<void> {
+  if (!email) throw new Error("User has no email on file");
+  await sendPasswordResetEmail(fbAuth(), email);
+  void logAudit("user.password_reset", uid, { email });
+}
+
+// ============ SUPPORT TICKET ============
+export type SupportStatus = "open" | "pending" | "resolved" | "closed";
+export type SupportPriority = "low" | "normal" | "high" | "urgent";
+
+export async function setSupportChatStatus(chatId: string, status: SupportStatus) {
+  await setDoc(
+    doc(fbDb(), "support_chats", chatId),
+    { status, statusUpdatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  void logAudit("support.status", chatId, { status });
+}
+
+export async function setSupportChatPriority(chatId: string, priority: SupportPriority) {
+  await setDoc(
+    doc(fbDb(), "support_chats", chatId),
+    { priority, priorityUpdatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  void logAudit("support.priority", chatId, { priority });
+}
 
 // ============ USER ACTIONS ============
 export async function setUserStatus(uid: string, status: string) {
@@ -39,6 +120,7 @@ export async function setUserStatus(uid: string, status: string) {
       /* non-critical */
     }
   }
+  void logAudit("user.status", uid, { status });
 }
 
 export async function setUserRole(uid: string, role: string) {
@@ -50,6 +132,7 @@ export async function setUserRole(uid: string, role: string) {
     role,
     updatedAt: serverTimestamp(),
   });
+  void logAudit("user.role", uid, { role });
 }
 
 // Restricted whitelist to prevent arbitrary field overwrites from the admin
