@@ -331,6 +331,7 @@ export async function activatePendingSubscription(userId: string) {
   } catch {
     /* non-critical */
   }
+  void logAudit("subscription.activate", userId, { planId, planName });
 }
 
 function buildSubFromPlan(
