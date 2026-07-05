@@ -526,6 +526,54 @@ export async function loadWaCredentials(
   return null;
 }
 
+/**
+ * Batch 4 (post Step B) — UI gating helper that ONLY returns the
+ * `phone_number_id` (public routing id already visible in wa_map / webhook
+ * URLs). The Meta `access_token` is intentionally NOT read into the
+ * browser: PHP endpoints resolve it server-side from Firestore via the
+ * verified Firebase bearer token (`_wa_auth.php::wabees_apply_bearer_auth`).
+ *
+ * Use this in place of `loadWaCredentials` anywhere the UI just needs to
+ * (a) gate an action on "is WhatsApp connected?" and (b) know which phone
+ * number id to send to. It matches Flutter's `_resolveConfig` owner lookup
+ * so agents get the owner's phone id, falling back to their own.
+ */
+async function loadOwnPhoneNumberId(uid: string): Promise<string | null> {
+  const db = fbDb();
+  const sub = await getDoc(doc(db, "users", uid, "whatsapp_config", "config")).catch(() => null);
+  if (sub?.exists()) {
+    const d = sub.data() as Record<string, unknown>;
+    const id = typeof d.phoneNumberId === "string" ? d.phoneNumberId : null;
+    const connected = d.isConnected !== false; // treat undefined as connected
+    if (id && connected) return id;
+  }
+  const self = await getDoc(doc(db, "users", uid)).catch(() => null);
+  if (self?.exists()) {
+    const d = self.data() as Record<string, unknown>;
+    const id = typeof d.whatsappPhoneNumberId === "string" ? d.whatsappPhoneNumberId : null;
+    const connected = d.whatsappConnected !== false;
+    if (id && connected) return id;
+  }
+  return null;
+}
+
+export async function loadWaConnection(
+  uid: string,
+): Promise<{ phone_number_id: string } | null> {
+  const db = fbDb();
+  const self = await getDoc(doc(db, "users", uid)).catch(() => null);
+  const selfData = self?.exists() ? (self.data() as Record<string, unknown>) : {};
+  const dataOwner =
+    typeof selfData.dataOwner === "string" && selfData.dataOwner ? selfData.dataOwner : null;
+  if (dataOwner && dataOwner !== uid) {
+    const ownerId = await loadOwnPhoneNumberId(dataOwner).catch(() => null);
+    if (ownerId) return { phone_number_id: ownerId };
+  }
+  const own = await loadOwnPhoneNumberId(uid).catch(() => null);
+  if (own) return { phone_number_id: own };
+  return null;
+}
+
 export async function repairWhatsAppOwnership(uid: string): Promise<string | null> {
   const db = fbDb();
   const userRef = doc(db, "users", uid);
