@@ -48,18 +48,29 @@ async function postJson<T = unknown>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<WabeesApiResult<T>> {
-  // Attach the caller's Firebase uid to send-message.php so the PHP layer
-  // can enforce plan-level message quotas (maxMessages / messagesUsed) and
-  // increment counters after a successful send. PHP resolves the effective
-  // owner via users/{auth_uid}.dataOwner, so agents count against their
-  // owner's subscription, not their own.
+  // S5 (Batch 5) — for send-message.php we now also send a Firebase
+  // ID token in `Authorization: Bearer`. Once the PHP layer verifies
+  // that token via Firebase Admin, `auth_uid` in the body becomes
+  // untrusted noise and can be dropped server-side. We still send
+  // `auth_uid` as a fallback so the current PHP build (which reads
+  // it from the body for quota + owner-resolve) keeps working during
+  // the rollout window.
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (path.replace(/^\//, "") === "send-message.php") {
-    const uid = fbAuth().currentUser?.uid;
-    if (uid && body.auth_uid === undefined) body.auth_uid = uid;
+    const user = fbAuth().currentUser;
+    if (user) {
+      if (body.auth_uid === undefined) body.auth_uid = user.uid;
+      try {
+        const idToken = await user.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      } catch {
+        /* token fetch failure — PHP falls back to body auth_uid */
+      }
+    }
   }
   const res = await fetch(`${WABEES_API_BASE}/${path.replace(/^\//, "")}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
