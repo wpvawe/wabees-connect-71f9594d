@@ -4,8 +4,8 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDocFromServer,
   getDoc,
+  getDocFromServer,
   getDocs,
   query,
   serverTimestamp,
@@ -15,10 +15,9 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { clearWebhookOwnerCache } from "@/lib/wabees/api";
+import { clearWebhookOwnerCache, repairWhatsAppConnect } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
-import { repairWhatsAppConnect } from "@/lib/wabees/api";
 
 /**
  * WhatsApp config is mirrored in two places, matching the Flutter app:
@@ -123,6 +122,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     await saveSelfOnly();
     return;
   }
+  if (/already connected to another workspace|disconnect it there first/i.test(phpRepair.message ?? "")) {
+    throw new Error(phpRepair.message);
+  }
 
   try {
     const serverRepair = await repairWhatsAppOwnerServer({
@@ -198,7 +200,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         );
       }
     }
-    await saveSelfOnly();
     await setDoc(
       mapRef,
       {
@@ -210,6 +211,7 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       },
       { merge: true },
     );
+    await saveSelfOnly();
     await clearWebhookOwnerCache(normalized.phoneNumberId).catch(() => null);
   }
 
