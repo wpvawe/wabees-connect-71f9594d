@@ -808,7 +808,81 @@ function Thread({ phone }: { phone: string }) {
             <p className="truncate text-sm font-semibold text-foreground">{displayName || phone}</p>
             {conv && <SlaBadge conv={conv} settings={slaSettings} compact />}
           </div>
-          <p className="text-[11px] text-muted-foreground">{phone}</p>
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="truncate">{phone}</span>
+            {assignedLabel && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground/80"
+                title={
+                  assignedAgent
+                    ? `Assigned to ${assignedAgent.email || assignedLabel}${assignedAgent.isOnline ? " (online)" : ""}`
+                    : `Assigned to ${assignedLabel}`
+                }
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    assignedAgent?.isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  }`}
+                />
+                {assignedLabel}
+              </span>
+            )}
+          </div>
+        </div>
+        {canAssign && (
+          <button
+            type="button"
+            onClick={() => setAssignOpen(true)}
+            title={conv?.assignedAgentEmail ? `Assigned: ${conv.assignedAgentEmail}` : "Assign to agent"}
+            className="hidden h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:grid"
+          >
+            <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
+          </button>
+        )}
+        <div className="relative hidden md:block" data-snooze-menu>
+          <button
+            type="button"
+            disabled={stateBusy}
+            onClick={() => setSnoozeOpen((v) => !v)}
+            title={isSnoozed ? "Snoozed — change" : "Snooze"}
+            className={`grid h-9 w-9 place-items-center rounded-full hover:bg-muted disabled:opacity-50 ${
+              isSnoozed ? "text-amber-500" : "text-muted-foreground"
+            }`}
+          >
+            <FontAwesomeIcon icon={faMoon} className="h-4 w-4" />
+          </button>
+          {snoozeOpen && (
+            <div className="absolute right-0 top-full z-40 mt-1 min-w-[180px] rounded-lg border border-border bg-card p-1 text-sm shadow-md">
+              {[
+                { label: "1 hour", h: 1 },
+                { label: "4 hours", h: 4 },
+                { label: "Tomorrow 9am", h: hoursUntilTomorrow9am() },
+                { label: "3 days", h: 72 },
+                { label: "1 week", h: 168 },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  onClick={() => void snoozeFor(o.h)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                >
+                  {o.label}
+                </button>
+              ))}
+              {isSnoozed && (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    onClick={onToggleResolve}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sky-600 hover:bg-muted"
+                  >
+                    Wake now
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <button
           type="button"
