@@ -64,12 +64,20 @@ export function PhoneHealthCard({
           id_token: idToken ?? "",
         }),
       });
-      const json = (await res.json()) as Health & { error?: unknown };
-      if (!res.ok) {
+      const text = await res.text();
+      let json: (Health & { error?: unknown }) | null = null;
+      try {
+        json = text ? (JSON.parse(text) as Health & { error?: unknown }) : null;
+      } catch {
+        throw new Error(
+          `Server returned an invalid response (HTTP ${res.status})${text ? `: ${text.slice(0, 120)}` : ""}`,
+        );
+      }
+      if (!res.ok || !json) {
         const errMsg =
-          typeof json.error === "string"
+          json && typeof json.error === "string"
             ? json.error
-            : json.error && typeof json.error === "object"
+            : json?.error && typeof json.error === "object"
               ? ((json.error as { message?: string }).message ??
                 JSON.stringify(json.error))
               : `HTTP ${res.status}`;
