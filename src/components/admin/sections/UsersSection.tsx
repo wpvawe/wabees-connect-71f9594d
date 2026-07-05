@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleCheck,
@@ -45,7 +45,7 @@ export function UsersSection() {
 
   // Reset to page 1 whenever filter/search changes so users don't get stuck
   // on an empty last-page after narrowing the list.
-  useMemo(() => {
+  useEffect(() => {
     setPage(1);
   }, [filter, searchQ]);
 
