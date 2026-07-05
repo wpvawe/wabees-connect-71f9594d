@@ -1196,6 +1196,24 @@ function Thread({ phone }: { phone: string }) {
         }}
       />
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
+      <StarredDrawer
+        open={starredOpen}
+        onClose={() => setStarredOpen(false)}
+        messages={data ?? []}
+        onJump={(id) => {
+          // Scroll to the target bubble via data-msg-id set on MessageBubble
+          // wrapper. We tag it in the renderer below.
+          requestAnimationFrame(() => {
+            const el = document.querySelector(
+              `[data-msg-id="${CSS.escape(id)}"]`,
+            ) as HTMLElement | null;
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("wb-star-flash");
+            setTimeout(() => el.classList.remove("wb-star-flash"), 1500);
+          });
+        }}
+      />
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-primary/10 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-lg">
