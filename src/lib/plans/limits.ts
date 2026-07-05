@@ -209,7 +209,7 @@ export async function incrementMessagesUsed(uid: string, n = 1): Promise<void> {
  * Call from any code path that creates or imports contacts.
  */
 export async function incrementContactsUsed(uid: string, n = 1): Promise<void> {
-  if (!uid || n <= 0) return;
+  if (!uid || n === 0) return;
   const db = fbDb();
   await Promise.all([
     updateDoc(doc(db, "users", uid), { totalContacts: increment(n) }).catch(() => {}),
