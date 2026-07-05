@@ -63,17 +63,30 @@ export function useMessageSearch(queryText: string, windowSize = 1000): {
       try {
         const db = fbDbOrNull();
         if (!db) return;
-        const snap = await getDocs(
-          query(
-            collection(db, `users/${uid}/messages`),
-            orderBy("createdAt", "desc"),
-            limit(windowSize),
-          ),
-        );
+        const cacheKey = `${uid}:${windowSize}`;
+        const cached = WINDOW_CACHE.get(cacheKey);
+        let docs: CacheEntry["docs"];
+        if (cached && Date.now() - cached.ts < CACHE_TTL_MS && cached.size === windowSize) {
+          docs = cached.docs;
+        } else {
+          const snap = await getDocs(
+            query(
+              collection(db, `users/${uid}/messages`),
+              orderBy("createdAt", "desc"),
+              limit(windowSize),
+            ),
+          );
+          if (cancelled) return;
+          docs = snap.docs.map((d) => ({
+            id: d.id,
+            data: d.data() as Record<string, unknown>,
+          }));
+          WINDOW_CACHE.set(cacheKey, { ts: Date.now(), size: windowSize, docs });
+        }
         if (cancelled) return;
         const out: MessageSearchHit[] = [];
-        for (const d of snap.docs) {
-          const x = d.data() as Record<string, unknown>;
+        for (const d of docs) {
+          const x = d.data;
           const body = str(x.body);
           const caption = str(x.caption);
           const hay = `${body} ${caption}`.toLowerCase();
