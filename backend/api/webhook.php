@@ -530,6 +530,64 @@ function build_resolved_owner_entry($uid, $cachedAccessToken = null, $cachedFcmT
     ];
 }
 
+function wa_map_cache_read($cacheFile)
+{
+    if (!file_exists($cacheFile)) return [];
+    $fh = @fopen($cacheFile, 'r');
+    if (!$fh) return [];
+    @flock($fh, LOCK_SH);
+    $raw = stream_get_contents($fh);
+    @flock($fh, LOCK_UN);
+    fclose($fh);
+    return @json_decode($raw ?: '', true) ?: [];
+}
+
+function wa_map_cache_write($cacheFile, $map)
+{
+    $dir = dirname($cacheFile);
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    $fh = @fopen($cacheFile, 'c+');
+    if (!$fh) return false;
+    @flock($fh, LOCK_EX);
+    ftruncate($fh, 0);
+    rewind($fh);
+    fwrite($fh, json_encode($map));
+    fflush($fh);
+    @flock($fh, LOCK_UN);
+    fclose($fh);
+    return true;
+}
+
+function wa_map_order_user_ids($userIds, $primaryOwnerId = null)
+{
+    $out = [];
+    $add = function ($uid) use (&$out) {
+        if ($uid && !in_array($uid, $out, true)) $out[] = $uid;
+    };
+    $add($primaryOwnerId);
+    foreach ($userIds as $uid) $add($uid);
+    return $out;
+}
+
+function wa_map_cache_owner_id($cacheUsers)
+{
+    return $cacheUsers[0]['userId'] ?? null;
+}
+
+function wa_map_self_heal_doc($phoneNumberId, $cacheUsers)
+{
+    if (empty($phoneNumberId) || empty($cacheUsers) || !function_exists('firestore_set')) return;
+    $ownerId = wa_map_cache_owner_id($cacheUsers);
+    if (!$ownerId) return;
+    firestore_set("wa_map/$phoneNumberId", [
+        'ownerId' => $ownerId,
+        'userId' => $ownerId,
+        'users' => array_map(function ($u) { return ['userId' => $u['userId'] ?? '']; }, $cacheUsers),
+        'active' => true,
+        'updatedAt' => firestore_timestamp(),
+    ], true);
+}
+
 
 // ================================================================
 // RESOLVE OWNER — returns the single owner user for a phoneNumberId
@@ -679,8 +737,7 @@ function resolve_all_users_by_phone_map($phoneNumberId)
 
     // 1) File cache (fast path)
     if (file_exists($cacheFile)) {
-        $raw = @file_get_contents($cacheFile);
-        $map = @json_decode($raw, true) ?: [];
+        $map = wa_map_cache_read($cacheFile);
         $cacheLoaded = !empty($map);
         if (isset($map[$phoneNumberId]['ownerId']) && empty($map[$phoneNumberId]['users'])) {
             $map[$phoneNumberId]['users'] = [['userId' => $map[$phoneNumberId]['ownerId']]];
@@ -696,7 +753,15 @@ function resolve_all_users_by_phone_map($phoneNumberId)
                 $users = [];
                 $cacheUsers = [];
                 $seenOwners = [];
-                foreach ($map[$phoneNumberId]['users'] as $u) {
+                $primaryOwnerId = $map[$phoneNumberId]['ownerId'] ?? $map[$phoneNumberId]['userId'] ?? null;
+                $cacheIds = wa_map_order_user_ids(
+                    array_map(function ($u) { return $u['userId'] ?? null; }, $map[$phoneNumberId]['users']),
+                    $primaryOwnerId,
+                );
+                $byId = [];
+                foreach ($map[$phoneNumberId]['users'] as $u) if (!empty($u['userId'])) $byId[$u['userId']] = $u;
+                foreach ($cacheIds as $uid) {
+                    $u = $byId[$uid] ?? ['userId' => $uid];
                     $uid = $u['userId'] ?? null;
                     if (!$uid)
                         continue;
@@ -711,8 +776,8 @@ function resolve_all_users_by_phone_map($phoneNumberId)
                     $cacheUsers[] = $built['cache'];
                 }
                 if (!empty($users)) {
-                    $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
-                    @file_put_contents($cacheFile, json_encode($map));
+                    $map[$phoneNumberId] = ['ownerId' => wa_map_cache_owner_id($cacheUsers), 'users' => $cacheUsers, 'ts' => time()];
+                    wa_map_cache_write($cacheFile, $map);
                     webhook_log("RESOLVE[1-cache]: HIT for $phoneNumberId => " . count($users) . " users");
                     return $users;
                 }
@@ -736,7 +801,15 @@ function resolve_all_users_by_phone_map($phoneNumberId)
                 $users = [];
                 $cacheUsers = [];
                 $seenOwners = [];
-                foreach ($map[$phoneNumberId]['users'] as $u) {
+                $primaryOwnerId = $map[$phoneNumberId]['ownerId'] ?? $map[$phoneNumberId]['userId'] ?? null;
+                $cacheIds = wa_map_order_user_ids(
+                    array_map(function ($u) { return $u['userId'] ?? null; }, $map[$phoneNumberId]['users']),
+                    $primaryOwnerId,
+                );
+                $byId = [];
+                foreach ($map[$phoneNumberId]['users'] as $u) if (!empty($u['userId'])) $byId[$u['userId']] = $u;
+                foreach ($cacheIds as $uid) {
+                    $u = $byId[$uid] ?? ['userId' => $uid];
                     $uid = $u['userId'] ?? null;
                     if (!$uid)
                         continue;
@@ -751,8 +824,8 @@ function resolve_all_users_by_phone_map($phoneNumberId)
                     $cacheUsers[] = $built['cache'];
                 }
                 if (!empty($users)) {
-                    $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
-                    @file_put_contents($cacheFile, json_encode($map));
+                    $map[$phoneNumberId] = ['ownerId' => wa_map_cache_owner_id($cacheUsers), 'users' => $cacheUsers, 'ts' => time()];
+                    wa_map_cache_write($cacheFile, $map);
                     webhook_log("RESOLVE[1b-prewarm]: HIT after prewarm => " . count($users) . " users");
                     return $users;
                 }
@@ -767,25 +840,26 @@ function resolve_all_users_by_phone_map($phoneNumberId)
         $fields = $waMapDoc['data']['fields'] ?? [];
         $userIds = [];
 
-        // NEW FORMAT: users array [{userId: "x"}, ...]
-        if (isset($fields['users']['arrayValue']['values'])) {
-            foreach ($fields['users']['arrayValue']['values'] as $entry) {
-                $uid = $entry['mapValue']['fields']['userId']['stringValue'] ?? null;
-                if ($uid && !in_array($uid, $userIds))
-                    $userIds[] = $uid;
-            }
+        // FLUTTER FORMAT: ownerId field (saved by Flutter verifyAndConnect)
+        // Must be first: incoming messages write once to the primary owner tree.
+        $ownerUid = $fields['ownerId']['stringValue'] ?? null;
+        if ($ownerUid && !in_array($ownerUid, $userIds, true)) {
+            $userIds[] = $ownerUid;
         }
 
         // OLD FORMAT: userId field (single user)
         $oldUid = $fields['userId']['stringValue'] ?? null;
-        if ($oldUid && !in_array($oldUid, $userIds)) {
+        if ($oldUid && !in_array($oldUid, $userIds, true)) {
             $userIds[] = $oldUid;
         }
 
-        // FLUTTER FORMAT: ownerId field (saved by Flutter verifyAndConnect)
-        $ownerUid = $fields['ownerId']['stringValue'] ?? null;
-        if ($ownerUid && !in_array($ownerUid, $userIds)) {
-            $userIds[] = $ownerUid;
+        // NEW FORMAT: users array [{userId: "x"}, ...]
+        if (isset($fields['users']['arrayValue']['values'])) {
+            foreach ($fields['users']['arrayValue']['values'] as $entry) {
+                $uid = $entry['mapValue']['fields']['userId']['stringValue'] ?? null;
+                if ($uid && !in_array($uid, $userIds, true))
+                    $userIds[] = $uid;
+            }
         }
 
         if (!empty($userIds)) {
@@ -804,8 +878,8 @@ function resolve_all_users_by_phone_map($phoneNumberId)
                 $cacheUsers[] = $built['cache'];
             }
             // Cache
-            $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
-            @file_put_contents($cacheFile, json_encode($map));
+            $map[$phoneNumberId] = ['ownerId' => wa_map_cache_owner_id($cacheUsers), 'users' => $cacheUsers, 'ts' => time()];
+            wa_map_cache_write($cacheFile, $map);
             webhook_log("RESOLVE[2-wa_map]: FOUND " . count($users) . " users");
             return $users;
         }
@@ -832,8 +906,9 @@ function resolve_all_users_by_phone_map($phoneNumberId)
             $cacheUsers[] = $built['cache'];
             $resolvedUsers[] = $built['user'];
         }
-        $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
-        @file_put_contents($cacheFile, json_encode($map));
+        $map[$phoneNumberId] = ['ownerId' => wa_map_cache_owner_id($cacheUsers), 'users' => $cacheUsers, 'ts' => time()];
+        wa_map_cache_write($cacheFile, $map);
+        wa_map_self_heal_doc($phoneNumberId, $cacheUsers);
         return $resolvedUsers;
     }
     webhook_log("RESOLVE[3-users-query]: No user with whatsappPhoneNumberId=$phoneNumberId");
@@ -856,8 +931,9 @@ function resolve_all_users_by_phone_map($phoneNumberId)
             $cacheUsers[] = $built['cache'];
             $resolvedUsers[] = $built['user'];
         }
-        $map[$phoneNumberId] = ['users' => $cacheUsers, 'ts' => time()];
-        @file_put_contents($cacheFile, json_encode($map));
+        $map[$phoneNumberId] = ['ownerId' => wa_map_cache_owner_id($cacheUsers), 'users' => $cacheUsers, 'ts' => time()];
+        wa_map_cache_write($cacheFile, $map);
+        wa_map_self_heal_doc($phoneNumberId, $cacheUsers);
         return $resolvedUsers;
     }
     webhook_log("RESOLVE[4-config-query]: FAILED — no user found for phoneNumberId=$phoneNumberId anywhere");

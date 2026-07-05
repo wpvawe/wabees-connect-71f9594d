@@ -19,7 +19,7 @@ import { WbButton } from "@/components/wb/WbButton";
 import { WbInput } from "@/components/wb/WbInput";
 import { toast } from "sonner";
 import { createAgentInvite, type InviteRole } from "@/lib/firebase/agent-invites";
-import { sendEmail } from "@/lib/wabees/api";
+import { formatInviteExpiry, sendAgentInviteEmail } from "@/lib/agents/invite-email";
 
 export function InviteAgentDialog({
   open,
@@ -36,7 +36,7 @@ export function InviteAgentDialog({
 }) {
   const [role, setRole] = useState<InviteRole>("agent");
   const [email, setEmail] = useState("");
-  const [ttlDays, setTtlDays] = useState(14);
+  const [ttlDays, setTtlDays] = useState<number | null>(7);
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
@@ -51,7 +51,7 @@ export function InviteAgentDialog({
   function reset() {
     setEmail("");
     setRole("agent");
-    setTtlDays(14);
+    setTtlDays(7);
     setLink(null);
     setCode(null);
     setCopied(null);
@@ -79,61 +79,16 @@ export function InviteAgentDialog({
       // owner can copy/share them out-of-band if needed.
       const recipient = email.trim();
       if (recipient) {
-        try {
-          const subject = `You're invited to join ${ownerBusinessName || ownerEmail || "our"} Wabees workspace`;
-          const escape = (s: string) =>
-            s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          const html = `
-            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111;">
-              <h2 style="margin:0 0 12px;">You're invited</h2>
-              <p>You've been invited to join
-                <b>${escape(ownerBusinessName || ownerEmail || "a Wabees workspace")}</b>
-                as a <b>${escape(invite.role)}</b>.</p>
-              <p style="margin:24px 0;text-align:center;">
-                <a href="${escape(url)}"
-                   style="background:#25D366;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block;">
-                  Accept invite
-                </a>
-              </p>
-              <p style="font-size:13px;color:#555;">Or open this link:<br>
-                <a href="${escape(url)}">${escape(url)}</a></p>
-              <p style="font-size:13px;color:#555;">If prompted, enter this code after signing in:
-                <b style="letter-spacing:2px;">${escape(invite.code)}</b></p>
-              <p style="font-size:12px;color:#888;">This invite expires in ${ttlDays} day${ttlDays === 1 ? "" : "s"}.</p>
-            </div>`;
-          const text = [
-            `You've been invited to join ${ownerBusinessName || ownerEmail || "our"} Wabees workspace as a ${invite.role}.`,
-            ``,
-            `Accept the invite: ${url}`,
-            `Or enter this code after signing in: ${invite.code}`,
-            ``,
-            `This invite expires in ${ttlDays} day${ttlDays === 1 ? "" : "s"}.`,
-          ].join("\n");
-          const res = await sendEmail({
-            to: recipient,
-            subject,
-            html,
-            text,
-            from_name: ownerBusinessName || "Wabees",
-            reply_to: ownerEmail ?? undefined,
-          });
-          if (res.success) {
-            setEmailStatus({ kind: "sent", to: recipient });
-            toast.success(`Invite emailed to ${recipient}`);
-          } else {
-            setEmailStatus({
-              kind: "failed",
-              to: recipient,
-              message: res.message ?? "Email delivery failed",
-            });
-          }
-        } catch (e) {
-          setEmailStatus({
-            kind: "failed",
-            to: recipient,
-            message: e instanceof Error ? e.message : "Email delivery failed",
-          });
-        }
+        const result = await sendAgentInviteEmail({
+          recipient,
+          ownerEmail,
+          ownerBusinessName,
+          invite,
+          link: url,
+          ttlDays,
+        });
+        setEmailStatus(result);
+        if (result.kind === "sent") toast.success(`Invite emailed to ${recipient}`);
       } else {
         setEmailStatus({ kind: "skipped" });
       }
@@ -214,14 +169,16 @@ export function InviteAgentDialog({
                 Expires in
               </label>
               <select
-                value={ttlDays}
-                onChange={(e) => setTtlDays(Number(e.target.value))}
+                value={ttlDays === null ? "never" : String(ttlDays)}
+                onChange={(e) =>
+                  setTtlDays(e.target.value === "never" ? null : Number(e.target.value))
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
                 <option value={1}>1 day</option>
                 <option value={7}>7 days</option>
-                <option value={14}>14 days</option>
                 <option value={30}>30 days</option>
+                <option value="never">Never</option>
               </select>
             </div>
           </div>
@@ -310,7 +267,7 @@ export function InviteAgentDialog({
                   <span className="font-semibold text-foreground">{email}</span>
                 </>
               )}
-              {" · "} Expires in {ttlDays} day{ttlDays === 1 ? "" : "s"}
+              {" · "} {formatInviteExpiry(ttlDays)}
             </div>
           </div>
         )}

@@ -574,7 +574,19 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
 }
 
 function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candidate | null {
-  const rows = Array.from(candidates.values());
+  const rows = Array.from(candidates.values()).filter((row) => {
+    const mapOnly =
+      Boolean(row.fromMapOwner || row.fromMapUsers) &&
+      !row.fromTopLevel &&
+      !row.fromConfig &&
+      !row.fromToken;
+    return !(
+      mapOnly &&
+      !getBool(row.fields, "whatsappConnected") &&
+      !hasString(row.fields, "whatsappAccessToken") &&
+      !hasString(row.fields, "whatsappPhoneNumberId")
+    );
+  });
   if (rows.length === 0) return null;
   // Flutter's connect flow treats an existing wa_map/top-level phone owner as
   // authoritative: a second email that connects the same phone becomes an
@@ -764,12 +776,14 @@ export const checkExistingWhatsAppOwner = createServerFn({ method: "POST" })
       getDocFields(projectId, accessToken, `wa_map/${data.phoneNumberId}`),
     ]);
     for (const row of topLevelMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromTopLevel: true });
     }
     for (const row of configMatches) {
+      if (row.fields?.isConnected?.booleanValue === false) continue;
       const id = uidFromConfigDocName(row.name);
-      if (id) mergeCandidate(candidates, id, { fromConfig: true });
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromConfig: true });
     }
     const mapIds = mapUserIds(waMapFields);
     for (const id of mapIds.owners) mergeCandidate(candidates, id, { fromMapOwner: true });
@@ -853,20 +867,24 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     ]);
 
     for (const row of topLevelMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromTopLevel: true });
     }
     for (const row of configMatches) {
+      if (row.fields?.isConnected?.booleanValue === false) continue;
       const id = uidFromConfigDocName(row.name);
-      if (id) mergeCandidate(candidates, id, { fromConfig: true });
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromConfig: true });
     }
     for (const row of topLevelTokenMatches) {
+      if (row.fields?.whatsappConnected?.booleanValue === false) continue;
       const id = uidFromUserDocName(row.name);
       if (id) mergeCandidate(candidates, id, { fields: row.fields, fromToken: true });
     }
     for (const row of configTokenMatches) {
+      if (row.fields?.isConnected?.booleanValue === false) continue;
       const id = uidFromConfigDocName(row.name);
-      if (id) mergeCandidate(candidates, id, { fromToken: true });
+      if (id) mergeCandidate(candidates, id, { fields: row.fields, fromToken: true });
     }
     for (const row of emailMatches) {
       const id = uidFromUserDocName(row.name);
