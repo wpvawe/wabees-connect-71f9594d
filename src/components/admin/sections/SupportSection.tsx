@@ -6,6 +6,7 @@ import {
   faXmark,
   faHeadset,
   faCircleNotch,
+  faFlag,
 } from "@fortawesome/free-solid-svg-icons";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -18,6 +19,10 @@ import {
 import {
   adminSendSupportMessage,
   markSupportChatReadByAdmin,
+  setSupportChatStatus,
+  setSupportChatPriority,
+  type SupportStatus,
+  type SupportPriority,
 } from "@/lib/admin/mutations";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { cn } from "@/lib/utils";
@@ -25,6 +30,12 @@ import { cn } from "@/lib/utils";
 export function SupportSection() {
   const { data: chats } = useAdminSupportChats();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | SupportStatus>("all");
+
+  const visibleChats = (chats ?? []).filter(
+    (c) => statusFilter === "all" || (c.status || "open") === statusFilter,
+  );
+  const activeChat = (chats ?? []).find((c) => c.id === activeId) ?? null;
 
   return (
     <WbCard className="overflow-hidden">
@@ -33,7 +44,26 @@ export function SupportSection() {
         <aside className="border-r border-border">
           <div className="border-b border-border px-4 py-3">
             <p className="text-sm font-semibold text-foreground">Chats</p>
-            <p className="text-xs text-muted-foreground">{chats?.length ?? 0} conversations</p>
+            <p className="text-xs text-muted-foreground">
+              {visibleChats.length} of {chats?.length ?? 0}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {(["all", "open", "pending", "resolved", "closed"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatusFilter(s)}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors",
+                    statusFilter === s
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="max-h-[65vh] overflow-y-auto">
             {!chats ? (
@@ -41,10 +71,10 @@ export function SupportSection() {
                 <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
                 Loading…
               </div>
-            ) : chats.length === 0 ? (
+            ) : visibleChats.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No support chats yet.</p>
             ) : (
-              chats.map((c) => (
+              visibleChats.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -79,6 +109,12 @@ export function SupportSection() {
                     <p className="truncate text-xs text-muted-foreground">
                       {c.lastMessage || "No messages yet"}
                     </p>
+                    <div className="mt-1 flex gap-1">
+                      <StatusPill s={(c.status as SupportStatus) || "open"} />
+                      {c.priority && c.priority !== "normal" && (
+                        <PriorityPill p={c.priority as SupportPriority} />
+                      )}
+                    </div>
                   </div>
                 </button>
               ))
@@ -89,7 +125,7 @@ export function SupportSection() {
         {/* Chat thread */}
         <section className="flex min-h-0 flex-col">
           {activeId ? (
-            <ChatThread chatId={activeId} />
+            <ChatThread chatId={activeId} chat={activeChat} />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
               <FontAwesomeIcon icon={faHeadset} className="mb-3 h-10 w-10 text-primary/60" />
@@ -103,14 +139,74 @@ export function SupportSection() {
   );
 }
 
-function ChatThread({ chatId }: { chatId: string }) {
+function StatusPill({ s }: { s: SupportStatus }) {
+  const tone =
+    s === "open"
+      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+      : s === "pending"
+        ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+        : s === "resolved"
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          : "bg-muted text-muted-foreground";
+  return (
+    <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase", tone)}>
+      {s}
+    </span>
+  );
+}
+
+function PriorityPill({ p }: { p: SupportPriority }) {
+  const tone =
+    p === "urgent"
+      ? "bg-destructive/15 text-destructive"
+      : p === "high"
+        ? "bg-orange-500/15 text-orange-600 dark:text-orange-400"
+        : "bg-muted text-muted-foreground";
+  return (
+    <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase", tone)}>
+      <FontAwesomeIcon icon={faFlag} className="mr-0.5 h-2 w-2" /> {p}
+    </span>
+  );
+}
+
+function ChatThread({
+  chatId,
+  chat,
+}: {
+  chatId: string;
+  chat: { status?: string; priority?: string } | null;
+}) {
   const { data: messages } = useAdminSupportMessages(chatId);
   const adminUid = useFirebaseUid();
   const [text, setText] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function changeStatus(next: SupportStatus) {
+    setSavingMeta(true);
+    try {
+      await setSupportChatStatus(chatId, next);
+      toast.success(`Marked ${next}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+  async function changePriority(next: SupportPriority) {
+    setSavingMeta(true);
+    try {
+      await setSupportChatPriority(chatId, next);
+      toast.success(`Priority: ${next}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSavingMeta(false);
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
@@ -163,6 +259,32 @@ function ChatThread({ chatId }: { chatId: string }) {
 
   return (
     <>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2 text-xs">
+        <label className="text-muted-foreground">Status:</label>
+        <select
+          disabled={savingMeta}
+          value={(chat?.status as SupportStatus) || "open"}
+          onChange={(e) => void changeStatus(e.target.value as SupportStatus)}
+          className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="open">Open</option>
+          <option value="pending">Pending</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+        </select>
+        <label className="ml-2 text-muted-foreground">Priority:</label>
+        <select
+          disabled={savingMeta}
+          value={(chat?.priority as SupportPriority) || "normal"}
+          onChange={(e) => void changePriority(e.target.value as SupportPriority)}
+          className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
       <div className="flex-1 space-y-2 overflow-y-auto bg-muted/20 p-3">
         {!messages ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
