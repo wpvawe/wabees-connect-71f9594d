@@ -15,6 +15,41 @@ export type WabeesApiResult<T = unknown> = {
   raw: Record<string, unknown>;
 };
 
+/**
+ * Endpoints that were patched in Batch 5A to accept
+ * `Authorization: Bearer <FirebaseIdToken>` and resolve
+ * `phone_number_id` + `access_token` server-side from Firestore
+ * (via `_wa_auth.php::wabees_apply_bearer_auth`).
+ *
+ * For these endpoints the browser MUST NOT send the Meta access token in
+ * the request body — PHP will pull it from Firestore using the verified
+ * caller's `dataOwner`. This keeps the token out of DevTools, proxies,
+ * and server logs while remaining backward-compatible: PHP still accepts
+ * body creds when no bearer is present (Flutter path).
+ */
+const BEARER_AUTH_ENDPOINTS = new Set<string>([
+  "send-message.php",
+  "get-templates.php",
+  "create-template.php",
+  "edit-template.php",
+  "delete-template.php",
+  "business-profile.php",
+  "verify-token.php",
+  "phone-health.php",
+  "send-interactive.php",
+  "delete-message.php",
+  "upload-media.php",
+  "subscribe-webhook.php",
+]);
+
+/** Fields we scrub from the request body once a bearer token is attached. */
+const SERVER_RESOLVED_FIELDS = [
+  "access_token",
+  "phone_number_id",
+  "business_account_id",
+  "waba_id",
+] as const;
+
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -48,30 +83,32 @@ async function postJson<T = unknown>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<WabeesApiResult<T>> {
-  // S5 (Batch 5) — for send-message.php we now also send a Firebase
-  // ID token in `Authorization: Bearer`. Once the PHP layer verifies
-  // that token via Firebase Admin, `auth_uid` in the body becomes
-  // untrusted noise and can be dropped server-side. We still send
-  // `auth_uid` as a fallback so the current PHP build (which reads
-  // it from the body for quota + owner-resolve) keeps working during
-  // the rollout window.
+  const endpoint = path.replace(/^\//, "");
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (path.replace(/^\//, "") === "send-message.php") {
+  let outboundBody: Record<string, unknown> = body;
+
+  if (BEARER_AUTH_ENDPOINTS.has(endpoint)) {
     const user = fbAuth().currentUser;
     if (user) {
-      if (body.auth_uid === undefined) body.auth_uid = user.uid;
+      if (outboundBody.auth_uid === undefined) outboundBody = { ...outboundBody, auth_uid: user.uid };
       try {
         const idToken = await user.getIdToken();
         headers.Authorization = `Bearer ${idToken}`;
+        // Strip server-resolved credentials from the wire once bearer is set.
+        // PHP re-populates them from Firestore via the verified caller's dataOwner.
+        const scrubbed: Record<string, unknown> = { ...outboundBody };
+        for (const key of SERVER_RESOLVED_FIELDS) delete scrubbed[key];
+        outboundBody = scrubbed;
       } catch {
-        /* token fetch failure — PHP falls back to body auth_uid */
+        /* token fetch failure — PHP falls back to body creds */
       }
     }
   }
-  const res = await fetch(`${WABEES_API_BASE}/${path.replace(/^\//, "")}`, {
+
+  const res = await fetch(`${WABEES_API_BASE}/${endpoint}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify(outboundBody),
   });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   const explicitSuccess = typeof raw.success === "boolean" ? raw.success : undefined;
@@ -559,9 +596,31 @@ export async function uploadMedia(args: {
   const fd = new FormData();
   fd.append("file", args.file);
   fd.append("type", args.kind);
-  fd.append("phone_number_id", args.phone_number_id);
-  fd.append("access_token", args.access_token);
-  const res = await fetch(`${WABEES_API_BASE}/upload-media.php`, { method: "POST", body: fd });
+  // Batch 5B — try bearer-authenticated upload first so the Meta access
+  // token is not exposed in the multipart body. PHP resolves creds server
+  // side from Firestore via the caller's dataOwner. Fall back to body-creds
+  // only if we can't mint an ID token (e.g. signed-out edge case).
+  const headers: Record<string, string> = {};
+  const user = fbAuth().currentUser;
+  let idToken: string | null = null;
+  if (user) {
+    try {
+      idToken = await user.getIdToken();
+      headers.Authorization = `Bearer ${idToken}`;
+      fd.append("auth_uid", user.uid);
+    } catch {
+      idToken = null;
+    }
+  }
+  if (!idToken) {
+    fd.append("phone_number_id", args.phone_number_id);
+    fd.append("access_token", args.access_token);
+  }
+  const res = await fetch(`${WABEES_API_BASE}/upload-media.php`, {
+    method: "POST",
+    headers,
+    body: fd,
+  });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return {
     success: Boolean(raw.success),
