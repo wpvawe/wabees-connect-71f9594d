@@ -34,6 +34,16 @@ import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightb
 import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
@@ -118,6 +128,10 @@ function Thread({ phone }: { phone: string }) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [starredOpen, setStarredOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // A11y / S1: use a shadcn AlertDialog for destructive delete confirmation
+  // instead of window.confirm() — keyboard-accessible, themed, and works
+  // inside our design system.
+  const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   // First unread anchor — used to jump the viewport to the first unread
@@ -329,10 +343,14 @@ function Thread({ phone }: { phone: string }) {
     [uid, selfUid, phone],
   );
 
-  const onDelete = useCallback(
+  const onDelete = useCallback((m: Message) => {
+    // Open the AlertDialog; actual delete happens in performDelete on confirm.
+    setPendingDelete(m);
+  }, []);
+
+  const performDelete = useCallback(
     async (m: Message) => {
       if (!uid) return;
-      // Outgoing + has wamid + within ~48h → can revoke for everyone via Meta.
       const canRevoke =
         m.direction === "outgoing" &&
         !!m.whatsappMessageId &&
@@ -341,12 +359,6 @@ function Thread({ phone }: { phone: string }) {
           const ageHours = (Date.now() - new Date(m.createdAt).getTime()) / 36e5;
           return ageHours < 48;
         })();
-      const prompt = canRevoke
-        ? "Delete this message for everyone?\n\nIt will be removed from the recipient's WhatsApp and from your inbox."
-        : m.direction === "outgoing"
-          ? "Delete from your inbox?\n\nThis message is older than 48h or has no WhatsApp ID, so it can only be hidden on your side — the recipient's copy will remain."
-          : "Hide this incoming message?\n\nIt will be removed from your inbox only. WhatsApp does not let businesses delete messages from a customer's phone.";
-      if (!confirm(prompt)) return;
       try {
         if (canRevoke && selfUid && m.whatsappMessageId) {
           try {
@@ -378,6 +390,12 @@ function Thread({ phone }: { phone: string }) {
     },
     [uid, selfUid],
   );
+
+  const pendingCanRevoke =
+    pendingDelete?.direction === "outgoing" &&
+    !!pendingDelete?.whatsappMessageId &&
+    !!pendingDelete?.createdAt &&
+    (Date.now() - new Date(pendingDelete.createdAt).getTime()) / 36e5 < 48;
 
   const onResend = useCallback(
     async (m: Message) => {
