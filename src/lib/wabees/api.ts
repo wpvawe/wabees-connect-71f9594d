@@ -222,6 +222,16 @@ export async function repairWhatsAppConnect(args: {
   });
 }
 
+export async function disconnectWhatsAppOnServer(args: {
+  phone_number_id?: string;
+}): Promise<WabeesApiResult<{ phoneNumberId?: string | null; released?: boolean }>> {
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
+  return postJson("whatsapp-disconnect.php", {
+    phone_number_id: args.phone_number_id,
+    id_token: idToken,
+  });
+}
+
 /**
  * Server-side exchange of a Meta Embedded Signup short-lived `code` for a
  * long-lived business access token + auto-discovered WABA / phone metadata.

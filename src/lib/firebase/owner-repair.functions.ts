@@ -625,6 +625,11 @@ function scoreCandidate(candidate: Candidate, selfUid: string): number {
 
 function chooseOwner(candidates: Map<string, Candidate>, selfUid: string): Candidate | null {
   const rows = Array.from(candidates.values()).filter((row) => {
+    // Disconnect can be partially written in old/bad sessions. If either the
+    // top-level user doc or config doc explicitly says disconnected, do not let
+    // leftover phone/token/map fields keep the WhatsApp number locked.
+    if (getBool(row.fields, "whatsappConnected") === false) return false;
+    if (getBool(row.fields, "isConnected") === false) return false;
     const mapOnly =
       Boolean(row.fromMapOwner || row.fromMapUsers) &&
       !row.fromTopLevel &&
