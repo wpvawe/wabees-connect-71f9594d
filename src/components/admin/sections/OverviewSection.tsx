@@ -2,6 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
   faUsers,
+  faUserTie,
   faCircleCheck,
   faCircleNotch,
   faBan,
@@ -18,7 +19,6 @@ import { WbButton } from "@/components/wb/WbButton";
 import {
   useAllUsers,
   usePendingSubscriptions,
-  usePlatformStats,
   usePlatformCounts,
   useConfigDoc,
 } from "@/hooks/admin/useAdminData";
@@ -33,8 +33,6 @@ export function OverviewSection({
   onNavigate: (k: AdminSectionKey) => void;
 }) {
   const { data: users } = useAllUsers();
-  // Live message/contact/campaign totals from the loaded (capped) slice.
-  const stats = usePlatformStats(users);
   // Server-side aggregate counts — accurate even beyond the 200-user cap.
   const counts = usePlatformCounts();
   const { data: pending } = usePendingSubscriptions();
@@ -48,8 +46,9 @@ export function OverviewSection({
   return (
     <div className="space-y-6">
       {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <StatCard icon={faUsers} label="Users" value={counts.total} color="text-indigo-500" />
+        <StatCard icon={faUserTie} label="Agents" value={counts.agents} color="text-fuchsia-500" />
         <StatCard
           icon={faCircleCheck}
           label="Active"
@@ -77,7 +76,7 @@ export function OverviewSection({
         <StatCard
           icon={faMessage}
           label="Messages"
-          value={stats.totalMessages}
+          value={counts.totalMessages}
           color="text-violet-500"
         />
       </div>
