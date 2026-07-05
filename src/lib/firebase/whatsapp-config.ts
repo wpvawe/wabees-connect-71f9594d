@@ -15,7 +15,11 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { clearWebhookOwnerCache, repairWhatsAppConnect } from "@/lib/wabees/api";
+import {
+  clearWebhookOwnerCache,
+  disconnectWhatsAppOnServer,
+  repairWhatsAppConnect,
+} from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
@@ -122,9 +126,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
     await saveSelfOnly();
     return;
   }
-  if (/already connected to another workspace|disconnect it there first/i.test(phpRepair.message ?? "")) {
-    throw new Error(phpRepair.message);
-  }
 
   try {
     const serverRepair = await repairWhatsAppOwnerServer({
@@ -189,6 +190,9 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       "[wa-connect] server repair failed:",
       error instanceof Error ? error.message : error,
     );
+    if (/already connected to another workspace|disconnect it there first/i.test(phpRepair.message ?? "")) {
+      throw new Error(phpRepair.message);
+    }
     const mapRef = doc(db, "wa_map", normalized.phoneNumberId);
     const existingMap = await getDocFromServer(mapRef).catch(() => null);
     if (existingMap?.exists()) {
@@ -229,6 +233,9 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
       .catch(() => undefined));
   const dataOwner = (data.dataOwner as string | undefined) ?? "";
   const isAgent = Boolean(dataOwner);
+  if (phoneId) {
+    await disconnectWhatsAppOnServer({ phone_number_id: phoneId }).catch(() => undefined);
+  }
   await Promise.all([
     updateDoc(userRef, {
       whatsappPhoneNumberId: null,
