@@ -42,16 +42,34 @@ service cloud.firestore {
       // User can create their own document (registration)
       allow create: if isOwner(userId);
 
-      // User can update their own document, agent can update owner's doc (counters),
-      // admin can update any user (status, role, etc.)
-      allow update: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+      // User can update their own document, admin can update any user.
+      // S2 fix — agents previously had unrestricted update on the owner's
+      // user doc which meant an agent could write `role: "admin"` to
+      // their own document (isOwner(agentUid) for their own root doc)
+      // and self-escalate. Agents now get a narrow field allowlist —
+      // they may only bump the counter fields the composer/campaigns
+      // hooks already write (`totalMessages`, `totalCampaigns`) plus
+      // low-risk activity stamps. Sensitive fields (role, plan, status,
+      // dataOwner, whatsappAccessToken, apiKey, email) stay owner+admin.
+      allow update: if isOwner(userId) || isAdmin()
+        || (isAgentOf(userId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['totalMessages', 'totalCampaigns',
+                           'lastActivityAt', 'updatedAt']));
 
       // Only admin can delete users
       allow delete: if isAdmin();
 
       // ============ WhatsApp Config ============
       match /whatsapp_config/{docId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        // S1 fix — writing the WhatsApp config replaces the Meta access
+        // token; only the workspace owner (or an admin during support)
+        // should be able to do that. Agents keep READ so they can still
+        // load creds via loadWaCredentials() when sending on the owner's
+        // behalf. (Fully removing agent read would require routing every
+        // agent send through the PHP backend — tracked as Batch 5.)
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Agents ============
@@ -172,9 +190,12 @@ service cloud.firestore {
       }
 
       // ============ Assignment audit log (per conversation subcollection) ============
+      // S8 fix — audit log is append-only. Owners + agents can create
+      // entries and read history; nobody may update or delete an entry
+      // (owners keep delete via admin SDK if a wipe is ever needed).
       match /conversations/{convId}/assign_log/{logId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAgentOf(userId);
       }
 
       // ============ Scheduled Messages ============
