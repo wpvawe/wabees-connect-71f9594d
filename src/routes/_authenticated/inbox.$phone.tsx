@@ -88,7 +88,7 @@ function Thread({ phone }: { phone: string }) {
   // (Kept as a plain function — pure, deterministic per call, no hooks needed.)
   //
   // Extracted below into module scope for stability across renders.
-  const { data, error } = useMessages(phone);
+  const { data, error, hasMore, loadMore, loadingMore } = useMessages(phone);
   const { data: contacts } = useContacts();
   const { data: conversations } = useConversations();
   const uid = useEffectiveUid();
@@ -1013,6 +1013,25 @@ function Thread({ phone }: { phone: string }) {
         className="relative flex-1 space-y-2 overflow-y-auto bg-[oklch(0.97_0.005_152)] p-3 dark:bg-background"
       >
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {hasMore && visibleData && visibleData.length > 0 && (
+          <div className="flex justify-center pb-2">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded-full border border-border bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft hover:bg-muted disabled:opacity-60"
+            >
+              {loadingMore ? (
+                <>
+                  <FontAwesomeIcon icon={faCircleNotch} className="mr-1.5 h-3 w-3 animate-spin" />
+                  Loading…
+                </>
+              ) : (
+                "Load older messages"
+              )}
+            </button>
+          </div>
+        )}
         {visibleData === null ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
             <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
