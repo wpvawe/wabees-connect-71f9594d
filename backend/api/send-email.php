@@ -23,6 +23,7 @@ $originOk =
     $origin === '' ||
     in_array($origin, $allowedOrigins, true) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable(?:project)?\.app$#i', $origin) ||
+    (bool) preg_match('#^https://[a-z0-9-]+\.lovableproject\.com$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable\.dev$#i', $origin);
 
 if ($originOk && $origin !== '') {
