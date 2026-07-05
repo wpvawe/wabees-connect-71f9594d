@@ -28,7 +28,18 @@ export function useIncomingMessageAlerts() {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    // P-perf — cap the seen set so a tab left open for days doesn't
+    // grow unbounded. FIFO eviction is fine: once a message is old
+    // enough to fall out of the window we won't re-see it anyway.
     const seen = new Set<string>();
+    const SEEN_CAP = 500;
+    const remember = (id: string) => {
+      if (seen.size >= SEEN_CAP) {
+        const first = seen.values().next().value;
+        if (first) seen.delete(first);
+      }
+      seen.add(id);
+    };
     let first = true;
     // M-7 fix: capture subscription start so re-seeds after reconnect only
     // suppress messages older than this listener, not arbitrary recent ones.
@@ -44,13 +55,13 @@ export function useIncomingMessageAlerts() {
       (snap) => {
         const docs = snap.docs;
         if (first) {
-          for (const d of docs) seen.add(d.id);
+          for (const d of docs) remember(d.id);
           first = false;
           return;
         }
         for (const d of docs) {
           if (seen.has(d.id)) continue;
-          seen.add(d.id);
+          remember(d.id);
           const x = d.data() as Record<string, unknown>;
           const phone = String(x.contactPhone ?? "");
           const name = String(x.contactName ?? phone);
