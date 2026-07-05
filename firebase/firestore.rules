@@ -329,6 +329,13 @@ service cloud.firestore {
         && request.resource.data.read == false;
     }
 
+    // ============ ADMIN AUDIT LOG (Global, append-only) ============
+    match /admin_audit_logs/{logId} {
+      allow read, list: if isAdmin();
+      // Admins may append entries; no updates/deletes so the trail stays intact.
+      allow create: if isAdmin();
+    }
+
     // ============ WA_MAP (WhatsApp phone_number_id → userId for webhook routing) ============
     match /wa_map/{phoneNumberId} {
       // Backend service account reads/writes via admin SDK (bypasses rules)
