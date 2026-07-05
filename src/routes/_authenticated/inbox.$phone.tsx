@@ -34,6 +34,16 @@ import { MediaLightbox, type LightboxItem } from "@/components/inbox/MediaLightb
 import { ForwardDialog } from "@/components/inbox/ForwardDialog";
 import { NotesPanel } from "@/components/inbox/NotesPanel";
 import { AssignAgentDialog } from "@/components/inbox/AssignAgentDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ScheduleDialog } from "@/components/inbox/ScheduleDialog";
 import { ActivityDrawer } from "@/components/inbox/ActivityDrawer";
 import { ContactDetailsDrawer } from "@/components/inbox/ContactDetailsDrawer";
@@ -118,6 +128,10 @@ function Thread({ phone }: { phone: string }) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [starredOpen, setStarredOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // A11y / S1: use a shadcn AlertDialog for destructive delete confirmation
+  // instead of window.confirm() — keyboard-accessible, themed, and works
+  // inside our design system.
+  const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   // First unread anchor — used to jump the viewport to the first unread
@@ -125,20 +139,23 @@ function Thread({ phone }: { phone: string }) {
   const firstUnreadRef = useRef<HTMLDivElement>(null);
   const lastLenRef = useRef(0);
   const dragCounterRef = useRef(0);
-  // Compute the id of the first unread incoming message (in chronological
-  // order). Reset when the thread changes so the marker only tracks
-  // messages that were unread when the user opened this conversation.
+  // B4: capture the first-unread anchor exactly once per opened thread.
+  // Previously the ref was mutated during render, which violates React
+  // rules and produced stale ids under Strict Mode's double-invoke.
   const initialUnreadRef = useRef<string | null>(null);
+  const [firstUnreadId, setFirstUnreadId] = useState<string | null>(null);
   useEffect(() => {
     initialUnreadRef.current = null;
+    setFirstUnreadId(null);
   }, [phone]);
-  if (data && initialUnreadRef.current === null) {
+  useEffect(() => {
+    if (!data || initialUnreadRef.current !== null) return;
     const first = data.find(
       (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
     );
     initialUnreadRef.current = first ? first.id : "";
-  }
-  const firstUnreadId = initialUnreadRef.current || null;
+    setFirstUnreadId(first ? first.id : null);
+  }, [data]);
   // Auto-scroll only when (a) the thread just opened or (b) the user is
   // already near the bottom. Otherwise scrolling jumps the viewport away
   // from messages they were reading.
@@ -326,10 +343,14 @@ function Thread({ phone }: { phone: string }) {
     [uid, selfUid, phone],
   );
 
-  const onDelete = useCallback(
+  const onDelete = useCallback((m: Message) => {
+    // Open the AlertDialog; actual delete happens in performDelete on confirm.
+    setPendingDelete(m);
+  }, []);
+
+  const performDelete = useCallback(
     async (m: Message) => {
       if (!uid) return;
-      // Outgoing + has wamid + within ~48h → can revoke for everyone via Meta.
       const canRevoke =
         m.direction === "outgoing" &&
         !!m.whatsappMessageId &&
@@ -338,12 +359,6 @@ function Thread({ phone }: { phone: string }) {
           const ageHours = (Date.now() - new Date(m.createdAt).getTime()) / 36e5;
           return ageHours < 48;
         })();
-      const prompt = canRevoke
-        ? "Delete this message for everyone?\n\nIt will be removed from the recipient's WhatsApp and from your inbox."
-        : m.direction === "outgoing"
-          ? "Delete from your inbox?\n\nThis message is older than 48h or has no WhatsApp ID, so it can only be hidden on your side — the recipient's copy will remain."
-          : "Hide this incoming message?\n\nIt will be removed from your inbox only. WhatsApp does not let businesses delete messages from a customer's phone.";
-      if (!confirm(prompt)) return;
       try {
         if (canRevoke && selfUid && m.whatsappMessageId) {
           try {
@@ -375,6 +390,12 @@ function Thread({ phone }: { phone: string }) {
     },
     [uid, selfUid],
   );
+
+  const pendingCanRevoke =
+    pendingDelete?.direction === "outgoing" &&
+    !!pendingDelete?.whatsappMessageId &&
+    !!pendingDelete?.createdAt &&
+    (Date.now() - new Date(pendingDelete.createdAt).getTime()) / 36e5 < 48;
 
   const onResend = useCallback(
     async (m: Message) => {
@@ -806,6 +827,7 @@ function Thread({ phone }: { phone: string }) {
       <header className="flex items-center gap-3 border-b border-border bg-card px-3 py-3">
         <Link
           to="/inbox"
+          aria-label="Back to inbox"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden"
         >
           <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
@@ -846,6 +868,7 @@ function Thread({ phone }: { phone: string }) {
           <button
             type="button"
             onClick={() => setAssignOpen(true)}
+            aria-label={conv?.assignedAgentEmail ? `Assigned to ${conv.assignedAgentEmail} — reassign` : "Assign to agent"}
             title={conv?.assignedAgentEmail ? `Assigned: ${conv.assignedAgentEmail}` : "Assign to agent"}
             className="hidden h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted md:grid"
           >
@@ -857,6 +880,9 @@ function Thread({ phone }: { phone: string }) {
             type="button"
             disabled={stateBusy}
             onClick={() => setSnoozeOpen((v) => !v)}
+            aria-label={isSnoozed ? "Snoozed — change duration" : "Snooze conversation"}
+            aria-haspopup="menu"
+            aria-expanded={snoozeOpen}
             title={isSnoozed ? "Snoozed — change" : "Snooze"}
             className={`grid h-9 w-9 place-items-center rounded-full hover:bg-muted disabled:opacity-50 ${
               isSnoozed ? "text-amber-500" : "text-muted-foreground"
@@ -903,6 +929,8 @@ function Thread({ phone }: { phone: string }) {
             setSearchOpen((v) => !v);
             if (searchOpen) setSearchQuery("");
           }}
+          aria-label="Search in chat"
+          aria-pressed={searchOpen}
           title="Search in chat"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -910,6 +938,7 @@ function Thread({ phone }: { phone: string }) {
         </button>
         <a
           href={`tel:${phone}`}
+          aria-label={`Call ${phone}`}
           title="Call"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -918,6 +947,7 @@ function Thread({ phone }: { phone: string }) {
         <button
           type="button"
           onClick={() => setDetailsOpen(true)}
+          aria-label="Contact details"
           title="Contact details"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
@@ -927,6 +957,9 @@ function Thread({ phone }: { phone: string }) {
           <button
             type="button"
             onClick={() => setHeaderMenu((v) => !v)}
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={headerMenu}
             title="More"
             className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
           >
@@ -1352,6 +1385,44 @@ function Thread({ phone }: { phone: string }) {
           </div>
         </div>
       )}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingCanRevoke
+                ? "Delete this message for everyone?"
+                : pendingDelete?.direction === "outgoing"
+                  ? "Delete from your inbox?"
+                  : "Hide this incoming message?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingCanRevoke
+                ? "It will be removed from the recipient's WhatsApp and from your inbox."
+                : pendingDelete?.direction === "outgoing"
+                  ? "This message is older than 48h or has no WhatsApp ID, so it can only be hidden on your side — the recipient's copy will remain."
+                  : "It will be removed from your inbox only. WhatsApp does not let businesses delete messages from a customer's phone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                const m = pendingDelete;
+                setPendingDelete(null);
+                if (m) void performDelete(m);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
