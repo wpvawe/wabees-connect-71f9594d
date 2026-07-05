@@ -170,7 +170,12 @@ foreach ($candidates as $id => $candidate) {
     $connectedCfg = wa_field_bool($cfgFields, 'isConnected');
     $hasToken = wa_field_string($userFields, 'whatsappAccessToken') !== '' || wa_field_string($cfgFields, 'accessToken') !== '';
     $hasPhone = wa_field_string($userFields, 'whatsappPhoneNumberId') === $phone || wa_field_string($cfgFields, 'phoneNumberId') === $phone;
-    $isConnected = $hasPhone && $hasToken && ($connectedTop === true || $connectedCfg === true);
+    // A disconnect may partially succeed client-side: top-level
+    // whatsappConnected=false can be written while the older config doc still
+    // carries a token/isConnected=true. In that case the workspace is
+    // disconnected and must not keep the phone locked.
+    $isExplicitlyDisconnected = ($connectedTop === false || $connectedCfg === false);
+    $isConnected = $hasPhone && $hasToken && !$isExplicitlyDisconnected && ($connectedTop === true || $connectedCfg === true);
     if ($isConnected && $id !== $uid) {
         $activeOwner = $id;
         break;

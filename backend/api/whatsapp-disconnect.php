@@ -133,7 +133,7 @@ if ($phone !== '') {
         $fields = $map['data']['fields'] ?? [];
         $knownUids = array_values(array_unique(array_merge($knownUids, wa_disc_map_user_ids($fields))));
         $owner = wa_disc_string($fields, 'ownerId') ?: wa_disc_string($fields, 'userId');
-        if ($owner === $uid || !$owner || in_array($uid, wa_disc_map_user_ids($fields), true)) {
+        if ($owner === $uid || !$owner) {
             wa_disc_delete_doc('wa_map/' . rawurlencode($phone));
             $released = true;
         }
