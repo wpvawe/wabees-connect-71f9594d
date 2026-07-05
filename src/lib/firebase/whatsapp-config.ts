@@ -14,7 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { fbAuth, fbDb } from "@/integrations/firebase/client";
-import { clearWebhookOwnerCache, subscribeWhatsAppWebhook } from "@/lib/wabees/api";
+import { clearWebhookOwnerCache } from "@/lib/wabees/api";
 import { resolveExistingOwnerForPhone } from "@/lib/firebase/owner";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
@@ -42,13 +42,11 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
   const db = fbDb();
   const userRef = doc(db, "users", input.uid);
   const subRef = doc(db, "users", input.uid, "whatsapp_config", "config");
-  const mapRef = doc(db, "wa_map", input.phone_number_id);
   const now = serverTimestamp();
 
-  // Try server-side repair first (best-effort). If backend credentials are
-  // not configured on the Worker, fall through to the client-side flow which
-  // now works because Firestore rules allow authenticated reads of wa_map and
-  // agent reads via `dataOwner`. Never block the connect flow on this.
+  // Authoritative server-side ownership repair is required. The client cannot
+  // safely decide whether this phone belongs to a disconnected historical
+  // owner, an active workspace, or the current signed-in account.
   const serverIdToken = await fbAuth()
     .currentUser?.getIdToken()
     .catch(() => null);
@@ -65,21 +63,6 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
         qualityRating: input.quality_rating ?? "",
         connectedVia: input.connected_via ?? "manual",
       },
-    }).catch((err) => {
-      // Security errors from the server (e.g. previously-removed agent
-      // trying to reconnect) MUST surface to the user and stop the connect
-      // flow. Otherwise the client-side fallback below would silently
-      // re-add them as an agent, defeating the revoke/leave action.
-      const msg = err instanceof Error ? err.message : String(err ?? "");
-      if (/already connected to another workspace/i.test(msg)) {
-        throw err instanceof Error ? err : new Error(msg);
-      }
-      // Backend not configured / unreachable — log and fall back to client flow.
-      console.warn(
-        "[wa-connect] server repair unavailable, using client fallback:",
-        err instanceof Error ? err.message : err,
-      );
-      return null;
     });
     await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
     if (serverRepair?.ownerId) {
@@ -121,243 +104,19 @@ export async function saveWhatsAppConfig(input: SaveWaConfigInput): Promise<void
       ]);
       return;
     }
+    throw new Error("We couldn't verify this number right now. Please try again in a moment.");
   } catch (error) {
     const emsg = error instanceof Error ? error.message : String(error ?? "");
     if (/already connected to another workspace/i.test(emsg)) {
       throw error instanceof Error ? error : new Error(emsg);
     }
-    // Non-fatal: continue to client-side fallback below.
     console.warn(
-      "[wa-connect] server repair failed, using client fallback:",
+      "[wa-connect] server repair failed:",
       error instanceof Error ? error.message : error,
     );
+    throw new Error("We couldn't verify this number right now. Please try again in a moment.");
   }
 
-  // Only if the authoritative server-side repair is unavailable do we use the
-  // older client-side fallback. Even here, resolve owner BEFORE writing this
-  // UID's `whatsappPhoneNumberId`, otherwise a brand-new email contaminates the
-  // lookup and can look like the owner.
-  const currentUserSnap = await getDoc(userRef).catch(() => null);
-  const currentUserData = currentUserSnap?.exists()
-    ? (currentUserSnap.data() as Record<string, unknown>)
-    : {};
-  const existingDataOwner =
-    typeof currentUserData.dataOwner === "string" && currentUserData.dataOwner.trim()
-      ? currentUserData.dataOwner.trim()
-      : null;
-  const existingOwnerId =
-    existingDataOwner ?? (await resolveExistingOwnerForPhone(input.phone_number_id, input.uid));
-
-  const isAgent = !!existingOwnerId && existingOwnerId !== input.uid;
-
-  // Inspect the current wa_map. If `ownerId` already points at someone other
-  // than this UID, we MUST NOT overwrite it — even if our local resolution
-  // came back as self. That's the bug that turned the website into a separate
-  // data island after a reconnect.
-  let mapOwnerOther: string | null = null;
-  let mapOwnerSelf = false;
-  let mapExists = false;
-  try {
-    const mapSnap = await getDoc(mapRef);
-    if (mapSnap.exists()) {
-      mapExists = true;
-      const m = mapSnap.data() as Record<string, unknown>;
-      const owner =
-        typeof m.ownerId === "string" ? m.ownerId : typeof m.userId === "string" ? m.userId : null;
-      if (owner && owner !== input.uid) mapOwnerOther = owner;
-      if (owner === input.uid) mapOwnerSelf = true;
-    }
-  } catch {
-    /* rules may block — ignore */
-  }
-
-  const effectiveOwner = isAgent ? existingOwnerId : (mapOwnerOther ?? null);
-  const treatAsAgent = !!effectiveOwner && effectiveOwner !== input.uid;
-
-  // CRITICAL: when this UID will become an agent of `effectiveOwner`, we MUST
-  // create the `users/{effectiveOwner}/agents/{thisUid}` doc BEFORE writing
-  // `dataOwner` onto our own user doc. Otherwise the active onSnapshot picks
-  // up the dataOwner change instantly, switches to the owner's subcollections,
-  // and fails with "Missing or insufficient permissions" because Firestore
-  // rules check `isAgentOf(owner) = exists(users/{owner}/agents/{thisUid})`.
-  if (treatAsAgent && effectiveOwner) {
-    await setDoc(
-      doc(db, "users", effectiveOwner, "agents", input.uid),
-      {
-        email: fbAuth().currentUser?.email ?? null,
-        joinedAt: now,
-      },
-      { merge: true },
-    ).catch(() => {
-      // Non-fatal — rules allow `request.auth.uid == agentId` writes, so this
-      // should succeed. If it doesn't, downstream reads will still surface a
-      // permission error which is the correct signal.
-    });
-  }
-
-  await Promise.all([
-    setDoc(
-      userRef,
-      {
-        whatsappPhoneNumberId: input.phone_number_id,
-        whatsappAccessToken: input.access_token,
-        whatsappBusinessAccountId: input.waba_id ?? null,
-        whatsappDisplayPhone: input.display_phone ?? null,
-        whatsappQualityRating: input.quality_rating ?? null,
-        whatsappConnected: true,
-        // Critical: link this UID to the owner whose Firestore subcollections
-        // hold the real data. `useEffectiveUid()` reads this. When this user
-        // really is the owner, clear any stale dataOwner.
-        dataOwner: treatAsAgent ? effectiveOwner : deleteField(),
-        updatedAt: now,
-      },
-      { merge: true },
-    ),
-    setDoc(
-      subRef,
-      {
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        webhookVerifyToken: "",
-        displayPhoneNumber: input.display_phone ?? null,
-        businessName: input.business_name ?? null,
-        qualityRating: input.quality_rating ?? null,
-        isConnected: true,
-        connectedVia: input.connected_via ?? "manual",
-        connectedAt: now,
-        lastVerifiedAt: now,
-      },
-      { merge: true },
-    ),
-  ]);
-
-  // If this website account is being linked to the mobile app's existing data
-  // owner, mirror the fresh credentials onto the owner too. The Flutter app's
-  // send flow resolves the owner's config first; without this, app may keep
-  // reading old/revoked credentials while the website uses the new token.
-  if (treatAsAgent && effectiveOwner) {
-    await Promise.all([
-      setDoc(
-        doc(db, "users", effectiveOwner),
-        {
-          whatsappPhoneNumberId: input.phone_number_id,
-          whatsappAccessToken: input.access_token,
-          whatsappBusinessAccountId: input.waba_id ?? null,
-          whatsappDisplayPhone: input.display_phone ?? null,
-          whatsappQualityRating: input.quality_rating ?? null,
-          whatsappConnected: true,
-          updatedAt: now,
-        },
-        { merge: true },
-      ).catch(() => undefined),
-      setDoc(
-        doc(db, "users", effectiveOwner, "whatsapp_config", "config"),
-        {
-          phoneNumberId: input.phone_number_id,
-          accessToken: input.access_token,
-          businessAccountId: input.waba_id ?? "",
-          webhookVerifyToken: "",
-          displayPhoneNumber: input.display_phone ?? null,
-          businessName: input.business_name ?? null,
-          qualityRating: input.quality_rating ?? null,
-          isConnected: true,
-          connectedVia: input.connected_via ?? "manual",
-          connectedAt: now,
-          lastVerifiedAt: now,
-        },
-        { merge: true },
-      ).catch(() => undefined),
-    ]);
-  }
-
-  // Webhook routing map used by the PHP backend.
-  if (treatAsAgent && effectiveOwner) {
-    // Register this UID as an agent under the existing owner. Do NOT
-    // overwrite `wa_map.ownerId` — webhook keeps routing to the original
-    // owner's subcollections, which both clients read via dataOwner.
-    try {
-      // If wa_map.ownerId was previously hijacked by this UID (a bad earlier
-      // reconnect), restore the real owner so the PHP webhook routes to the
-      // correct subcollections again.
-      const needsRestore = mapOwnerOther !== effectiveOwner;
-      await setDoc(
-        mapRef,
-        needsRestore
-          ? {
-              ownerId: effectiveOwner,
-              userId: effectiveOwner,
-              users: arrayUnion({ userId: input.uid }, { userId: effectiveOwner }),
-              active: true,
-              updatedAt: now,
-            }
-          : { users: arrayUnion({ userId: input.uid }), updatedAt: now },
-        { merge: true },
-      ).catch(() => {});
-      // Agent doc was already written above (before dataOwner) to avoid the
-      // race with onSnapshot. Nothing more to do here.
-    } catch {
-      // Non-fatal — owner's rules may not allow agent writes from this UID.
-    }
-  } else {
-    // Current user is the owner (first connect or legitimate reconnect).
-    // Never replace an existing foreign owner from the client fallback. If the
-    // server repair could not run and rules did not expose the real owner, this
-    // guard prevents a new website email from hijacking webhook routing.
-    if (!mapExists || mapOwnerSelf) {
-      await setDoc(
-        mapRef,
-        {
-          userId: input.uid,
-          ownerId: input.uid,
-          users: arrayUnion({ userId: input.uid }),
-          active: true,
-          accessTokenUpdatedAt: now,
-          updatedAt: now,
-        },
-        { merge: true },
-      ).catch(() => {});
-    } else {
-      await setDoc(
-        mapRef,
-        { users: arrayUnion({ userId: input.uid }), updatedAt: now },
-        { merge: true },
-      ).catch(() => {});
-    }
-  }
-
-  // Subscribe only AFTER wa_map has the final owner. Otherwise the PHP backend
-  // can re-cache the wrong owner while handling subscribe-webhook.php.
-  if (!treatAsAgent) {
-    await subscribeWhatsAppWebhook({
-      phone_number_id: input.phone_number_id,
-      access_token: input.access_token,
-    }).catch(() => null);
-  }
-
-  await clearWebhookOwnerCache(input.phone_number_id).catch(() => null);
-
-  // Final authoritative repair runs through the backend credentials so it can
-  // see all users/wa_map documents, unlike client rules which only expose the
-  // signed-in user's own docs. This fixes reconnects where the website UID had
-  // already hijacked wa_map and the mobile app kept reading the old owner tree.
-  const idToken = await fbAuth()
-    .currentUser?.getIdToken()
-    .catch(() => null);
-  if (idToken) {
-    await repairWhatsAppOwnerServer({
-      data: {
-        idToken,
-        phoneNumberId: input.phone_number_id,
-        accessToken: input.access_token,
-        businessAccountId: input.waba_id ?? "",
-        displayPhone: input.display_phone ?? "",
-        businessName: input.business_name ?? "",
-        qualityRating: input.quality_rating ?? "",
-        connectedVia: input.connected_via ?? "manual",
-      },
-    }).catch(() => null);
-  }
 }
 
 export async function disconnectWhatsApp(uid: string): Promise<void> {
@@ -385,7 +144,20 @@ export async function disconnectWhatsApp(uid: string): Promise<void> {
     }),
     setDoc(
       doc(db, "users", uid, "whatsapp_config", "config"),
-      { isConnected: false, accessToken: "", updatedAt: serverTimestamp() },
+      {
+        // Keep the phone id as disconnected history so a later reconnect of
+        // the same WhatsApp number can find and move the existing workspace
+        // data. Runtime session repair ignores this because isConnected=false.
+        phoneNumberId: phoneId ?? deleteField(),
+        accessToken: "",
+        businessAccountId: "",
+        displayPhoneNumber: null,
+        businessName: null,
+        qualityRating: null,
+        isConnected: false,
+        disconnectedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
       { merge: true },
     ),
   ]);
@@ -576,13 +348,21 @@ export async function repairWhatsAppOwnership(uid: string): Promise<string | nul
   );
   const cfg = cfgSnap?.exists() ? (cfgSnap.data() as Record<string, unknown>) : {};
   const phoneNumberId =
-    (typeof user.whatsappPhoneNumberId === "string" && user.whatsappPhoneNumberId) ||
-    (typeof cfg.phoneNumberId === "string" && cfg.phoneNumberId) ||
+    (user.whatsappConnected !== false &&
+      typeof user.whatsappPhoneNumberId === "string" &&
+      user.whatsappPhoneNumberId) ||
+    (cfg.isConnected !== false && typeof cfg.phoneNumberId === "string" && cfg.phoneNumberId) ||
     "";
   if (!phoneNumberId) return null;
 
   const ownerId = await resolveExistingOwnerForPhone(phoneNumberId, uid);
   if (!ownerId || ownerId === uid) return uid;
+
+  const agentSnap = await getDoc(doc(db, "users", ownerId, "agents", uid)).catch(() => null);
+  const agentStatus = agentSnap?.exists()
+    ? ((agentSnap.data() as Record<string, unknown>).status as string | undefined) || "active"
+    : "missing";
+  if (!agentSnap?.exists() || agentStatus === "revoked" || agentStatus === "left") return null;
 
   const accessToken =
     (typeof user.whatsappAccessToken === "string" && user.whatsappAccessToken) ||

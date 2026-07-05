@@ -93,7 +93,11 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         // Flutter reads WhatsApp credentials from users/{uid}/whatsapp_config/config.
         // Older mobile accounts may not have the top-level mirror populated, so
         // include the config doc here before deciding which owner's data tree to use.
-        const phoneNumberId = text(profile.whatsappPhoneNumberId) || text(config.phoneNumberId);
+        const topConnected = profile.whatsappConnected !== false;
+        const configConnected = config.isConnected !== false;
+        const phoneNumberId =
+          (topConnected ? text(profile.whatsappPhoneNumberId) : "") ||
+          (configConnected ? text(config.phoneNumberId) : "");
         currentPhoneNumberId = phoneNumberId;
         currentDataOwner = dataOwner;
         if (!repairTimer) {

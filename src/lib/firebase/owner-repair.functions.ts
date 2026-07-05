@@ -273,8 +273,9 @@ async function patchDoc(
   accessToken: string,
   path: string,
   fields: FsFields,
+  deleteFields: string[] = [],
 ): Promise<void> {
-  const mask = Object.keys(fields)
+  const mask = Array.from(new Set([...Object.keys(fields), ...deleteFields]))
     .map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`)
     .join("&");
   const res = await firestoreFetch(projectId, accessToken, `/${encodePath(path)}?${mask}`, {
@@ -324,9 +325,27 @@ async function mergeDataIsland(
   sourceUid: string,
   ownerUid: string,
 ): Promise<void> {
-  const collections = ["conversations", "messages", "contacts", "templates", "bots", "campaigns"];
+  const collections = [
+    "conversations",
+    "messages",
+    "contacts",
+    "templates",
+    "bots",
+    "campaigns",
+    "scheduled_messages",
+    "tags",
+    "canned",
+    "settings",
+    "csat_surveys",
+    "bot_leads",
+    "bot_config",
+    "bot_usage",
+    "subscription",
+  ];
+  const copiedDocs = new Map<string, Array<{ id: string; fields: FsFields }>>();
   for (const collectionId of collections) {
     const docs = await listDocs(projectId, accessToken, `users/${sourceUid}/${collectionId}`, 100);
+    copiedDocs.set(collectionId, docs);
     await Promise.all(
       docs.map((row) =>
         patchDoc(projectId, accessToken, `users/${ownerUid}/${collectionId}/${row.id}`, {
@@ -336,6 +355,37 @@ async function mergeDataIsland(
         }).catch(() => undefined),
       ),
     );
+  }
+
+  const nested: Record<string, string[]> = {
+    conversations: ["notes", "assign_log"],
+    campaigns: ["logs"],
+  };
+  for (const [parentCollection, childCollections] of Object.entries(nested)) {
+    for (const parent of copiedDocs.get(parentCollection) ?? []) {
+      for (const childCollection of childCollections) {
+        const childDocs = await listDocs(
+          projectId,
+          accessToken,
+          `users/${sourceUid}/${parentCollection}/${parent.id}/${childCollection}`,
+          100,
+        );
+        await Promise.all(
+          childDocs.map((row) =>
+            patchDoc(
+              projectId,
+              accessToken,
+              `users/${ownerUid}/${parentCollection}/${parent.id}/${childCollection}/${row.id}`,
+              {
+                ...row.fields,
+                migratedFromUid: { stringValue: sourceUid },
+                migratedAt: timestampValue(),
+              },
+            ).catch(() => undefined),
+          ),
+        );
+      }
+    }
   }
 }
 
@@ -982,7 +1032,13 @@ export const repairWhatsAppOwnerServer = createServerFn({ method: "POST" })
     }
 
     await Promise.all([
-      patchDoc(projectId, accessToken, `users/${uid}`, topPatch),
+      patchDoc(projectId, accessToken, `users/${uid}`, topPatch, [
+        "dataOwner",
+        "dataOwnerJoinedAt",
+        "dataOwnerJoinedVia",
+        "dataOwnerClearedAt",
+        "dataOwnerClearedReason",
+      ]),
       patchDoc(projectId, accessToken, `users/${uid}/whatsapp_config/config`, cfgPatch),
     ]);
     await patchDoc(projectId, accessToken, `wa_map/${data.phoneNumberId}`, {

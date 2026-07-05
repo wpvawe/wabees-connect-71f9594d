@@ -135,7 +135,8 @@ export function ManualTokenForm() {
         });
       } catch (e) {
         if (e instanceof Error) console.warn("ownership precheck failed:", e.message);
-        toast.message("Ownership check skipped — connecting with the provided token.");
+        toast.error("We couldn't verify this number right now. Please try again in a moment.");
+        return;
       }
       if (check?.existingOwnerId && !check.isSelf) {
         const who = check.existingOwnerEmail || check.existingOwnerBusinessName || "another account";
