@@ -475,6 +475,7 @@ function Thread({ phone }: { phone: string }) {
           toast.error(res.message ?? "Send failed");
           return;
         }
+        quotaReserved = false;
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           status: "sent",
           whatsappMessageId: wamid,

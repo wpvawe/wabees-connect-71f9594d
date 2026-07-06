@@ -343,6 +343,7 @@ export function Composer({
         toast.error(res.message ?? "Could not send template");
         return;
       }
+      quotaReserved = false;
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       // Counter already bumped atomically by reserveQuota() above.
     } catch (err) {
@@ -528,6 +529,7 @@ export function Composer({
         toast.error(res.message ?? "Could not send");
         return;
       }
+      quotaReserved = false;
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       // Counter already atomically bumped in reserveQuota().
       void markFirstResponseIfNeeded(uid, phone, selfUid);
@@ -695,6 +697,7 @@ export function Composer({
         toast.error(res.message ?? "Could not send");
         return;
       }
+      quotaReserved = false;
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {

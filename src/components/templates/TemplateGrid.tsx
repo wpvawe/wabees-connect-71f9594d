@@ -203,6 +203,7 @@ export function TemplateGrid() {
         }
         throw new Error(res.message ?? "Send failed");
       }
+      quotaReserved = false;
       if (uid) {
         try {
           const db = fbDb();
