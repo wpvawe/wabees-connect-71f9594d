@@ -22,6 +22,7 @@ import { useContacts } from "@/hooks/useContacts";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
+import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -51,6 +52,7 @@ function PlansPage() {
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
   const { data: campaignAgg } = useCampaignAggregate();
+  const { data: liveMessages } = useLiveMessageCount();
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
@@ -60,7 +62,10 @@ function PlansPage() {
   // Prefer per-cycle counters from the subscription doc; fall back to
   // lifetime profile totals only when the sub doc reports zero — this keeps
   // usage visible even on cycles where the webhook hasn't yet touched sub.
-  const usedMessages = sub?.messagesUsed || profile?.totalMessages || 0;
+  // Live subcollection count wins (deletions reflected). Falls back to the
+  // subscription meter / profile counter for cold-cache paint.
+  const usedMessages =
+    liveMessages ?? sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   const usedContacts =
     sub?.contactsUsed || profile?.totalContacts || (contacts ? contacts.length : 0);
   const usedCampaigns = campaignAgg?.totalCampaigns || sub?.campaignsUsed || profile?.totalCampaigns || 0;
