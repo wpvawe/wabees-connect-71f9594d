@@ -9,6 +9,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 import { incrementContactsUsed, releaseQuota, reserveQuota } from "@/lib/plans/limits";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 export async function upsertContact(
   uid: string,
@@ -60,6 +61,7 @@ export async function upsertContact(
     if (quotaReserved) await releaseQuota(uid, "contacts", 1).catch(() => {});
     throw err;
   }
+  bumpRefetch("contacts");
   return { id: ref.id };
 }
 
@@ -67,6 +69,7 @@ export async function deleteContact(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "contacts", id));
   // Decrement counters so users can free up cap slots by cleaning contacts.
   await incrementContactsUsed(uid, -1).catch(() => {});
+  bumpRefetch("contacts");
 }
 
 export async function bulkImportContacts(
@@ -111,5 +114,6 @@ export async function bulkImportContacts(
     if (uncreated > 0) await releaseQuota(uid, "contacts", uncreated).catch(() => {});
     throw err;
   }
+  if (imported > 0) bumpRefetch("contacts");
   return { imported };
 }
