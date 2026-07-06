@@ -44,6 +44,7 @@ import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { deleteDoc, deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 import { revokeAgent, reinstateAgent, updateAgentRole } from "@/lib/firebase/assignments";
 import { updateAgentSkills } from "@/lib/firebase/assignments";
 import { isWithinWorkingHours } from "@/lib/firebase/working-hours";
@@ -236,6 +237,7 @@ function AgentsPage() {
       } catch {
         /* best-effort — revoke above already cut off access */
       }
+      bumpRefetch("agents");
       toast.success("Removed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Remove failed");
