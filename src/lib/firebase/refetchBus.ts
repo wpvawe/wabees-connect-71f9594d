@@ -16,7 +16,12 @@ export type RefetchKey =
   | "contacts"
   | "bots"
   | "leads"
-  | "campaigns";
+  | "campaigns"
+  | "pendingSubs"
+  | "adminNotifications"
+  | "supportChats"
+  | "userSub"
+  | "configDoc";
 
 type Listener = () => void;
 
