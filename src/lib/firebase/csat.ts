@@ -23,7 +23,7 @@ import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
 import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
-import { incrementMessagesUsed } from "@/lib/plans/limits";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 export const CSAT_ROW_PREFIX = "csat:";
 
@@ -152,6 +152,9 @@ export async function sendCsatSurvey(args: {
     description: labels[r - 1],
   }));
 
+  let quotaReserved = false;
+  await reserveQuota(ownerUid, "messages", 1);
+  quotaReserved = true;
   const res = await sendListMessage({
     phone_number_id: creds.phone_number_id,
     access_token: "",
@@ -160,6 +163,7 @@ export async function sendCsatSurvey(args: {
     button_text: "Rate 1–5",
     footer_text: settings.footer || DEFAULT_CSAT.footer,
     sections: [{ title: "Your rating", rows }],
+    quota_reserved: true,
   }).catch((e: unknown) => ({
     success: false,
     message: e instanceof Error ? e.message : "send failed",
@@ -176,15 +180,19 @@ export async function sendCsatSurvey(args: {
   })();
 
   if (!res.success) {
+    await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+    quotaReserved = false;
     await updateDoc(surveyRef, {
       status: "failed",
       error: res.message || "send failed",
     });
     return null;
   }
+  if (quotaReserved) {
+    await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+    quotaReserved = false;
+  }
   await updateDoc(surveyRef, { wamid });
-  // CSAT list message is a real outbound WhatsApp send — count it (B-3).
-  await incrementMessagesUsed(ownerUid, 1);
   // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
   try {
     await setDoc(convRef, { csatLastSentAt: serverTimestamp() }, { merge: true });
@@ -230,17 +238,30 @@ export async function recordCsatRating(args: {
   if (!askComment) return;
   const creds = await loadWaConnection(ownerUid).catch(() => null);
   if (!creds?.phone_number_id) return;
+  let quotaReserved = false;
+  try {
+    await reserveQuota(ownerUid, "messages", 1);
+    quotaReserved = true;
+  } catch {
+    return;
+  }
   await sendTextMessage({
     phone_number_id: creds.phone_number_id,
     access_token: "",
     to: whatsappRecipientId(phone),
     message: commentPrompt || DEFAULT_CSAT.commentPrompt,
+    quota_reserved: true,
   })
-    .then((r) => {
-      // Only count when Meta actually accepted the message.
-      if (r?.success) void incrementMessagesUsed(ownerUid, 1);
+    .then(async (r) => {
+      if (r?.success) {
+        await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
+      else if (quotaReserved) await releaseQuota(ownerUid, "messages", 1).catch(() => {});
     })
-    .catch(() => {});
+    .catch(async () => {
+      if (quotaReserved) await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+    });
 }
 
 /** Attach a customer's free-text comment to the most recent responded survey. */

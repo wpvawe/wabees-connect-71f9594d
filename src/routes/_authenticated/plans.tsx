@@ -21,6 +21,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -49,6 +50,7 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
+  const { data: campaignAgg } = useCampaignAggregate();
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
@@ -61,7 +63,7 @@ function PlansPage() {
   const usedMessages = sub?.messagesUsed || profile?.totalMessages || 0;
   const usedContacts =
     sub?.contactsUsed || profile?.totalContacts || (contacts ? contacts.length : 0);
-  const usedCampaigns = sub?.campaignsUsed || profile?.totalCampaigns || 0;
+  const usedCampaigns = campaignAgg?.totalCampaigns || sub?.campaignsUsed || profile?.totalCampaigns || 0;
   const usedBots = sub?.botsUsed || profile?.totalBots || 0;
 
   const pendingPlan = useMemo(

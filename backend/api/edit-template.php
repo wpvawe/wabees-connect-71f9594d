@@ -21,6 +21,8 @@ $allowedOrigins = [
     'https://www.wabees.live',
     'https://app.wabees.live',
     'https://wabees-plus.wabees.workers.dev',
+    'https://id-preview--373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovable.app',
+    'https://373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovableproject.com',
     'http://localhost:8080',
     'http://localhost:5173',
     'http://127.0.0.1:8080',
@@ -29,6 +31,8 @@ $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $originOk =
     $origin === '' ||
     in_array($origin, $allowedOrigins, true) ||
+    (bool) preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin) ||
+    (bool) preg_match('#^https://[a-z0-9-]+\.lovableproject\.com$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable(?:project)?\.app$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable\.dev$#i', $origin);
 
@@ -37,7 +41,7 @@ if ($originOk && $origin !== '') {
     header('Vary: Origin');
 }
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-Wabees-Client');
+header('Access-Control-Allow-Headers: Content-Type, X-Wabees-Client, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 if (!$originOk) {
@@ -56,6 +60,14 @@ $data = json_decode($raw, true);
 if (!is_array($data)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => ['message' => 'Invalid JSON']]);
+    exit;
+}
+
+require_once __DIR__ . '/../config/wa-bearer-auth.php';
+$auth = wabees_apply_bearer_auth($data);
+if (!empty($auth['error'])) {
+    http_response_code((int)($auth['status'] ?? 401));
+    echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
 

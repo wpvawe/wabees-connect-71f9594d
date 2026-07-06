@@ -47,6 +47,10 @@ export async function requestSubscription(uid: string, plan: Plan): Promise<void
         planId: plan.id,
         planName: plan.name,
         status: "pending",
+        subscription: {
+          planId: plan.id,
+          planName: plan.name,
+        },
         userId: uid,
         userName:
           (user.businessName as string | undefined) ?? fbAuth().currentUser?.displayName ?? "",

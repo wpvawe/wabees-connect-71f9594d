@@ -9,6 +9,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { fetchMetaTemplates } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
+import { reserveQuota, releaseQuota } from "@/lib/plans/limits";
 
 type MetaTemplate = {
   id?: string;
@@ -113,6 +114,7 @@ export async function syncTemplatesFromMeta(
   const incomingNames = new Set<string>();
   const batch = writeBatch(db);
   let synced = 0;
+  let newTemplates = 0;
   for (const t of list) {
     if (!t.name) continue;
     if (t.id) incomingMetaIds.add(t.id);
@@ -146,9 +148,14 @@ export async function syncTemplatesFromMeta(
       batch.update(existing.ref, payload);
       seenRefIds.add(existing.ref.id);
     } else {
+      newTemplates++;
       batch.set(doc(col), { ...payload, createdAt: serverTimestamp() });
     }
     synced++;
+  }
+
+  if (newTemplates > 0) {
+    await reserveQuota(uid, "templates", newTemplates);
   }
 
   // Mark local templates that no longer exist upstream as deleted. Soft-flag
@@ -165,6 +172,11 @@ export async function syncTemplatesFromMeta(
     deleted++;
   }
 
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (err) {
+    if (newTemplates > 0) await releaseQuota(uid, "templates", newTemplates).catch(() => {});
+    throw err;
+  }
   return { synced, deleted };
 }

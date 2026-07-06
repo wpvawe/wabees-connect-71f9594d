@@ -287,6 +287,7 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
       return;
     }
     setSubmitting(true);
+    let templateQuotaReserved = false;
     try {
       const creds = await loadWaConnection(selfUid);
       if (!creds) throw new Error("Connect WhatsApp first (Connect page).");
@@ -332,8 +333,9 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
         toast.success("Template updated — Meta will re-review; sync to refresh status.");
         navigate({ to: "/templates" });
       } else {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "templates");
+        const { reserveQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "templates", 1);
+        templateQuotaReserved = true;
         const res = await createMetaTemplate({
           business_account_id: waba_id,
           access_token: "",
@@ -344,6 +346,9 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
           allow_category_change: allowCategoryChange,
         });
         if (!res.success) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "templates", 1).catch(() => {});
+          templateQuotaReserved = false;
           throw new Error(res.message ?? "Meta rejected the template.");
         }
         toast.success(
@@ -352,6 +357,10 @@ export function TemplateComposer({ initial }: { initial?: Template } = {}) {
         navigate({ to: "/templates" });
       }
     } catch (e) {
+      if (templateQuotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "templates", 1).catch(() => {});
+      }
       toast.error(
         e instanceof Error ? e.message : isEdit ? "Could not update template." : "Could not create template.",
       );

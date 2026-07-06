@@ -17,6 +17,8 @@ $allowedOrigins = [
     'https://www.wabees.live',
     'https://app.wabees.live',
     'https://wabees-plus.wabees.workers.dev',
+    'https://id-preview--373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovable.app',
+    'https://373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovableproject.com',
     'http://localhost:8080',
     'http://localhost:5173',
     'http://127.0.0.1:8080',
@@ -25,6 +27,8 @@ $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $originOk =
     $origin === '' || // native/mobile clients (Flutter app) — no Origin header
     in_array($origin, $allowedOrigins, true) ||
+    (bool) preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin) ||
+    (bool) preg_match('#^https://[a-z0-9-]+\.lovableproject\.com$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable(?:project)?\.app$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable\.dev$#i', $origin);
 
@@ -81,20 +85,21 @@ $METERED_TYPES = ['text', 'template', 'image', 'video', 'document', 'audio',
                   'sticker', 'interactive', 'location'];
 $authUid  = isset($input['auth_uid']) ? preg_replace('/[^A-Za-z0-9_-]/', '', (string)$input['auth_uid']) : '';
 $ownerUid = '';
+$clientReservedQuota = !empty($input['quota_reserved']);
 $shouldMeter = in_array($type, $METERED_TYPES, true) && $authUid !== '';
 
 if ($shouldMeter) {
     // Best-effort include of the shared Firestore helpers used by
     // send.php / webhook.php. If the include path is unavailable in this
     // deploy, skip metering silently — the client-side gate still applies.
-    $firestoreHelper = __DIR__ . '/../config/firebase-admin.php';
+    $firestoreHelper = __DIR__ . '/../config/firebase-config.php';
     if (file_exists($firestoreHelper)) {
         require_once $firestoreHelper;
     }
     if (function_exists('firestore_get')) {
         $ownerUid = $authUid;
         $userResp = firestore_get("users/$authUid");
-        $userFields = $userResp['fields'] ?? null;
+        $userFields = $userResp['data']['fields'] ?? null;
         if (is_array($userFields)) {
             $dataOwner = $userFields['dataOwner']['stringValue'] ?? '';
             if (is_string($dataOwner) && $dataOwner !== '') {
@@ -102,11 +107,15 @@ if ($shouldMeter) {
             }
         }
         $subResp = firestore_get("users/$ownerUid/subscription/current");
-        $subFields = $subResp['fields'] ?? null;
+        $subFields = $subResp['data']['fields'] ?? null;
         if (is_array($subFields)) {
             $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
             $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
-            if ($maxMessages > 0 && $msgsUsed >= $maxMessages) {
+            // React sends reserve quota before calling PHP. Treat that one
+            // reserved slot as the current request, so the boundary send is
+            // allowed while any truly over-cap request is blocked.
+            $effectiveUsed = $clientReservedQuota ? max(0, $msgsUsed - 1) : $msgsUsed;
+            if ($maxMessages > 0 && $effectiveUsed >= $maxMessages) {
                 http_response_code(429);
                 echo json_encode(['error' => [
                     'message' => "Message quota exhausted ($msgsUsed/$maxMessages). Upgrade your plan to send more.",

@@ -405,12 +405,14 @@ function Thread({ phone }: { phone: string }) {
         toast.error("Connect WhatsApp first");
         return;
       }
+      let quotaReserved = false;
       try {
         // Resend counts as a new billable Meta send — enforce plan quota
         // before hitting the wire (B-4).
         try {
-          const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-          await assertWithinPlanLimit(uid, "messages", 1);
+          const { reserveQuota } = await import("@/lib/plans/limits");
+          await reserveQuota(uid, "messages", 1);
+          quotaReserved = true;
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Message limit reached");
           return;
@@ -428,6 +430,7 @@ function Thread({ phone }: { phone: string }) {
             to,
             message: m.body,
             context_message_id: m.replyToWamid ?? null,
+            quota_reserved: true,
           });
         } else if (
           m.type === "image" ||
@@ -448,13 +451,23 @@ function Thread({ phone }: { phone: string }) {
             ...(m.caption ? { caption: m.caption } : {}),
             ...(m.fileName ? { filename: m.fileName } : {}),
             context_message_id: m.replyToWamid ?? null,
+            quota_reserved: true,
           });
         } else {
+          if (quotaReserved) {
+            const { releaseQuota } = await import("@/lib/plans/limits");
+            await releaseQuota(uid, "messages", 1).catch(() => {});
+          }
           toast.error("Cannot resend this message type");
           return;
         }
         const wamid = extractWamid(res.raw);
         if (!res.success) {
+          if (quotaReserved) {
+            const { releaseQuota } = await import("@/lib/plans/limits");
+            await releaseQuota(uid, "messages", 1).catch(() => {});
+            quotaReserved = false;
+          }
           await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
             status: "failed",
             errorReason: res.message ?? "Send failed",
@@ -462,14 +475,21 @@ function Thread({ phone }: { phone: string }) {
           toast.error(res.message ?? "Send failed");
           return;
         }
+        if (quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1).catch(() => {});
+          quotaReserved = false;
+        }
         await updateDoc(doc(fbDb(), `users/${uid}/messages/${m.id}`), {
           status: "sent",
           whatsappMessageId: wamid,
         });
-        const { incrementMessagesUsed } = await import("@/lib/plans/limits");
-        await incrementMessagesUsed(uid, 1);
         toast.success("Resent");
       } catch (e) {
+        if (quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1).catch(() => {});
+        }
         toast.error(e instanceof Error ? e.message : "Resend failed");
       }
     },

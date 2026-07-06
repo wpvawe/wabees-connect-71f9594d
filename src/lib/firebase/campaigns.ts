@@ -14,6 +14,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 export type VariableSource = "static" | "contact";
 
@@ -134,10 +135,13 @@ export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
     payload,
     debugPayload: firestoreDebugValue(payload) as Record<string, unknown>,
     async commit(): Promise<{ id: string }> {
-      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-      await assertWithinPlanLimit(uid, "campaigns");
-      await setDoc(ref, payload);
-      await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
+      await reserveQuota(uid, "campaigns", 1);
+      try {
+        await setDoc(ref, payload);
+      } catch (err) {
+        await releaseQuota(uid, "campaigns", 1).catch(() => {});
+        throw err;
+      }
       return { id: ref.id };
     },
   };
@@ -152,6 +156,7 @@ export async function createCampaign(
 
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
+  await releaseQuota(uid, "campaigns", 1).catch(() => {});
 }
 
 export async function pauseCampaign(uid: string, id: string): Promise<void> {
@@ -184,31 +189,34 @@ export async function restartCampaign(uid: string, id: string): Promise<void> {
 export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
   const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
   if (!src.exists()) throw new Error("Campaign not found");
-  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-  await assertWithinPlanLimit(uid, "campaigns");
+  await reserveQuota(uid, "campaigns", 1);
   const data = src.data() as Record<string, unknown>;
   const db = fbDb();
   const ref = doc(collection(db, "users", uid, "campaigns"));
   const audiencePhones = (data.audiencePhones as string[] | undefined) ?? [];
-  await setDoc(
-    ref,
-    buildCampaignCreatePayload({
-      name: `${(data.name as string) ?? "Untitled"} (copy)`,
-      description: (data.description as string) ?? "",
-      messageType: ((data.messageType as string) ?? "text") as "text" | "template",
-      messageBody: (data.messageBody as string) ?? "",
-      templateName: (data.templateName as string | null) ?? null,
-      templateLanguage: (data.templateLanguage as string | null) ?? null,
-      selectedTemplateId: (data.selectedTemplateId as string | null) ?? null,
-      templateVariables: (data.templateVariables as string[] | undefined) ?? [],
-      variableSource: ((data.variableSource as string) ?? "static") as VariableSource,
-      staticVariableValues:
-        (data.staticVariableValues as Record<string, string> | undefined) ?? {},
-      contactFieldMap: (data.contactFieldMap as Record<string, string> | undefined) ?? {},
-      audiencePhones,
-    }),
-  );
-  await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
+  try {
+    await setDoc(
+      ref,
+      buildCampaignCreatePayload({
+        name: `${(data.name as string) ?? "Untitled"} (copy)`,
+        description: (data.description as string) ?? "",
+        messageType: ((data.messageType as string) ?? "text") as "text" | "template",
+        messageBody: (data.messageBody as string) ?? "",
+        templateName: (data.templateName as string | null) ?? null,
+        templateLanguage: (data.templateLanguage as string | null) ?? null,
+        selectedTemplateId: (data.selectedTemplateId as string | null) ?? null,
+        templateVariables: (data.templateVariables as string[] | undefined) ?? [],
+        variableSource: ((data.variableSource as string) ?? "static") as VariableSource,
+        staticVariableValues:
+          (data.staticVariableValues as Record<string, string> | undefined) ?? {},
+        contactFieldMap: (data.contactFieldMap as Record<string, string> | undefined) ?? {},
+        audiencePhones,
+      }),
+    );
+  } catch (err) {
+    await releaseQuota(uid, "campaigns", 1).catch(() => {});
+    throw err;
+  }
   return { id: ref.id };
 }
 
@@ -240,8 +248,6 @@ export async function runCampaign(
 ): Promise<{ sent: number; failed: number }> {
   const creds = await loadWaConnection(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
-  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-  await assertWithinPlanLimit(uid, "messages", audience.length);
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
   await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });
@@ -298,7 +304,10 @@ export async function runCampaign(
     const to = phone.replace(/[^0-9]/g, "");
     if (alreadySent.has(to)) continue;
     let res;
+    let quotaReserved = false;
     try {
+      await reserveQuota(uid, "messages", 1);
+      quotaReserved = true;
       if (isTemplate) {
         const values = vars.map((v) => resolveVar(v, opts, phone));
         const components: Array<Record<string, unknown>> = [];
@@ -324,6 +333,7 @@ export async function runCampaign(
           template_name: opts!.templateName!,
           language_code: opts?.templateLanguage || "en_US",
           components,
+          quota_reserved: true,
         });
       } else {
         res = await sendTextMessage({
@@ -331,14 +341,21 @@ export async function runCampaign(
           access_token: "",
           to,
           message: messageBody,
+          quota_reserved: true,
         });
       }
     } catch (e) {
+      if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
+      quotaReserved = false;
       res = { success: false, message: e instanceof Error ? e.message : "Network error", raw: {} };
     }
     const ok = res.success;
     if (ok) sent++;
-    else failed++;
+    else {
+      failed++;
+      if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
+    }
+    if (ok && quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
     const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
     await setDoc(doc(collection(campaignRef, "logs")), {
       phone: to,
