@@ -63,7 +63,7 @@ export async function refundMessageQuota(uid: string): Promise<void> {
  * transient Firestore hiccup doesn't turn into an unhandled rejection.
  */
 export async function markSendFailed(
-  msgRef: DocumentReference<DocumentData, DocumentData>,
+  msgRef: DocumentReference<unknown, DocumentData>,
   errorReason: string,
 ): Promise<void> {
   try {
