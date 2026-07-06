@@ -43,11 +43,32 @@ function hydrate(): void {
     /* ignore corrupt cache */
   }
 }
+function isPlainSerializable(v: unknown): boolean {
+  if (v === null) return true;
+  const t = typeof v;
+  if (t === "number" || t === "string" || t === "boolean") return true;
+  if (t !== "object") return false;
+  // Reject anything with methods (e.g. Firestore AggregateQuerySnapshot has
+  // `.data()`) — JSON.stringify would silently drop the method and rehydrate
+  // an empty object that crashes at the call site.
+  try {
+    for (const key of Object.keys(v as object)) {
+      const val = (v as Record<string, unknown>)[key];
+      if (typeof val === "function") return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 function persist(): void {
   if (typeof window === "undefined") return;
   try {
     const obj: Record<string, Entry<unknown>> = {};
-    for (const [k, v] of cache) obj[k] = v;
+    for (const [k, v] of cache) {
+      if (isPlainSerializable(v.value)) obj[k] = v;
+    }
     window.sessionStorage.setItem(SS_KEY, JSON.stringify(obj));
   } catch {
     /* quota or serialization error — best-effort only */
