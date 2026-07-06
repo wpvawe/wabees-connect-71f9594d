@@ -22,6 +22,42 @@ export type Agent = {
   availability: Availability;
 };
 
+// Shared registry per owner uid — many components mount useAgents (dashboard,
+// inbox, workload, analytics, AssignAgentDialog…). Without coalescing each
+// mount fires its own `getDocs` and re-bills every agent doc. This keeps a
+// single in-flight promise + fresh-cache window so a page swap serves cached
+// docs and mutations still refresh via refetchBus.
+type RawSnap = Array<{ id: string; data: Record<string, unknown> }>;
+const REGISTRY = new Map<string, { at: number; docs: RawSnap }>();
+const INFLIGHT = new Map<string, Promise<RawSnap>>();
+const REGISTRY_TTL_MS = 60_000;
+
+async function fetchAgentsCoalesced(db: ReturnType<typeof fbDbOrNull>, uid: string): Promise<RawSnap> {
+  const hit = REGISTRY.get(uid);
+  if (hit && Date.now() - hit.at < REGISTRY_TTL_MS) return hit.docs;
+  const existing = INFLIGHT.get(uid);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      const snap = await getDocs(collection(db!, `users/${uid}/agents`));
+      const docs: RawSnap = snap.docs.map((d) => ({
+        id: d.id,
+        data: d.data() as Record<string, unknown>,
+      }));
+      REGISTRY.set(uid, { at: Date.now(), docs });
+      return docs;
+    } finally {
+      INFLIGHT.delete(uid);
+    }
+  })();
+  INFLIGHT.set(uid, p);
+  return p;
+}
+
+function invalidateAgents(uid: string): void {
+  REGISTRY.delete(uid);
+}
+
 export function useAgents(): { data: Agent[] | null; error: string | null } {
   const uid = useEffectiveUid();
   const session = useFirebaseSession();
@@ -36,14 +72,14 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
     const db = fbDbOrNull();
     if (!db) return;
     try {
-      const snap = await getDocs(collection(db, `users/${uid}/agents`));
+      const docs = await fetchAgentsCoalesced(db, uid);
       setData(
-        snap.docs
-            // Never surface the owner themselves as a teammate row —
-            // legacy bootstrap code may seed `users/{uid}/agents/{uid}`.
-            .filter((d) => d.id !== uid)
-            .map((d) => {
-            const x = d.data() as Record<string, unknown>;
+        docs
+          // Never surface the owner themselves as a teammate row —
+          // legacy bootstrap code may seed `users/{uid}/agents/{uid}`.
+          .filter((d) => d.id !== uid)
+          .map((d) => {
+            const x = d.data;
             const email = str(x.email);
             return {
               id: d.id,
@@ -84,10 +120,11 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
   useEffect(() => {
     void load();
     const unsub = subscribeRefetch("agents", () => {
+      if (uid) invalidateAgents(uid);
       void load();
     });
     return () => unsub();
-  }, [load]);
+  }, [load, uid]);
 
   return { data, error };
 }
