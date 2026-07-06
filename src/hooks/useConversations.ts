@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import {
@@ -10,6 +10,7 @@ import {
   strOrNull,
   toIso,
 } from "@/lib/firebase/normalizers";
+import { subscribeConversations } from "@/lib/firebase/conversationsBroker";
 
 export type Conversation = {
   contactPhone: string;
@@ -144,25 +145,21 @@ export function useConversations(): {
     // not on every snapshot burst — otherwise we spam Firestore writes on
     // initial load and every listener re-emit.
     const canonicalized = new Set<string>();
-    const unsub = onSnapshot(
-      // Cap realtime stream: most inboxes only ever look at the top ~200
-      // most-recent threads. Anything older is still writable via direct
-      // doc paths; the list just doesn't pin them into a live listener.
-      // Grows in +100 steps via loadMore() when the user hits "Show more".
-      query(
-        collection(db, `users/${uid}/conversations`),
-        orderBy("lastMessageAt", "desc"),
-        limit(pageLimit),
-      ),
-      (snap) => {
-        setHasMore(snap.docs.length >= pageLimit);
+    const unsub = subscribeConversations(uid, pageLimit, (snap) => {
+      if (snap.error) {
+        setError(snap.error);
+        setLoadingMore(false);
+        return;
+      }
+      const rawDocs = snap.docs;
+      setHasMore(rawDocs.length >= pageLimit);
         setLoadingMore(false);
         const grouped = new Map<string, Conversation>();
         // Track which raw doc IDs belong to each canonical phone, so we can
         // self-heal "+92..." vs "92..." duplicates created by older clients.
         const idsByPhone = new Map<string, string[]>();
-        for (const d of snap.docs) {
-          const x = d.data() as Record<string, unknown>;
+        for (const d of rawDocs) {
+          const x = d.data;
           const phone = normalizePhone(d.id || str(x.contactPhone));
           if (!phone) continue;
           const list = idsByPhone.get(phone) ?? [];
@@ -246,12 +243,7 @@ export function useConversations(): {
           return (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
         });
         setData(rows);
-      },
-      (err) => {
-        setError(err.message);
-        setLoadingMore(false);
-      },
-    );
+    });
     return () => unsub();
   }, [uid, pageLimit, selfUid, maskOtherAgentEmails]);
 
