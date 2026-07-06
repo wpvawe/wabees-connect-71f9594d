@@ -1,18 +1,10 @@
 import { useEffect, useRef } from "react";
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { playNotificationChime } from "@/lib/notification-sound";
 import { toast } from "sonner";
 import { useRouterState } from "@tanstack/react-router";
 import { normalizePhone } from "@/lib/firebase/normalizers";
+import { subscribeIncomingMessages } from "@/lib/firebase/messagesBroker";
 
 /**
  * Global subscriber: any new incoming WhatsApp message (across all chats)
@@ -26,68 +18,23 @@ export function useIncomingMessageAlerts() {
 
   useEffect(() => {
     if (!uid) return;
-    const db = fbDbOrNull();
-    if (!db) return;
-    // P-perf — cap the seen set so a tab left open for days doesn't
-    // grow unbounded. FIFO eviction is fine: once a message is old
-    // enough to fall out of the window we won't re-see it anyway.
-    const seen = new Set<string>();
-    const SEEN_CAP = 500;
-    const remember = (id: string) => {
-      if (seen.size >= SEEN_CAP) {
-        const first = seen.values().next().value;
-        if (first) seen.delete(first);
-      }
-      seen.add(id);
-    };
-    let first = true;
-    // M-7 fix: capture subscription start so re-seeds after reconnect only
-    // suppress messages older than this listener, not arbitrary recent ones.
     const subscribedAt = Date.now();
-    const q = query(
-      collection(db, `users/${uid}/messages`),
-      where("direction", "==", "incoming"),
-      orderBy("createdAt", "desc"),
-      limit(20),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs;
-        if (first) {
-          for (const d of docs) remember(d.id);
-          first = false;
-          return;
-        }
-        for (const d of docs) {
-          if (seen.has(d.id)) continue;
-          remember(d.id);
-          const x = d.data() as Record<string, unknown>;
-          const phone = String(x.contactPhone ?? "");
-          const name = String(x.contactName ?? phone);
-          const body = String(x.body ?? "");
-          const type = String(x.type ?? "text");
-          // Skip silent system docs.
-          if (type === "reaction" && !x.mediaUrl) continue;
-          // M-7 fix: don't chime for messages that pre-date this listener.
-          const created = (x.createdAt as { toDate?: () => Date } | undefined)?.toDate?.();
-          if (created && created.getTime() < subscribedAt - 5000) continue;
-          // H-2 fix: route uses normalized +E.164 but stored contactPhone
-          // can be bare digits. Compare normalized forms on both sides.
-          const normPhone = normalizePhone(phone);
-          const path = pathRef.current;
-          const pathPhone = path.startsWith("/inbox/")
-            ? decodeURIComponent(path.slice("/inbox/".length).split(/[/?#]/)[0])
-            : "";
-          if (pathPhone && normalizePhone(pathPhone) === normPhone) continue;
-          playNotificationChime();
-          toast(name || "New message", {
-            description: body || `[${type}]`,
-          });
-        }
-      },
-      () => {},
-    );
-    return () => unsub();
+    return subscribeIncomingMessages(uid, (msg) => {
+      const x = msg.data;
+      const phone = String(x.contactPhone ?? "");
+      const name = String(x.contactName ?? phone);
+      const body = String(x.body ?? "");
+      const type = String(x.type ?? "text");
+      if (type === "reaction" && !x.mediaUrl) return;
+      if (msg.createdAtMs < subscribedAt - 5000) return;
+      const normPhone = normalizePhone(phone);
+      const path = pathRef.current;
+      const pathPhone = path.startsWith("/inbox/")
+        ? decodeURIComponent(path.slice("/inbox/".length).split(/[/?#]/)[0])
+        : "";
+      if (pathPhone && normalizePhone(pathPhone) === normPhone) return;
+      playNotificationChime();
+      toast(name || "New message", { description: body || `[${type}]` });
+    });
   }, [uid]);
 }
