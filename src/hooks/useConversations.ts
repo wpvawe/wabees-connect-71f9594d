@@ -146,7 +146,7 @@ export function useConversations(): {
     // initial load and every listener re-emit.
     const canonicalized = new Set<string>();
     const unsub = subscribeConversations(uid, pageLimit, (snap) => {
-      if (snap.error) {
+      if (snap.docs === null) {
         setError(snap.error);
         setLoadingMore(false);
         return;
