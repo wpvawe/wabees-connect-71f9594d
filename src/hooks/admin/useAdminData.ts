@@ -14,6 +14,7 @@ import {
   writeBatch,
   where,
 } from "firebase/firestore";
+import { getDoc } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { toIso } from "@/lib/firebase/normalizers";
 
