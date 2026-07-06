@@ -53,6 +53,13 @@ import { fbAuth } from "@/integrations/firebase/client";
 import { assignConversation } from "@/lib/firebase/assignments";
 import { markFirstResponseIfNeeded } from "@/lib/firebase/sla";
 import type { Message } from "@/hooks/useMessages";
+import {
+  errorMessageOf,
+  markSendFailed,
+  refundMessageQuota,
+  reserveMessageQuota,
+  resolveKnownContactName,
+} from "@/lib/inbox/sendHelpers";
 
 export function Composer({
   phone,
@@ -280,23 +287,13 @@ export function Composer({
       // Atomic reserve — closes the race window so N parallel sends can't
       // collectively exceed the plan cap. Released on send failure below.
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
-      let knownName = normalizedPhone;
-      try {
-        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-        const existing = snap.data()?.contactName;
-        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-          knownName = existing;
-        }
-      } catch {
-        /* ignore */
-      }
+      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
         contactName: knownName,
@@ -332,20 +329,15 @@ export function Composer({
       if (!res.success) {
         // Meta rejected — refund the reserved quota so counter stays accurate.
         if (quotaReserved) {
-          const { releaseQuota } = await import("@/lib/plans/limits");
-          await releaseQuota(uid, "messages", 1);
+          await refundMessageQuota(uid);
           quotaReserved = false;
         }
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: res.message ?? "Send failed",
-        });
+        await markSendFailed(msgRef, res.message ?? "Send failed");
         toast.error(res.message ?? "Could not send template");
         return;
       }
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
         quotaReserved = false;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
@@ -353,16 +345,12 @@ export function Composer({
     } catch (err) {
       // Release the reservation if we never actually sent (Meta call threw).
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
       }
       if (msgRef) {
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: err instanceof Error ? err.message : "Send failed",
-        }).catch(() => {});
+        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
       }
-      toast.error(err instanceof Error ? err.message : "Could not send template");
+      toast.error(errorMessageOf(err, "Could not send template"));
     } finally {
       setSending(false);
     }
@@ -458,27 +446,17 @@ export function Composer({
       }
       // Atomic reserve (see reserveQuota docs) — no race window vs cap.
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
       // H-1 fix: preserve the known contact name on optimistic writes so the
       // thread header / conversation list don't briefly flash back to the
       // raw phone number. Read from the conversation doc that already
       // tracks contactName (best-effort, cached by Firestore SDK).
-      let knownName = normalizedPhone;
-      try {
-        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-        const existing = snap.data()?.contactName;
-        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-          knownName = existing;
-        }
-      } catch {
-        /* fall back to phone */
-      }
+      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
       // Auto-assign on first outgoing reply from an agent/owner if the
       // conversation isn't already assigned. Silent — never blocks send.
       void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
@@ -525,17 +503,15 @@ export function Composer({
       if (!res.success) {
         // Refund the reservation — Meta rejected the send.
         if (quotaReserved) {
-          const { releaseQuota } = await import("@/lib/plans/limits");
-          await releaseQuota(uid, "messages", 1).catch(() => {});
+          await refundMessageQuota(uid);
           quotaReserved = false;
         }
-        await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
+        await markSendFailed(msgRef, res.message ?? "Send failed");
         toast.error(res.message ?? "Could not send");
         return;
       }
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
         quotaReserved = false;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
@@ -543,16 +519,12 @@ export function Composer({
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
       }
       if (msgRef) {
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: err instanceof Error ? err.message : "Send failed",
-        }).catch(() => {});
+        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
       }
-      toast.error(err instanceof Error ? err.message : "Could not send");
+      toast.error(errorMessageOf(err, "Could not send"));
     } finally {
       setSending(false);
     }
@@ -587,16 +559,7 @@ export function Composer({
     // M-3 fix: preserve the contact's display name on optimistic media writes
     // too — without this, the conversation list briefly flashed back to the
     // raw phone number whenever you sent a photo/voice/document.
-    let knownName = normalizedPhone;
-    try {
-      const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-      const existing = snap.data()?.contactName;
-      if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-        knownName = existing;
-      }
-    } catch {
-      /* fall back to phone */
-    }
+    const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
     let quotaReserved = false;
     // Voice-note flag is encoded in the file MIME (audio/ogg from opus-recorder)
     // & file extension. We only set is_voice=true for that specific shape so
@@ -612,11 +575,10 @@ export function Composer({
         return;
       }
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
       const up = await uploadMedia({
@@ -697,33 +659,27 @@ export function Composer({
       const wamid = extractWamid(res.raw);
       if (!res.success) {
         if (quotaReserved) {
-          const { releaseQuota } = await import("@/lib/plans/limits");
-          await releaseQuota(uid, "messages", 1).catch(() => {});
+          await refundMessageQuota(uid);
           quotaReserved = false;
         }
-        await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
+        await markSendFailed(msgRef, res.message ?? "Send failed");
         toast.error(res.message ?? "Could not send");
         return;
       }
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
         quotaReserved = false;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
       }
       if (msgRef) {
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: err instanceof Error ? err.message : "Send failed",
-        }).catch(() => {});
+        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
       }
-      toast.error(err instanceof Error ? err.message : "Could not send");
+      toast.error(errorMessageOf(err, "Could not send"));
     } finally {
       setUploading(false);
     }
