@@ -287,23 +287,13 @@ export function Composer({
       // Atomic reserve — closes the race window so N parallel sends can't
       // collectively exceed the plan cap. Released on send failure below.
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
-      let knownName = normalizedPhone;
-      try {
-        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-        const existing = snap.data()?.contactName;
-        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-          knownName = existing;
-        }
-      } catch {
-        /* ignore */
-      }
+      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
       msgRef = await addDoc(collection(db, "users", uid, "messages"), {
         contactPhone: normalizedPhone,
         contactName: knownName,
