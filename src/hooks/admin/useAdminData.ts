@@ -232,7 +232,6 @@ export function usePendingSubscriptions(): { data: PendingSubRow[] | null } {
       setData(
         snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
-          const x = d.data() as Record<string, unknown>;
           return {
             id: d.id,
             userId: (x.userId as string) ?? d.id,

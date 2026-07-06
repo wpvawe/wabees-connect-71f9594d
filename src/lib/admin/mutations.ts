@@ -539,7 +539,6 @@ export async function rejectPendingSubscription(userId: string) {
   const db = fbDb();
   const pendingRef = doc(db, "pending_subscriptions", userId);
   const pendingSnap = await getDoc(pendingRef);
-  const planName =
   const planName = (pendingSnap.data()?.planName as string) ?? "plan";
   const subRef = doc(db, "users", userId, "subscription", "current");
   try {
