@@ -19,6 +19,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { fbAuth } from "@/integrations/firebase/client";
 import { sendPasswordResetEmail } from "firebase/auth";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 // ============ AUDIT LOG ============
 // Append-only trail of admin actions. Stored in `admin_audit_logs`.
@@ -625,11 +626,13 @@ export async function createPlan(input: PlanInput) {
     isWelcomePlan: false,
     createdAt: serverTimestamp(),
   });
+  bumpRefetch("plans");
   void logAudit("plan.create", ref.id, { name: input.name });
 }
 
 export async function updatePlan(planId: string, input: Partial<PlanInput>) {
   await updateDoc(doc(fbDb(), "plans", planId), input);
+  bumpRefetch("plans");
   void logAudit("plan.update", planId, {});
 }
 
@@ -640,11 +643,13 @@ export async function deletePlan(planId: string) {
     throw new Error("Cannot delete the Welcome plan");
   }
   await deleteDoc(doc(db, "plans", planId));
+  bumpRefetch("plans");
   void logAudit("plan.delete", planId, {});
 }
 
 export async function togglePlanActive(planId: string, isActive: boolean) {
   await updateDoc(doc(fbDb(), "plans", planId), { isActive });
+  bumpRefetch("plans");
   void logAudit("plan.toggle_active", planId, { isActive });
 }
 
