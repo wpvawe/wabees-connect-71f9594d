@@ -24,6 +24,7 @@ import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/
 import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 export const CSAT_ROW_PREFIX = "csat:";
 
@@ -193,6 +194,7 @@ export async function sendCsatSurvey(args: {
     quotaReserved = false;
   }
   await updateDoc(surveyRef, { wamid });
+  bumpRefetch("csatSurveys");
   // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
   try {
     await setDoc(convRef, { csatLastSentAt: serverTimestamp() }, { merge: true });
@@ -235,6 +237,7 @@ export async function recordCsatRating(args: {
     status: "responded",
     respondedAt: serverTimestamp(),
   });
+  bumpRefetch("csatSurveys");
   if (!askComment) return;
   const creds = await loadWaConnection(ownerUid).catch(() => null);
   if (!creds?.phone_number_id) return;
@@ -274,4 +277,5 @@ export async function attachCsatComment(args: {
     doc(fbDb(), `users/${args.ownerUid}/csat_surveys/${args.surveyId}`),
     { comment: args.comment.slice(0, 500) },
   );
+  bumpRefetch("csatSurveys");
 }
