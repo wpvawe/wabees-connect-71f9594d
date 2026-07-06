@@ -287,16 +287,14 @@ export async function reserveQuota(
   await runTransaction(db, async (tx) => {
     const subSnap = await tx.get(subRef);
     if (!subSnap.exists()) {
-      // Legacy account without subscription doc. Instead of silently
-      // bypassing the cap (previous behaviour — allowed unlimited usage!),
-      // block the action so admin can assign the user a plan.
+      // Legacy account without subscription doc. Log loudly so admin can
+      // notice and back-fill, but don't block the action — otherwise every
+      // legacy user gets stuck at launch.
       // eslint-disable-next-line no-console
       console.warn(
-        `[limits] reserveQuota(${kind}) BLOCKED — user ${uid} has no subscription/current doc`,
+        `[limits] reserveQuota(${kind}) SKIPPED — user ${uid} has no subscription/current doc. Admin should assign a plan.`,
       );
-      throw new Error(
-        "No active subscription found. Please contact support to assign a plan.",
-      );
+      return;
     }
     const sub = subSnap.data() as Record<string, unknown>;
 
