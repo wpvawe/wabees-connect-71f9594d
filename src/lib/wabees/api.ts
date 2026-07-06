@@ -316,6 +316,7 @@ export function sendMediaMessage(args: {
   filename?: string;
   is_voice?: boolean;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", args);
 }
@@ -355,6 +356,7 @@ export function sendReplyButtonsMessage(args: {
   footer_text?: string;
   buttons: Array<{ id: string; title: string }>;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", {
     ...args,
@@ -374,6 +376,7 @@ export function sendCtaUrlMessage(args: {
   header_text?: string;
   footer_text?: string;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", {
     ...args,
@@ -396,6 +399,7 @@ export function sendListMessage(args: {
     rows: Array<{ id: string; title: string; description?: string }>;
   }>;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", {
     ...args,
