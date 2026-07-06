@@ -190,6 +190,7 @@ export function BotsWorkspace() {
       };
       if (mode.kind === "edit") {
         await updateDoc(doc(fbDb(), "users", uid, "bots", mode.id), payload);
+        (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
         toast.success("Bot updated");
       } else {
         const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
@@ -200,6 +201,7 @@ export function BotsWorkspace() {
           totalTriggered: 0,
           createdAt: serverTimestamp(),
         });
+        (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
         toast.success("Bot created");
         setMode({ kind: "edit", id: ref.id });
       }
@@ -214,6 +216,7 @@ export function BotsWorkspace() {
     if (!uid) return;
     try {
       await updateDoc(doc(fbDb(), "users", uid, "bots", b.id), { isActive: !b.isActive });
+      (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Toggle failed");
     }
@@ -224,6 +227,7 @@ export function BotsWorkspace() {
     if (!confirm(`Delete bot "${b.name}"? This cannot be undone.`)) return;
     try {
       await deleteDoc(doc(fbDb(), "users", uid, "bots", b.id));
+      (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
       toast.success("Bot deleted");
       if (mode.kind === "edit" && mode.id === b.id) setMode({ kind: "empty" });
     } catch (e) {
