@@ -89,6 +89,7 @@ export async function setSupportChatStatus(chatId: string, status: SupportStatus
     { merge: true },
   );
   void logAudit("support.status", chatId, { status });
+  bumpRefetch("supportChats");
 }
 
 export async function setSupportChatPriority(chatId: string, priority: SupportPriority) {
@@ -98,6 +99,7 @@ export async function setSupportChatPriority(chatId: string, priority: SupportPr
     { merge: true },
   );
   void logAudit("support.priority", chatId, { priority });
+  bumpRefetch("supportChats");
 }
 
 // ============ USER ACTIONS ============
@@ -352,6 +354,8 @@ export async function activatePendingSubscription(
     /* non-critical */
   }
   void logAudit("subscription.activate", userId, { planId, planName });
+  bumpRefetch("pendingSubs");
+  bumpRefetch("userSub");
   return { planId, planName };
 }
 
@@ -440,6 +444,8 @@ export async function adminAssignPlan(userId: string, planId: string) {
     /* non-critical */
   }
   void logAudit("subscription.assign", userId, { planId, planName: newSub.planName });
+  bumpRefetch("pendingSubs");
+  bumpRefetch("userSub");
 }
 // audit
 // (kept outside the try so failure to add notification doesn't skip audit)
@@ -493,6 +499,7 @@ export async function updateUserSubscriptionLimits(
     /* non-critical */
   }
   void logAudit("subscription.customize", userId, overrides as Record<string, unknown>);
+  bumpRefetch("userSub");
 }
 
 // Extend (or shrink, if days<0) the current subscription's end date.
@@ -533,6 +540,7 @@ export async function extendSubscriptionExpiry(userId: string, deltaDays: number
     /* non-critical */
   }
   void logAudit("subscription.extend", userId, { deltaDays });
+  bumpRefetch("userSub");
 }
 
 // Reset the "used" counters on the current sub without changing the plan
@@ -553,6 +561,7 @@ export async function resetSubscriptionCounters(userId: string) {
     { merge: true },
   );
   void logAudit("subscription.reset_counters", userId, {});
+  bumpRefetch("userSub");
 }
 
 export async function rejectPendingSubscription(userId: string) {
@@ -584,6 +593,8 @@ export async function rejectPendingSubscription(userId: string) {
     /* non-critical */
   }
   void logAudit("subscription.reject", userId, {});
+  bumpRefetch("pendingSubs");
+  bumpRefetch("userSub");
 }
 
 // ============ PLANS ============
@@ -681,6 +692,7 @@ export async function adminSendSupportMessage(
     read: false,
     createdAt: serverTimestamp(),
   });
+  bumpRefetch("supportChats");
 }
 
 export async function markSupportChatReadByAdmin(chatId: string, unreadIds: string[]) {
@@ -691,6 +703,7 @@ export async function markSupportChatReadByAdmin(chatId: string, unreadIds: stri
   }
   batch.set(doc(db, "support_chats", chatId), { unreadByAdmin: 0 }, { merge: true });
   await batch.commit();
+  bumpRefetch("supportChats");
 }
 
 // ============ CONFIG DOCS ============
@@ -704,4 +717,5 @@ export async function saveConfigDoc(
     { merge: true },
   );
   void logAudit("config.save", `${path[0]}/${path[1]}`, {});
+  bumpRefetch("configDoc");
 }
