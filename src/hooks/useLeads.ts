@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
@@ -28,7 +28,7 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
   const selfUid = useFirebaseUid();
   const [data, setData] = useState<Lead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const lastLoadRef = { current: 0 } as { current: number };
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid || !selfUid) return;

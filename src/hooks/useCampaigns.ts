@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, doc, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -42,7 +42,7 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
   const [error, setError] = useState<string | null>(null);
   // Track last successful load so visibility-change doesn't refetch on
   // every tab switch. Refetches only when data is >5 min stale.
-  const lastLoadRef = { current: 0 } as { current: number };
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid) return;
