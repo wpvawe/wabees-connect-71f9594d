@@ -560,3 +560,71 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
   }, [uid]);
   return state;
 }
+
+// ============ USERS WITHOUT A SUBSCRIPTION (admin remediation) ============
+// Legacy accounts (created before the plans system, or via seed scripts)
+// may not have a `users/{uid}/subscription/current` doc. `reserveQuota`
+// skips the cap check for these users to avoid locking them out. Rather
+// than log to DevTools, we surface them here so an admin can assign a
+// plan from the Users section.
+export type UserMissingPlan = {
+  id: string;
+  businessName: string;
+  email: string;
+  phoneNumber: string;
+  createdAt: string | null;
+};
+
+export function useUsersWithoutSubscription(users: AdminUser[] | null): {
+  data: UserMissingPlan[] | null;
+  loading: boolean;
+} {
+  const [data, setData] = useState<UserMissingPlan[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Stable key: only re-run when the id list actually changes.
+  const idsKey = useMemo(
+    () => (users ?? []).map((u) => u.id).sort().join("|"),
+    [users],
+  );
+  useEffect(() => {
+    const db = fbDbOrNull();
+    if (!db || !users) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const missing: UserMissingPlan[] = [];
+      // Batch in chunks of 20 so we don't fan out 200 parallel reads at once.
+      const CHUNK = 20;
+      for (let i = 0; i < users.length; i += CHUNK) {
+        if (cancelled) return;
+        const slice = users.slice(i, i + CHUNK);
+        const results = await Promise.all(
+          slice.map((u) =>
+            getDoc(doc(db, "users", u.id, "subscription", "current"))
+              .then((s) => ({ u, exists: s.exists() }))
+              .catch(() => ({ u, exists: true })), // on error assume ok
+          ),
+        );
+        for (const { u, exists } of results) {
+          if (!exists) {
+            missing.push({
+              id: u.id,
+              businessName: u.businessName,
+              email: u.email,
+              phoneNumber: u.phoneNumber,
+              createdAt: u.createdAt,
+            });
+          }
+        }
+      }
+      if (cancelled) return;
+      setData(missing);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+  return { data, loading };
+}
