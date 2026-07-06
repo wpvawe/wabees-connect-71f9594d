@@ -287,13 +287,10 @@ export async function reserveQuota(
   await runTransaction(db, async (tx) => {
     const subSnap = await tx.get(subRef);
     if (!subSnap.exists()) {
-      // Legacy account without subscription doc. Log loudly so admin can
-      // notice and back-fill, but don't block the action — otherwise every
-      // legacy user gets stuck at launch.
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[limits] reserveQuota(${kind}) SKIPPED — user ${uid} has no subscription/current doc. Admin should assign a plan.`,
-      );
+      // Legacy account without a subscription doc — don't block the action
+      // (otherwise every legacy user gets stuck). These users are surfaced
+      // in the admin panel via `useUsersWithoutSubscription` so an admin
+      // can back-fill a plan without seeing DevTools noise.
       return;
     }
     const sub = subSnap.data() as Record<string, unknown>;
@@ -316,11 +313,7 @@ export async function reserveQuota(
     }
 
     const max = num(sub[cfg.maxField]);
-    if (max <= 0) {
-      // max=0 in the plan doc is treated as UNLIMITED by design.
-      // eslint-disable-next-line no-console
-      console.debug(`[limits] reserveQuota(${kind}) unlimited (max=0) for ${uid}`);
-    } else {
+    if (max > 0) {
       const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
       // Profile counter read is best-effort; we only need it for a tighter
       // floor. Skip inside the tx to keep it single-doc atomic.
