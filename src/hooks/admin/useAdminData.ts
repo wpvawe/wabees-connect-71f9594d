@@ -70,15 +70,30 @@ export function useAllUsers(): { data: AdminUser[] | null; error: string | null 
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    // Cap the realtime stream so an idle admin tab doesn't accumulate reads
-    // on every user-doc update (isOnline heartbeat, totalMessages increment).
+    // Was onSnapshot (200 docs streamed on every isOnline heartbeat /
+    // totalMessages increment — massive quota drain). Now one-shot
+    // getDocs on mount; refetch on window focus. Admins can navigate
+    // away and back for a fresh list.
+    let cancelled = false;
     const q = query(collection(db, "users"), orderBy("createdAt", "desc"), limit(200));
-    const unsub = onSnapshot(
-      q,
-      (snap) => setData(snap.docs.map((d) => toAdminUser(d.id, d.data() as Record<string, unknown>))),
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        setData(snap.docs.map((d) => toAdminUser(d.id, d.data() as Record<string, unknown>)));
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      }
+    }
+    void load();
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, []);
   return { data, error };
 }
