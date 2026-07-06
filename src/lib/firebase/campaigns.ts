@@ -14,6 +14,7 @@ import {
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 export type VariableSource = "static" | "contact";
 
@@ -240,8 +241,6 @@ export async function runCampaign(
 ): Promise<{ sent: number; failed: number }> {
   const creds = await loadWaConnection(credentialUid);
   if (!creds) throw new Error("Connect WhatsApp first");
-  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-  await assertWithinPlanLimit(uid, "messages", audience.length);
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
   await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });
@@ -298,7 +297,10 @@ export async function runCampaign(
     const to = phone.replace(/[^0-9]/g, "");
     if (alreadySent.has(to)) continue;
     let res;
+    let quotaReserved = false;
     try {
+      await reserveQuota(uid, "messages", 1);
+      quotaReserved = true;
       if (isTemplate) {
         const values = vars.map((v) => resolveVar(v, opts, phone));
         const components: Array<Record<string, unknown>> = [];
@@ -336,11 +338,16 @@ export async function runCampaign(
         });
       }
     } catch (e) {
+      if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
+      quotaReserved = false;
       res = { success: false, message: e instanceof Error ? e.message : "Network error", raw: {} };
     }
     const ok = res.success;
     if (ok) sent++;
-    else failed++;
+    else {
+      failed++;
+      if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
+    }
     const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
     await setDoc(doc(collection(campaignRef, "logs")), {
       phone: to,

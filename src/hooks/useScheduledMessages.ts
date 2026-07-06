@@ -26,7 +26,7 @@ import {
 } from "@/lib/firebase/normalizers";
 import { extractWamid, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
-import { incrementMessagesUsed } from "@/lib/plans/limits";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 import type { ScheduledMessage } from "@/lib/firebase/scheduled";
 
 export function useScheduledMessages(phone?: string): {
@@ -159,7 +159,10 @@ export function useScheduledDispatcher() {
               continue;
             }
             if (!claimed) continue;
+            let quotaReserved = false;
             try {
+              await reserveQuota(uid!, "messages", 1);
+              quotaReserved = true;
               const res = await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
                 access_token: "",
@@ -169,6 +172,8 @@ export function useScheduledDispatcher() {
               });
               const wamid = extractWamid(res.raw);
               if (!res.success) {
+                await releaseQuota(uid!, "messages", 1).catch(() => {});
+                quotaReserved = false;
                 await updateDoc(d.ref, {
                   status: "failed",
                   errorReason: res.message ?? "Send failed",
@@ -205,6 +210,7 @@ export function useScheduledDispatcher() {
                 dispatchedBy: "client",
               });
             } catch (e) {
+              if (quotaReserved) await releaseQuota(uid!, "messages", 1).catch(() => {});
               await updateDoc(d.ref, {
                 status: "failed",
                 errorReason: e instanceof Error ? e.message : "Send failed",
