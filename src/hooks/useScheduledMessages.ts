@@ -227,13 +227,25 @@ export function useScheduledDispatcher() {
       }
     }
 
-    // First tick shortly after mount, then every 30s.
-    const first = setTimeout(tick, 2000);
-    const iv = setInterval(tick, 30_000);
+    // First tick shortly after mount, then every 30s while visible.
+    // Hidden/background tabs skip the poll so 5 open tabs don't multiply
+    // Firestore reads on a query that's usually empty.
+    const first = setTimeout(() => {
+      if (document.visibilityState === "visible") void tick();
+    }, 2000);
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible") void tick();
+    }, 30_000);
+    // Immediate catch-up when the tab returns to foreground.
+    const onVis = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
       clearTimeout(first);
       clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [uid, selfUid]);
 }
