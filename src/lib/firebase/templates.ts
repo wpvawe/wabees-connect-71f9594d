@@ -178,5 +178,9 @@ export async function syncTemplatesFromMeta(
     if (newTemplates > 0) await releaseQuota(uid, "templates", newTemplates).catch(() => {});
     throw err;
   }
+  // Meta removed these templates upstream — free the slots so the user's
+  // plan cap reflects the current active count. Only released on successful
+  // batch commit; soft-flagged rows stay in Firestore for campaign lookups.
+  if (deleted > 0) await releaseQuota(uid, "templates", deleted).catch(() => {});
   return { synced, deleted };
 }

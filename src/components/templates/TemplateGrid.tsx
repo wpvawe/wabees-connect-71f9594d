@@ -152,6 +152,15 @@ export function TemplateGrid() {
       }
       // 2) Firestore delete — always attempted so the workspace stays clean.
       await deleteDoc(doc(fbDb(), "users", uid, "templates", t.id));
+      // Free the reserved templates slot so the user's plan cap reflects
+      // the actual number of active templates. Mirrors reserveQuota() done
+      // in the composer / Meta sync on create.
+      try {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "templates", 1);
+      } catch {
+        // best-effort — do not block the success toast if the mirror write fails.
+      }
       toast.success(metaMessage);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
