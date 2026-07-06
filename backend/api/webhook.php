@@ -2072,6 +2072,10 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         }
         if (!empty($contactWrites)) {
             firestore_commit($contactWrites);
+            if (!$contactExists && function_exists('firestore_increment')) {
+                @firestore_increment("users/$userId/subscription/current", 'contactsUsed', 1);
+                @firestore_increment("users/$userId", 'totalContacts', 1);
+            }
         }
     }
 
@@ -2127,7 +2131,7 @@ function auto_save_contact($userId, $phone, $contactName)
         }
     }
 
-        if (!$contactExists && wabees_subscription_allows($userId, 'contacts', 1)) {
+    if (!$contactExists && wabees_subscription_allows($userId, 'contacts', 1)) {
         // Create new contact
         $contactData = [
             'phone' => $phone,
@@ -2148,9 +2152,8 @@ function auto_save_contact($userId, $phone, $contactName)
         $result = firestore_set($contactPath, $contactData);
         webhook_log("CONTACT: Auto-saved new contact $phone => code:{$result['code']}");
 
-        // Increment totalContacts on user doc
-        $userPath = "users/$userId";
-        firestore_increment($userPath, 'totalContacts', 1);
+        @firestore_increment("users/$userId/subscription/current", 'contactsUsed', 1);
+        @firestore_increment("users/$userId", 'totalContacts', 1);
     }
 
     // Return the best name: user-saved name > WhatsApp profile name > phone
