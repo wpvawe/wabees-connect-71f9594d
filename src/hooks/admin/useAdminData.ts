@@ -18,6 +18,7 @@ import { getDoc } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { toIso } from "@/lib/firebase/normalizers";
 import { fetchCached } from "@/lib/firebase/countCache";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 // ============ ALL USERS (REALTIME) ============
 export type AdminUser = {
@@ -181,23 +182,44 @@ export function useAdminNotifications(): {
     const db = fbDbOrNull();
     if (!db) return;
     const q = query(collection(db, "admin_notifications"), orderBy("createdAt", "desc"), limit(100));
-    const unsub = onSnapshot(q, (snap) => {
-      setNotifications(
-        snap.docs.slice(0, 50).map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            title: (x.title as string) ?? "",
-            body: (x.body as string) ?? "",
-            type: (x.type as string) ?? "",
-            read: x.read === true,
-            createdAt: toIso(x.createdAt),
-            data: (x.data as Record<string, unknown>) ?? {},
-          };
-        }),
-      );
-    });
-    return () => unsub();
+    // One-shot fetch + polling + focus refresh instead of a live stream.
+    // Admin notifications don't need sub-second latency; a 60s poll is fine.
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        setNotifications(
+          snap.docs.slice(0, 50).map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              title: (x.title as string) ?? "",
+              body: (x.body as string) ?? "",
+              type: (x.type as string) ?? "",
+              read: x.read === true,
+              createdAt: toIso(x.createdAt),
+              data: (x.data as Record<string, unknown>) ?? {},
+            };
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("adminNotifications", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   const unreadCount = notifications.filter((n) => !n.read).length;
   // Full-collection markAllRead: fetches every unread doc (not just the loaded
@@ -245,24 +267,43 @@ export function usePendingSubscriptions(): { data: PendingSubRow[] | null } {
       orderBy("requestedAt", "desc"),
       limit(100),
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setData(
-        snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            userId: (x.userId as string) ?? d.id,
-            userName: (x.userName as string) ?? "",
-            userEmail: (x.userEmail as string) ?? "",
-            userPhone: (x.userPhone as string) ?? "",
-            requestedAt: toIso(x.requestedAt),
-            planId: (x.planId as string) ?? "",
-            planName: (x.planName as string) ?? "",
-          };
-        }),
-      );
-    });
-    return () => unsub();
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        setData(
+          snap.docs.map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              userId: (x.userId as string) ?? d.id,
+              userName: (x.userName as string) ?? "",
+              userEmail: (x.userEmail as string) ?? "",
+              userPhone: (x.userPhone as string) ?? "",
+              requestedAt: toIso(x.requestedAt),
+              planId: (x.planId as string) ?? "",
+              planName: (x.planName as string) ?? "",
+            };
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("pendingSubs", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   return { data };
 }
@@ -287,9 +328,11 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
     const db = fbDbOrNull();
     if (!db) return;
     const q = query(collection(db, "support_chats"), orderBy("lastMessageAt", "desc"), limit(100));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
         setData(
           snap.docs.map((d) => {
             const x = d.data() as Record<string, unknown>;
@@ -302,15 +345,28 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
               lastMessageAt: toIso(x.lastMessageAt),
               unreadByAdmin: (x.unreadByAdmin as number) ?? 0,
               userOnline: x.userOnline === true,
-            status: (x.status as string) ?? "open",
-            priority: (x.priority as string) ?? "normal",
+              status: (x.status as string) ?? "open",
+              priority: (x.priority as string) ?? "normal",
             };
           }),
         );
-      },
-      () => setData([]),
-    );
-    return () => unsub();
+      } catch {
+        if (!cancelled) setData([]);
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("supportChats", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   return { data };
 }
@@ -468,9 +524,11 @@ export function useUserSubscription(uid: string | null): {
     setLoading(true);
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      doc(db, "users", uid, "subscription", "current"),
-      (snap) => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDoc(doc(db!, "users", uid!, "subscription", "current"));
+        if (cancelled) return;
         setLoading(false);
         if (!snap.exists()) {
           setData(null);
@@ -497,10 +555,21 @@ export function useUserSubscription(uid: string | null): {
           aiMessagesUsed: (x.aiMessagesUsed as number) ?? 0,
           maxAiMessages: (x.maxAiMessages as number) ?? 0,
         });
-      },
-      () => setLoading(false),
-    );
-    return () => unsub();
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("userSub", () => void load());
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, [uid]);
   return { data, loading };
 }
@@ -514,11 +583,28 @@ export function useConfigDoc<T extends Record<string, unknown>>(
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(doc(db, path[0], path[1]), (snap) => {
-      setLoading(false);
-      setData(snap.exists() ? ((snap.data() as unknown) as T) : null);
-    });
-    return () => unsub();
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDoc(doc(db!, path[0], path[1]));
+        if (cancelled) return;
+        setLoading(false);
+        setData(snap.exists() ? ((snap.data() as unknown) as T) : null);
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("configDoc", () => void load());
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, [path[0], path[1]]);
   return { data, loading };
 }
@@ -618,10 +704,15 @@ export function useUsersWithoutSubscription(users: AdminUser[] | null): {
       for (let i = 0; i < users.length; i += CHUNK) {
         if (cancelled) return;
         const slice = users.slice(i, i + CHUNK);
+        const SUB_TTL = 15 * 60_000;
         const results = await Promise.all(
           slice.map((u) =>
-            getDoc(doc(db, "users", u.id, "subscription", "current"))
-              .then((s) => ({ u, exists: s.exists() }))
+            fetchCached(
+              `admin:userSubExists:${u.id}`,
+              () => getDoc(doc(db, "users", u.id, "subscription", "current")).then((s) => s.exists()),
+              SUB_TTL,
+            )
+              .then((exists) => ({ u, exists }))
               .catch(() => ({ u, exists: true })), // on error assume ok
           ),
         );
