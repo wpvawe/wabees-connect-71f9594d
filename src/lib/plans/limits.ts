@@ -286,7 +286,18 @@ export async function reserveQuota(
 
   await runTransaction(db, async (tx) => {
     const subSnap = await tx.get(subRef);
-    if (!subSnap.exists()) return; // legacy account without sub doc — skip
+    if (!subSnap.exists()) {
+      // Legacy account without subscription doc. Instead of silently
+      // bypassing the cap (previous behaviour — allowed unlimited usage!),
+      // block the action so admin can assign the user a plan.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[limits] reserveQuota(${kind}) BLOCKED — user ${uid} has no subscription/current doc`,
+      );
+      throw new Error(
+        "No active subscription found. Please contact support to assign a plan.",
+      );
+    }
     const sub = subSnap.data() as Record<string, unknown>;
 
     // Expiry / status guard (same rules as assertPlanActive).
@@ -307,7 +318,11 @@ export async function reserveQuota(
     }
 
     const max = num(sub[cfg.maxField]);
-    if (max > 0) {
+    if (max <= 0) {
+      // max=0 in the plan doc is treated as UNLIMITED by design.
+      // eslint-disable-next-line no-console
+      console.debug(`[limits] reserveQuota(${kind}) unlimited (max=0) for ${uid}`);
+    } else {
       const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
       // Profile counter read is best-effort; we only need it for a tighter
       // floor. Skip inside the tx to keep it single-doc atomic.
