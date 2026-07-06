@@ -69,12 +69,6 @@ function AuthenticatedShell() {
   const onInbox = useRouterState({
     select: (s) => s.location.pathname.startsWith("/inbox"),
   });
-  if (onInbox) {
-    // Hooks-in-conditional is fine here because pathname is stable per render
-    // and unmounts the child hook when the user leaves /inbox.
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useUnreadTitle();
-  }
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
@@ -82,12 +76,18 @@ function AuthenticatedShell() {
     <div className="flex min-h-screen bg-background text-foreground">
       <SideRail />
       <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
+        {onInbox ? <UnreadTitleMount /> : null}
         <AnnouncementBanner />
         <Outlet />
       </main>
       <MobileTabBar />
     </div>
   );
+}
+
+function UnreadTitleMount() {
+  useUnreadTitle();
+  return null;
 }
 
 function AnnouncementBanner() {
