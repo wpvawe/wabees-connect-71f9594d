@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useEffect, useRef } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
+import { collection, doc, getCountFromServer, updateDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -22,7 +22,8 @@ import { usePendingSubscription } from "@/hooks/usePendingSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
-import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
+import { fetchCached } from "@/lib/firebase/countCache";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import {
@@ -53,7 +54,31 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
-  const { data: campaignAgg } = useCampaignAggregate();
+  const effectiveUid = useEffectiveUid();
+  const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
+  useEffect(() => {
+    if (!effectiveUid) return;
+    const db = fbDbOrNull();
+    if (!db) return;
+    let alive = true;
+    void fetchCached<number>(
+      `count:${effectiveUid}/campaigns`,
+      async () => {
+        const snap = await getCountFromServer(
+          collection(db, "users", effectiveUid, "campaigns"),
+        );
+        return snap.data().count;
+      },
+      5 * 60_000,
+    )
+      .then((n) => {
+        if (alive && typeof n === "number") setRealCampaigns(n);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [effectiveUid]);
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
@@ -72,7 +97,7 @@ function PlansPage() {
   // but the doc write fails partway. Falls back to the counters when the
   // aggregate hasn't loaded yet.
   const usedCampaigns =
-    campaignAgg?.totalCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
+    realCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
 
   // One-shot self-heal: if the maintained counters disagree with the real
@@ -80,8 +105,8 @@ function PlansPage() {
   const healedRef = useRef(false);
   useEffect(() => {
     if (healedRef.current) return;
-    if (!uid || !sub || !campaignAgg) return;
-    const real = campaignAgg.totalCampaigns;
+    if (!uid || !sub || realCampaigns === null) return;
+    const real = realCampaigns;
     const subUsed = sub.campaignsUsed ?? 0;
     const profUsed = profile?.totalCampaigns ?? 0;
     if (subUsed === real && profUsed === real) return;
@@ -98,7 +123,7 @@ function PlansPage() {
         ? updateDoc(doc(db, "users", uid), { totalCampaigns: real }).catch(() => {})
         : Promise.resolve(),
     ]);
-  }, [uid, sub, profile?.totalCampaigns, campaignAgg]);
+  }, [uid, sub, profile?.totalCampaigns, realCampaigns]);
 
   const pendingPlan = useMemo(
     () => plans?.find((p) => p.id === pending?.planId) ?? null,
