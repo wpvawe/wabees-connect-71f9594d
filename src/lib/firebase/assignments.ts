@@ -204,6 +204,8 @@ export async function revokeAgent(
     },
     { merge: true },
   );
+  const { bumpRefetch } = await import("./refetchBus");
+  bumpRefetch("agents");
 }
 
 /** Reactivate a previously-revoked agent (owner-only in the UI). */
@@ -214,6 +216,8 @@ export async function reinstateAgent(ownerUid: string, agentId: string): Promise
     revokedByUid: deleteField(),
     revokedByEmail: deleteField(),
   });
+  const { bumpRefetch } = await import("./refetchBus");
+  bumpRefetch("agents");
 }
 
 /** Update an agent's role (owner-only). */
@@ -223,6 +227,8 @@ export async function updateAgentRole(
   role: "agent" | "supervisor",
 ): Promise<void> {
   await updateDoc(doc(fbDb(), `users/${ownerUid}/agents/${agentId}`), { role });
+  const { bumpRefetch } = await import("./refetchBus");
+  bumpRefetch("agents");
 }
 
 // ============================================================
