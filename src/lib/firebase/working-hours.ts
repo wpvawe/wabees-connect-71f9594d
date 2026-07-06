@@ -105,6 +105,8 @@ export async function saveAgentWorkingHours(
     { workingHours: hours },
     { merge: true },
   );
+  const { bumpRefetch } = await import("./refetchBus");
+  bumpRefetch("agents");
 }
 
 /** Sanitize an incoming schedule (drop invalid slots, sort, dedupe). */
