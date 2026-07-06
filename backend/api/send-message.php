@@ -92,14 +92,14 @@ if ($shouldMeter) {
     // Best-effort include of the shared Firestore helpers used by
     // send.php / webhook.php. If the include path is unavailable in this
     // deploy, skip metering silently — the client-side gate still applies.
-    $firestoreHelper = __DIR__ . '/../config/firebase-admin.php';
+    $firestoreHelper = __DIR__ . '/../config/firebase-config.php';
     if (file_exists($firestoreHelper)) {
         require_once $firestoreHelper;
     }
     if (function_exists('firestore_get')) {
         $ownerUid = $authUid;
         $userResp = firestore_get("users/$authUid");
-        $userFields = $userResp['fields'] ?? null;
+        $userFields = $userResp['data']['fields'] ?? null;
         if (is_array($userFields)) {
             $dataOwner = $userFields['dataOwner']['stringValue'] ?? '';
             if (is_string($dataOwner) && $dataOwner !== '') {
@@ -107,7 +107,7 @@ if ($shouldMeter) {
             }
         }
         $subResp = firestore_get("users/$ownerUid/subscription/current");
-        $subFields = $subResp['fields'] ?? null;
+        $subFields = $subResp['data']['fields'] ?? null;
         if (is_array($subFields)) {
             $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
             $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
