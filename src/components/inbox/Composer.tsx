@@ -327,6 +327,7 @@ export function Composer({
         to: whatsappRecipientId(phone),
         template_name: t.name,
         language_code: t.languageCode,
+        quota_reserved: true,
       });
       const wamid = extractWamid(res.raw);
       if (!res.success) {
@@ -514,6 +515,7 @@ export function Composer({
         to: whatsappRecipientId(phone),
         message: body,
         context_message_id: whatsappContextMessageId(replyTo),
+        quota_reserved: true,
       });
       const wamid = extractWamid(res.raw);
       if (!res.success) {

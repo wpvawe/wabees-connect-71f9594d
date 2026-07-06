@@ -287,6 +287,7 @@ export function sendTextMessage(args: {
   to: string;
   message: string;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", { ...args, type: "text" });
 }
@@ -298,6 +299,7 @@ export function sendTemplateMessage(args: {
   template_name: string;
   language_code: string;
   components?: Array<Record<string, unknown>>;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", { ...args, type: "template" });
 }
