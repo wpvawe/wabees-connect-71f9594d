@@ -23,6 +23,7 @@ import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
+import { useLiveSubcollectionCount } from "@/hooks/useLiveSubcollectionCount";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -53,6 +54,8 @@ function PlansPage() {
   const { data: contacts } = useContacts();
   const { data: campaignAgg } = useCampaignAggregate();
   const { data: liveMessages } = useLiveMessageCount();
+  const { data: liveContacts } = useLiveSubcollectionCount("contacts");
+  const { data: liveBots } = useLiveSubcollectionCount("bots");
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
@@ -67,9 +70,9 @@ function PlansPage() {
   const usedMessages =
     liveMessages ?? sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   const usedContacts =
-    sub?.contactsUsed || profile?.totalContacts || (contacts ? contacts.length : 0);
+    liveContacts ?? sub?.contactsUsed ?? profile?.totalContacts ?? (contacts ? contacts.length : 0);
   const usedCampaigns = campaignAgg?.totalCampaigns || sub?.campaignsUsed || profile?.totalCampaigns || 0;
-  const usedBots = sub?.botsUsed || profile?.totalBots || 0;
+  const usedBots = liveBots ?? sub?.botsUsed ?? profile?.totalBots ?? 0;
 
   const pendingPlan = useMemo(
     () => plans?.find((p) => p.id === pending?.planId) ?? null,
