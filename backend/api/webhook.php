@@ -2990,8 +2990,10 @@ function send_bot_text_reply($phoneNumberId, $accessToken, $to, $text)
 
         $result = _wa_relay_send($phoneNumberId, $accessToken, $payload);
         webhook_log("BOT REPLY (text): HTTP {$result['code']} ({$result['elapsed']}ms) => " . $result['response']);
+        return (int)($result['code'] ?? 0) >= 200 && (int)($result['code'] ?? 0) < 300;
     } catch (\Throwable $e) {
         webhook_log("SEND ERROR (text): " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+        return false;
     }
 }
 
