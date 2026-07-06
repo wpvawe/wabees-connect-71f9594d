@@ -182,23 +182,44 @@ export function useAdminNotifications(): {
     const db = fbDbOrNull();
     if (!db) return;
     const q = query(collection(db, "admin_notifications"), orderBy("createdAt", "desc"), limit(100));
-    const unsub = onSnapshot(q, (snap) => {
-      setNotifications(
-        snap.docs.slice(0, 50).map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            title: (x.title as string) ?? "",
-            body: (x.body as string) ?? "",
-            type: (x.type as string) ?? "",
-            read: x.read === true,
-            createdAt: toIso(x.createdAt),
-            data: (x.data as Record<string, unknown>) ?? {},
-          };
-        }),
-      );
-    });
-    return () => unsub();
+    // One-shot fetch + polling + focus refresh instead of a live stream.
+    // Admin notifications don't need sub-second latency; a 60s poll is fine.
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        setNotifications(
+          snap.docs.slice(0, 50).map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              title: (x.title as string) ?? "",
+              body: (x.body as string) ?? "",
+              type: (x.type as string) ?? "",
+              read: x.read === true,
+              createdAt: toIso(x.createdAt),
+              data: (x.data as Record<string, unknown>) ?? {},
+            };
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("adminNotifications", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   const unreadCount = notifications.filter((n) => !n.read).length;
   // Full-collection markAllRead: fetches every unread doc (not just the loaded
@@ -246,24 +267,43 @@ export function usePendingSubscriptions(): { data: PendingSubRow[] | null } {
       orderBy("requestedAt", "desc"),
       limit(100),
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setData(
-        snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          return {
-            id: d.id,
-            userId: (x.userId as string) ?? d.id,
-            userName: (x.userName as string) ?? "",
-            userEmail: (x.userEmail as string) ?? "",
-            userPhone: (x.userPhone as string) ?? "",
-            requestedAt: toIso(x.requestedAt),
-            planId: (x.planId as string) ?? "",
-            planName: (x.planName as string) ?? "",
-          };
-        }),
-      );
-    });
-    return () => unsub();
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        setData(
+          snap.docs.map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              id: d.id,
+              userId: (x.userId as string) ?? d.id,
+              userName: (x.userName as string) ?? "",
+              userEmail: (x.userEmail as string) ?? "",
+              userPhone: (x.userPhone as string) ?? "",
+              requestedAt: toIso(x.requestedAt),
+              planId: (x.planId as string) ?? "",
+              planName: (x.planName as string) ?? "",
+            };
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("pendingSubs", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   return { data };
 }
@@ -288,9 +328,11 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
     const db = fbDbOrNull();
     if (!db) return;
     const q = query(collection(db, "support_chats"), orderBy("lastMessageAt", "desc"), limit(100));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDocs(q);
+        if (cancelled) return;
         setData(
           snap.docs.map((d) => {
             const x = d.data() as Record<string, unknown>;
@@ -303,15 +345,28 @@ export function useAdminSupportChats(): { data: AdminChatRow[] | null } {
               lastMessageAt: toIso(x.lastMessageAt),
               unreadByAdmin: (x.unreadByAdmin as number) ?? 0,
               userOnline: x.userOnline === true,
-            status: (x.status as string) ?? "open",
-            priority: (x.priority as string) ?? "normal",
+              status: (x.status as string) ?? "open",
+              priority: (x.priority as string) ?? "normal",
             };
           }),
         );
-      },
-      () => setData([]),
-    );
-    return () => unsub();
+      } catch {
+        if (!cancelled) setData([]);
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("supportChats", () => void load());
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, []);
   return { data };
 }
