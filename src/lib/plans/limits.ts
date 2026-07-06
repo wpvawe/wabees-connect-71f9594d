@@ -8,6 +8,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
+import { fetchCached } from "@/lib/firebase/countCache";
 
 export type LimitKind =
   | "campaigns"
@@ -126,31 +127,25 @@ export async function assertPlanActive(uid: string): Promise<void> {
 async function liveCount(uid: string, kind: LimitKind): Promise<number | null> {
   const db = fbDb();
   try {
-    if (kind === "contacts") {
-      const snap = await getCountFromServer(collection(db, "users", uid, "contacts"));
+    const sub = ({
+      contacts: "contacts",
+      campaigns: "campaigns",
+      bots: "bots",
+      templates: "templates",
+      agents: "agents",
+    } as Partial<Record<LimitKind, string>>)[kind];
+    if (!sub) return null;
+    // Cache aggregate query results to avoid 429 on rapid reserveQuota
+    // calls (e.g. bulk contact import → one aggregate RPC per row).
+    return await fetchCached<number>(`count:${uid}/${sub}`, async () => {
+      const snap = await getCountFromServer(collection(db, "users", uid, sub));
       return snap.data().count;
-    }
-    if (kind === "campaigns") {
-      const snap = await getCountFromServer(collection(db, "users", uid, "campaigns"));
-      return snap.data().count;
-    }
-    if (kind === "bots") {
-      const snap = await getCountFromServer(collection(db, "users", uid, "bots"));
-      return snap.data().count;
-    }
-    if (kind === "templates") {
-      const snap = await getCountFromServer(collection(db, "users", uid, "templates"));
-      return snap.data().count;
-    }
-    if (kind === "agents") {
-      const snap = await getCountFromServer(collection(db, "users", uid, "agents"));
-      return snap.data().count;
-    }
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`liveCount(${kind}) failed`, err);
+    return null;
   }
-  return null;
 }
 
 /**
