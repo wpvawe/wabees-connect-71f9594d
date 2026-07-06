@@ -455,25 +455,34 @@ export function usePlatformCounts(): PlatformCounts {
         const users = collection(db, "users");
         // Cache for 5 minutes — admin dashboard mounts should not re-fire
         // 7 aggregation RPCs each time. Prevents 429 storms.
+        // Pre-extract to plain numbers so the sessionStorage backup in
+        // countCache survives a hard reload (raw AggregateQuerySnapshot has
+        // methods that JSON.stringify would drop).
         const TTL = 5 * 60_000;
+        const countOf = async (q: Parameters<typeof getCountFromServer>[0]) =>
+          (await getCountFromServer(q)).data().count;
         const [total, active, pending, suspended, connected, agents, msgSum] = await Promise.all([
-          fetchCached("admin:users:total", () => getCountFromServer(users), TTL),
-          fetchCached("admin:users:active", () => getCountFromServer(query(users, where("status", "==", "active"))), TTL),
-          fetchCached("admin:users:pending", () => getCountFromServer(query(users, where("status", "==", "pending"))), TTL),
-          fetchCached("admin:users:suspended", () => getCountFromServer(query(users, where("status", "==", "suspended"))), TTL),
-          fetchCached("admin:users:connected", () => getCountFromServer(query(users, where("whatsappConnected", "==", true))), TTL),
-          fetchCached("admin:agents:group", () => getCountFromServer(collectionGroup(db, "agents")), TTL).catch(() => null),
-          fetchCached("admin:users:msgSum", () => getAggregateFromServer(users, { total: sum("totalMessages") }), TTL).catch(() => null),
+          fetchCached<number>("admin:users:total", () => countOf(users), TTL),
+          fetchCached<number>("admin:users:active", () => countOf(query(users, where("status", "==", "active"))), TTL),
+          fetchCached<number>("admin:users:pending", () => countOf(query(users, where("status", "==", "pending"))), TTL),
+          fetchCached<number>("admin:users:suspended", () => countOf(query(users, where("status", "==", "suspended"))), TTL),
+          fetchCached<number>("admin:users:connected", () => countOf(query(users, where("whatsappConnected", "==", true))), TTL),
+          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch(() => null),
+          fetchCached<number>(
+            "admin:users:msgSum",
+            async () => Number((await getAggregateFromServer(users, { total: sum("totalMessages") })).data().total ?? 0),
+            TTL,
+          ).catch(() => null),
         ]);
         if (cancelled) return;
         setCounts({
-          total: total ? total.data().count : 0,
-          active: active ? active.data().count : 0,
-          pending: pending ? pending.data().count : 0,
-          suspended: suspended ? suspended.data().count : 0,
-          connected: connected ? connected.data().count : 0,
-          agents: agents ? agents.data().count : 0,
-          totalMessages: msgSum ? Number(msgSum.data().total ?? 0) : 0,
+          total: total ?? 0,
+          active: active ?? 0,
+          pending: pending ?? 0,
+          suspended: suspended ?? 0,
+          connected: connected ?? 0,
+          agents: agents ?? 0,
+          totalMessages: msgSum ?? 0,
           loading: false,
         });
       } catch {
@@ -642,18 +651,20 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
     (async () => {
       try {
         const TTL = 5 * 60_000;
+        const countOf = async (path: string[]) =>
+          (await getCountFromServer(collection(db, path[0], ...path.slice(1)))).data().count;
         const [messages, contacts, bots, campaigns] = await Promise.all([
-          fetchCached(`admin:user:${uid}:messages`, () => getCountFromServer(collection(db, "users", uid, "messages")), TTL),
-          fetchCached(`admin:user:${uid}:contacts`, () => getCountFromServer(collection(db, "users", uid, "contacts")), TTL),
-          fetchCached(`admin:user:${uid}:bots`, () => getCountFromServer(collection(db, "users", uid, "bots")), TTL),
-          fetchCached(`admin:user:${uid}:campaigns`, () => getCountFromServer(collection(db, "users", uid, "campaigns")), TTL),
+          fetchCached<number>(`admin:user:${uid}:messages`, () => countOf(["users", uid, "messages"]), TTL),
+          fetchCached<number>(`admin:user:${uid}:contacts`, () => countOf(["users", uid, "contacts"]), TTL),
+          fetchCached<number>(`admin:user:${uid}:bots`, () => countOf(["users", uid, "bots"]), TTL),
+          fetchCached<number>(`admin:user:${uid}:campaigns`, () => countOf(["users", uid, "campaigns"]), TTL),
         ]);
         if (cancelled) return;
         setState({
-          messages: messages ? messages.data().count : 0,
-          contacts: contacts ? contacts.data().count : 0,
-          bots: bots ? bots.data().count : 0,
-          campaigns: campaigns ? campaigns.data().count : 0,
+          messages: messages ?? 0,
+          contacts: contacts ?? 0,
+          bots: bots ?? 0,
+          campaigns: campaigns ?? 0,
           loading: false,
         });
       } catch {
