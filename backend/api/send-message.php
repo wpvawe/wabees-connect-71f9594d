@@ -8,44 +8,9 @@
 
 header('Content-Type: application/json');
 
-// --- Origin lockdown ---------------------------------------------------
-// Prevent this proxy from being used as an open relay by random third-party
-// sites. Only allow known wabees origins (published + preview + localhost
-// dev). A real fix later = verify a Firebase ID token server-side.
-$allowedOrigins = [
-    'https://wabees.live',
-    'https://www.wabees.live',
-    'https://app.wabees.live',
-    'https://wabees-plus.wabees.workers.dev',
-    'https://id-preview--373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovable.app',
-    'https://373ad4e5-6ba4-4dab-91f0-2449fc57dc00.lovableproject.com',
-    'http://localhost:8080',
-    'http://localhost:5173',
-    'http://127.0.0.1:8080',
-];
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-$originOk =
-    $origin === '' || // native/mobile clients (Flutter app) — no Origin header
-    in_array($origin, $allowedOrigins, true) ||
-    (bool) preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin) ||
-    (bool) preg_match('#^https://[a-z0-9-]+\.lovableproject\.com$#i', $origin) ||
-    (bool) preg_match('#^https://[a-z0-9-]+\.lovable(?:project)?\.app$#i', $origin) ||
-    (bool) preg_match('#^https://[a-z0-9-]+\.lovable\.dev$#i', $origin);
-
-if ($originOk && $origin !== '') {
-    header('Access-Control-Allow-Origin: ' . $origin);
-    header('Vary: Origin');
-}
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-Wabees-Client, Authorization');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
-
-if (!$originOk) {
-    http_response_code(403);
-    echo json_encode(['error' => ['message' => 'Origin not allowed']]);
-    exit;
-}
+require __DIR__ . '/_origin.php';
+wabees_cors(['POST', 'OPTIONS']);
+wabees_require_origin();
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => ['message' => 'Method not allowed']]);
