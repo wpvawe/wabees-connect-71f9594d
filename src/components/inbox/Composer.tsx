@@ -588,6 +588,7 @@ export function Composer({
     } catch {
       /* fall back to phone */
     }
+    let quotaReserved = false;
     // Voice-note flag is encoded in the file MIME (audio/ogg from opus-recorder)
     // & file extension. We only set is_voice=true for that specific shape so
     // documents named "voice.ogg" uploaded via the file picker don't masquerade.
@@ -599,6 +600,14 @@ export function Composer({
       const creds = await loadWaConnection(selfUid);
       if (!creds) {
         toast.error("Connect WhatsApp first");
+        return;
+      }
+      try {
+        const { reserveQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "messages", 1);
+        quotaReserved = true;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
       }
       const up = await uploadMedia({
@@ -674,18 +683,26 @@ export function Composer({
         ...(kind === "document" ? { filename: file.name } : {}),
         ...(isVoice ? { is_voice: true } : {}),
         context_message_id: whatsappContextMessageId(replyTo),
+        quota_reserved: true,
       });
       const wamid = extractWamid(res.raw);
       if (!res.success) {
+        if (quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1).catch(() => {});
+          quotaReserved = false;
+        }
         await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
         toast.error(res.message ?? "Could not send");
         return;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      await updateDoc(doc(db, "users", uid), { totalMessages: increment(1) }).catch(() => {});
-      await updateDoc(doc(db, "users", uid, "subscription", "current"), { messagesUsed: increment(1) }).catch(() => {});
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
+      if (quotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "messages", 1).catch(() => {});
+      }
       if (msgRef) {
         await updateDoc(msgRef, {
           status: "failed",
