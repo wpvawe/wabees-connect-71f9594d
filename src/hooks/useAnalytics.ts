@@ -4,6 +4,7 @@ import {
   getDocs,
   query,
   where,
+  limit,
   Timestamp,
 } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
@@ -96,6 +97,9 @@ export function useAnalytics(range: AnalyticsRange): {
     const q = query(
       collection(db, `users/${uid}/messages`),
       where("createdAt", ">=", Timestamp.fromDate(start)),
+      // Hard cap to keep a single toggle from scanning 50k+ docs on
+      // chatty accounts. Range totals become approximate above 5000 msgs.
+      limit(5000),
     );
     getDocs(q)
       .then((snap) => {

@@ -84,11 +84,21 @@ function subscribeShared(uid: string, cb: Sub): () => void {
     };
     const load = async () => {
       if (registration.loading) return;
+      // Skip if we already have fresh data (<5 min). Prevents
+      // visibility-change refetches on quick tab switches.
+      if (
+        registration.last.data &&
+        Date.now() - lastLoadedAt < 5 * 60_000
+      ) {
+        return;
+      }
       registration.loading = true;
       const next = await fetchContacts(uid);
       registration.loading = false;
+      lastLoadedAt = Date.now();
       emit(next);
     };
+    let lastLoadedAt = 0;
     void load();
     const unsubBus = subscribeRefetch("contacts", () => void load());
     const onVis = () => {
