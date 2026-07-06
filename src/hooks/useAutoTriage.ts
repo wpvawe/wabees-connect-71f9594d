@@ -7,20 +7,15 @@
  */
 import { useEffect, useRef } from "react";
 import {
-  collection,
   doc,
   getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
 } from "firebase/firestore";
 import { fbDbOrNull, fbAuth } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useTriageSettings } from "@/hooks/useTriageSettings";
 import { classifyMessage } from "@/lib/ai/triage.functions";
 import { applyTriageToConversation } from "@/lib/firebase/triage";
+import { subscribeIncomingMessages } from "@/lib/firebase/messagesBroker";
 
 /** Only text-ish inbound messages are worth classifying. */
 const TRIAGEABLE_TYPES = new Set(["text", "button", "interactive", "list"]);
@@ -61,55 +56,35 @@ export function useAutoTriage(): void {
     if (settings.categories.length === 0) return;
 
     const subscribedAt = Date.now();
-    let first = true;
-
-    const q = query(
-      collection(db, `users/${uid}/messages`),
-      where("direction", "==", "incoming"),
-      orderBy("createdAt", "desc"),
-      limit(20),
-    );
-
-    const unsub = onSnapshot(
-      q,
-      async (snap) => {
-        if (first) {
-          for (const d of snap.docs) rememberSeen(d.id);
-          first = false;
-          return;
-        }
-
-        for (const d of snap.docs) {
-          if (seen.current.has(d.id) || inFlight.current.has(d.id)) continue;
-          const x = d.data() as Record<string, unknown>;
+    return subscribeIncomingMessages(uid, (msg) => {
+      void (async () => {
+          const d = { id: msg.id };
+          if (seen.current.has(d.id) || inFlight.current.has(d.id)) return;
+          const x = msg.data;
           const type = typeof x.type === "string" ? x.type : "text";
           const body = typeof x.body === "string" ? x.body.trim() : "";
           const phone = typeof x.contactPhone === "string" ? x.contactPhone : "";
           const contactName = typeof x.contactName === "string" ? x.contactName : null;
-          const created = (x.createdAt as { toDate?: () => Date } | undefined)?.toDate?.();
-          const createdIso = created ? created.toISOString() : new Date().toISOString();
+          const createdIso = new Date(msg.createdAtMs).toISOString();
 
           // Skip anything without a phone or with no text worth classifying.
           if (!phone || !TRIAGEABLE_TYPES.has(type) || body.length < 2) {
             rememberSeen(d.id);
-            continue;
+            return;
           }
           // Skip messages that pre-date this listener (backfill guard).
-          if (created && created.getTime() < subscribedAt - 5_000) {
+          if (msg.createdAtMs < subscribedAt - 5_000) {
             rememberSeen(d.id);
-            continue;
+            return;
           }
           const lastAt = lastByPhone.current.get(phone) ?? 0;
           if (Date.now() - lastAt < TRIAGE_THROTTLE_MS) {
             rememberSeen(d.id);
-            continue;
+            return;
           }
 
           rememberSeen(d.id);
           inFlight.current.add(d.id);
-          // Fire and forget — the settings hook already restricts to owner,
-          // and Firestore write is idempotent.
-          void (async () => {
             try {
               // Persistent throttle: skip if this conversation was triaged
               // within TRIAGE_THROTTLE_MS by any past session.
@@ -135,11 +110,6 @@ export function useAutoTriage(): void {
               lastByPhone.current.set(phone, Date.now());
               const user = fbAuth().currentUser;
               if (!user) return;
-              // Atomically reserve an aiMessages slot BEFORE spending the
-              // classification credit. This closes the race window where
-              // parallel inbound messages could all pass the check and
-              // slip past maxAiMessages. Released on failure so a network
-              // error doesn't burn quota.
               let aiQuotaReserved = false;
               try {
                 const { reserveQuota } = await import("@/lib/plans/limits");
@@ -162,7 +132,6 @@ export function useAutoTriage(): void {
                   },
                 });
               } catch (classifyErr) {
-                // Release the reserved slot — classification never happened.
                 if (aiQuotaReserved) {
                   const { releaseQuota } = await import("@/lib/plans/limits");
                   await releaseQuota(uid, "aiMessages", 1).catch(() => {});
@@ -181,18 +150,12 @@ export function useAutoTriage(): void {
                 },
               );
             } catch (err) {
-              // Silent — triage is best-effort. Errors log to console only.
               // eslint-disable-next-line no-console
               console.warn("auto-triage failed", err);
             } finally {
               inFlight.current.delete(d.id);
             }
-          })();
-        }
-      },
-      () => {},
-    );
-
-    return () => unsub();
+      })();
+    });
   }, [enabled, isOwner, uid, settings.categories, settings.autoApplyTags, settings.autoSetPriority]);
 }

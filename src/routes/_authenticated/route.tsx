@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
 import { SideRail } from "@/components/shell/SideRail";
@@ -63,7 +63,12 @@ function AuthenticatedShell() {
   useCsatCapture();
   // U1: mirror unread conversation count into the browser tab title so
   // agents notice new messages when the inbox tab is backgrounded.
-  useUnreadTitle();
+  // Gate behind /inbox* — otherwise `useConversations()` mounts a
+  // 200-doc live listener on every page (dashboard, settings, admin, ...)
+  // just to compute one number that nobody sees.
+  const onInbox = useRouterState({
+    select: (s) => s.location.pathname.startsWith("/inbox"),
+  });
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
@@ -71,12 +76,18 @@ function AuthenticatedShell() {
     <div className="flex min-h-screen bg-background text-foreground">
       <SideRail />
       <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
+        {onInbox ? <UnreadTitleMount /> : null}
         <AnnouncementBanner />
         <Outlet />
       </main>
       <MobileTabBar />
     </div>
   );
+}
+
+function UnreadTitleMount() {
+  useUnreadTitle();
+  return null;
 }
 
 function AnnouncementBanner() {

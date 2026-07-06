@@ -10,8 +10,8 @@ import { useEffect } from "react";
 import {
   collection,
   doc,
+  getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -20,7 +20,7 @@ import {
 } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
-import { phoneQueryCandidates } from "@/lib/firebase/normalizers";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 import {
   attachCsatComment,
   parseCsatReply,
@@ -28,6 +28,7 @@ import {
   type CsatSurvey,
 } from "@/lib/firebase/csat";
 import { useCsatSettings } from "@/hooks/useCsatSettings";
+import { subscribeIncomingMessages } from "@/lib/firebase/messagesBroker";
 
 const PENDING_TTL_MS = 7 * 24 * 3600 * 1000;
 const COMMENT_WINDOW_MS = 30 * 60 * 1000; // 30 min after rating
@@ -45,94 +46,30 @@ export function useCsatCapture(): void {
     if (!db) return;
 
     const pending = new Map<string, CsatSurvey>();
-    const messageUnsubs = new Map<string, () => void>();
+    // Map normalized-phone → survey id for O(1) lookup on inbound messages.
+    const phoneToSurvey = new Map<string, string>();
     const recentResponded = new Map<
       string,
       { survey: CsatSurvey; ratedAt: number }
     >();
 
-    function subscribeMessages(phone: string) {
-      if (messageUnsubs.has(phone)) return;
-      const candidates = phoneQueryCandidates(phone);
-      const inFilter = candidates.slice(0, 10);
-      const mq = query(
-        collection(db!, `users/${uid}/messages`),
-        where("contactPhone", "in", inFilter),
-        orderBy("createdAt", "desc"),
-        limit(20),
-      );
-      const unsub = onSnapshot(
-        mq,
-        (snap) => {
-          for (const change of snap.docChanges()) {
-            if (change.type === "removed") continue;
-            const data = change.doc.data() as Record<string, unknown>;
-            if (data.direction !== "incoming") continue;
-            const buttonReplyId =
-              typeof data.buttonReplyId === "string" ? data.buttonReplyId : null;
-            const body = typeof data.body === "string" ? data.body : "";
-
-            // Rating capture ----------------------------------------------
-            const hit = parseCsatReply({ buttonReplyId, body });
-            if (hit) {
-              const survey = pending.get(hit.surveyId);
-              if (!survey) continue;
-              void recordCsatRating({
-                ownerUid: uid,
-                surveyId: hit.surveyId,
-                rating: hit.rating,
-                phone: survey.phone,
-                askComment: settings.askComment,
-                commentPrompt: settings.commentPrompt,
-              })
-                .then(() => {
-                  recentResponded.set(survey.phone, {
-                    survey: { ...survey, rating: hit.rating, status: "responded" },
-                    ratedAt: Date.now(),
-                  });
-                })
-                .catch(() => {});
-              continue;
-            }
-
-            // Comment capture — first free-text after a recent rating.
-            const bucket = recentResponded.get(phone);
-            if (bucket && Date.now() - bucket.ratedAt < COMMENT_WINDOW_MS) {
-              if (body.trim() && !buttonReplyId) {
-                const createdAtIso =
-                  typeof data.createdAt === "string" ? data.createdAt : null;
-                const createdMs = createdAtIso
-                  ? Date.parse(createdAtIso)
-                  : Date.now();
-                if (createdMs >= bucket.ratedAt - 5_000) {
-                  void attachCsatComment({
-                    ownerUid: uid,
-                    surveyId: bucket.survey.id,
-                    comment: body,
-                  }).catch(() => {});
-                  recentResponded.delete(phone);
-                }
-              }
-            }
-          }
-        },
-        () => {},
-      );
-      messageUnsubs.set(phone, unsub);
-    }
-
-    // Watch pending surveys.
-    const pq = query(
-      collection(db, `users/${uid}/csat_surveys`),
-      where("status", "==", "pending"),
-      orderBy("sentAt", "desc"),
-      limit(50),
-    );
-    const unsubPending = onSnapshot(
-      pq,
-      (snap) => {
-        const seenPhones = new Set<string>();
+    // Load pending surveys via one-shot getDocs and refresh periodically.
+    // Surveys change rarely (opened after a chat resolves, closed when the
+    // customer replies) — polling every 5 min is more than enough.
+    let stopped = false;
+    async function refreshPending() {
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db!, `users/${uid}/csat_surveys`),
+            where("status", "==", "pending"),
+            orderBy("sentAt", "desc"),
+            limit(50),
+          ),
+        );
+        if (stopped) return;
         pending.clear();
+        phoneToSurvey.clear();
         for (const d of snap.docs) {
           const x = d.data() as Record<string, unknown>;
           const phone = typeof x.phone === "string" ? x.phone : "";
@@ -146,7 +83,7 @@ export function useCsatCapture(): void {
                 : null;
           const sentMs = sentAt ? Date.parse(sentAt) : Date.now();
           if (Date.now() - sentMs > PENDING_TTL_MS) {
-            void updateDoc(doc(db, `users/${uid}/csat_surveys/${d.id}`), {
+            void updateDoc(doc(db!, `users/${uid}/csat_surveys/${d.id}`), {
               status: "expired",
               expiredAt: serverTimestamp(),
             }).catch(() => {});
@@ -170,26 +107,73 @@ export function useCsatCapture(): void {
             respondedAt: null,
           };
           pending.set(d.id, survey);
-          if (phone) {
-            seenPhones.add(phone);
-            subscribeMessages(phone);
+          if (phone) phoneToSurvey.set(normalizePhone(phone), d.id);
+        }
+      } catch {
+        /* transient — retried on next tick */
+      }
+    }
+    void refreshPending();
+    const pollTimer = window.setInterval(() => void refreshPending(), 5 * 60 * 1000);
+
+    // Single shared listener on inbound messages (no per-phone fan-out).
+    const unsubBroker = subscribeIncomingMessages(uid, (msg) => {
+      const data = msg.data;
+      const buttonReplyId =
+        typeof data.buttonReplyId === "string" ? data.buttonReplyId : null;
+      const body = typeof data.body === "string" ? data.body : "";
+      const phoneRaw = typeof data.contactPhone === "string" ? data.contactPhone : "";
+      const phoneKey = normalizePhone(phoneRaw);
+
+      // Rating capture -------------------------------------------------
+      const hit = parseCsatReply({ buttonReplyId, body });
+      if (hit) {
+        const survey = pending.get(hit.surveyId);
+        if (!survey) return;
+        void recordCsatRating({
+          ownerUid: uid,
+          surveyId: hit.surveyId,
+          rating: hit.rating,
+          phone: survey.phone,
+          askComment: settings.askComment,
+          commentPrompt: settings.commentPrompt,
+        })
+          .then(() => {
+            recentResponded.set(normalizePhone(survey.phone), {
+              survey: { ...survey, rating: hit.rating, status: "responded" },
+              ratedAt: Date.now(),
+            });
+            pending.delete(hit.surveyId);
+          })
+          .catch(() => {});
+        return;
+      }
+
+      // Comment capture — first free-text after a recent rating.
+      const bucket = recentResponded.get(phoneKey);
+      if (bucket && Date.now() - bucket.ratedAt < COMMENT_WINDOW_MS) {
+        if (body.trim() && !buttonReplyId) {
+          if (msg.createdAtMs >= bucket.ratedAt - 5_000) {
+            void attachCsatComment({
+              ownerUid: uid,
+              surveyId: bucket.survey.id,
+              comment: body,
+            }).catch(() => {});
+            recentResponded.delete(phoneKey);
           }
         }
-        // Drop listeners for phones with no pending surveys.
-        for (const [p, u] of messageUnsubs) {
-          if (!seenPhones.has(p) && !recentResponded.has(p)) {
-            u();
-            messageUnsubs.delete(p);
-          }
-        }
-      },
-      () => {},
-    );
+      }
+
+      // Also: if inbound arrives from a phone we have a pending survey for
+      // and the survey id map knows it, no action needed here — parseCsatReply
+      // handles button/list replies. Free-text before a rating is ignored.
+      void phoneToSurvey; // reserved for future correlation
+    });
 
     return () => {
-      unsubPending();
-      for (const u of messageUnsubs.values()) u();
-      messageUnsubs.clear();
+      stopped = true;
+      window.clearInterval(pollTimer);
+      unsubBroker();
     };
   }, [session, settings.askComment, settings.commentPrompt]);
 }

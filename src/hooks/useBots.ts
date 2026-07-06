@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { listOfStrings, str, strOrNull, toIso } from "@/lib/firebase/normalizers";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type Bot = {
   id: string;
@@ -32,21 +33,19 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
   const [data, setData] = useState<Bot[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    // Bots are typically 5–20 per workspace; cap defensively so a
-    // misconfigured seeder can't stream thousands.
-    const q = query(
-      collection(db, `users/${uid}/bots`),
-      orderBy("createdAt", "desc"),
-      limit(200),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, `users/${uid}/bots`),
+          orderBy("createdAt", "desc"),
+          limit(200),
+        ),
+      );
+      setData(
           snap.docs
             .map((d) => {
               const x = d.data() as Record<string, unknown>;
@@ -82,12 +81,25 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
               };
             })
             .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
-        );
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      );
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }, [uid]);
+
+  useEffect(() => {
+    void load();
+    const unsubBus = subscribeRefetch("bots", () => void load());
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      unsubBus();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
 
   return { data, error };
 }

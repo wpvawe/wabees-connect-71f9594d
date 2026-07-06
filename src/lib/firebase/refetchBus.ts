@@ -12,7 +12,11 @@ export type RefetchKey =
   | "templates"
   | "plans"
   | "canned"
-  | "agents";
+  | "agents"
+  | "contacts"
+  | "bots"
+  | "leads"
+  | "campaigns";
 
 type Listener = () => void;
 

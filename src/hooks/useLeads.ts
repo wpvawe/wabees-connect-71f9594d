@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { str, toIso } from "@/lib/firebase/normalizers";
+import { bumpRefetch, subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type LeadScore = "cold" | "warm" | "hot";
 
@@ -28,23 +29,19 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
   const [data, setData] = useState<Lead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid || !selfUid) return;
-    // bot_leads is owner-only per Firestore rules. Agents (self != owner)
-    // would trigger a permission error, so short-circuit with an empty list.
     if (uid !== selfUid) {
       setData([]);
       return;
     }
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      query(
-        collection(db, `users/${uid}/bot_leads`),
-        limit(1000),
-      ),
-      (snap) => {
-        const rows: Lead[] = snap.docs.map((d) => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, `users/${uid}/bot_leads`), limit(1000)),
+      );
+      const rows: Lead[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
           const score = str(x.score, "cold");
           return {
@@ -62,22 +59,37 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
             notes: str(x.notes),
             status: (str(x.status, "new") as Lead["status"]) || "new",
           };
-        });
-        rows.sort((a, b) => (b.lastContactAt || "").localeCompare(a.lastContactAt || ""));
-        setData(rows);
-      },
-      (e) => setError(e.message),
-    );
-    return () => unsub();
+      });
+      rows.sort((a, b) => (b.lastContactAt || "").localeCompare(a.lastContactAt || ""));
+      setData(rows);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }, [uid, selfUid]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("leads", () => void load());
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      unsub();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
 
   return { data, error };
 }
 
 export async function updateLead(uid: string, id: string, patch: Partial<Lead>): Promise<void> {
   await updateDoc(doc(fbDb(), `users/${uid}/bot_leads/${id}`), patch as Record<string, unknown>);
+  bumpRefetch("leads");
 }
 
 export async function deleteLead(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), `users/${uid}/bot_leads/${id}`));
+  bumpRefetch("leads");
 }
