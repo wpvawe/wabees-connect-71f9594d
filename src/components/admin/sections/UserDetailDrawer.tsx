@@ -50,11 +50,15 @@ export function UserDetailDrawer({
 
   if (!uid) return null;
 
-  async function run(label: string, fn: () => Promise<void>) {
+  async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(true);
     try {
-      await fn();
-      toast.success(label);
+      const res = await fn();
+      const planName =
+        res && typeof res === "object" && "planName" in res
+          ? String((res as { planName: unknown }).planName ?? "")
+          : "";
+      toast.success(planName ? `${label}: ${planName}` : label);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {

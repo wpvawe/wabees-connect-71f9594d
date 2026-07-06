@@ -277,7 +277,9 @@ export function daysForExpiryType(expiryType: string, expiryDays: number): numbe
 // ============ PENDING SUBS ============
 // Uses a transaction so two admins clicking "Activate" at the same time
 // can't both write a fresh sub doc (which used to double-reset counters).
-export async function activatePendingSubscription(userId: string) {
+export async function activatePendingSubscription(
+  userId: string,
+): Promise<{ planId: string; planName: string }> {
   const db = fbDb();
   const pendingRef = doc(db, "pending_subscriptions", userId);
   const subRef = doc(db, "users", userId, "subscription", "current");
@@ -294,6 +296,22 @@ export async function activatePendingSubscription(userId: string) {
     const planSnap = await tx.get(doc(db, "plans", pid));
     if (!planSnap.exists()) throw new Error("Plan no longer exists");
     const plan = planSnap.data() as Record<string, unknown>;
+
+    // Guard against corrupt pending docs where the referenced plan silently
+    // resolves to the Welcome plan even though the user requested a paid one
+    // (the exact bug the user reported). Refuse to activate so admin can
+    // investigate instead of silently downgrading the customer.
+    const requestedName = String(raw.planName ?? "").trim();
+    const resolvedIsWelcome = plan.isWelcomePlan === true;
+    if (
+      resolvedIsWelcome &&
+      requestedName &&
+      requestedName.toLowerCase() !== String(plan.name ?? "").toLowerCase()
+    ) {
+      throw new Error(
+        `Pending request points at the Welcome plan but the user asked for "${requestedName}". Fix the plan reference and try again.`,
+      );
+    }
 
     const currentSnap = await tx.get(subRef);
     const current = currentSnap.exists()
@@ -333,6 +351,7 @@ export async function activatePendingSubscription(userId: string) {
     /* non-critical */
   }
   void logAudit("subscription.activate", userId, { planId, planName });
+  return { planId, planName };
 }
 
 function buildSubFromPlan(
