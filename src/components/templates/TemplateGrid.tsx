@@ -152,6 +152,8 @@ export function TemplateGrid() {
       }
       // 2) Firestore delete — always attempted so the workspace stays clean.
       await deleteDoc(doc(fbDb(), "users", uid, "templates", t.id));
+      const { bumpRefetch } = await import("@/lib/firebase/refetchBus");
+      bumpRefetch("templates");
       // Free the reserved templates slot so the user's plan cap reflects
       // the actual number of active templates. Mirrors reserveQuota() done
       // in the composer / Meta sync on create.
