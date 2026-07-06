@@ -446,27 +446,17 @@ export function Composer({
       }
       // Atomic reserve (see reserveQuota docs) — no race window vs cap.
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
       // H-1 fix: preserve the known contact name on optimistic writes so the
       // thread header / conversation list don't briefly flash back to the
       // raw phone number. Read from the conversation doc that already
       // tracks contactName (best-effort, cached by Firestore SDK).
-      let knownName = normalizedPhone;
-      try {
-        const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-        const existing = snap.data()?.contactName;
-        if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-          knownName = existing;
-        }
-      } catch {
-        /* fall back to phone */
-      }
+      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
       // Auto-assign on first outgoing reply from an agent/owner if the
       // conversation isn't already assigned. Silent — never blocks send.
       void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
