@@ -1,4 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export type UsageCounts = {
   messages: number;
@@ -25,12 +26,13 @@ const emptyCounts: UsageCounts = {
  */
 export function useUsageCounts(): { data: UsageCounts; loading: boolean; error: string | null } {
   const { data: profile, loading, error } = useProfile("effective");
+  const { data: sub } = useSubscription();
   const data: UsageCounts = profile
     ? {
-        messages: profile.totalMessages ?? 0,
-        contacts: profile.totalContacts ?? 0,
-        campaigns: profile.totalCampaigns ?? 0,
-        bots: profile.totalBots ?? 0,
+        messages: Math.max(sub?.messagesUsed ?? 0, profile.totalMessages ?? 0),
+        contacts: Math.max(sub?.contactsUsed ?? 0, profile.totalContacts ?? 0),
+        campaigns: Math.max(sub?.campaignsUsed ?? 0, profile.totalCampaigns ?? 0),
+        bots: Math.max(sub?.botsUsed ?? 0, profile.totalBots ?? 0),
       }
     : emptyCounts;
   return { data, loading, error };

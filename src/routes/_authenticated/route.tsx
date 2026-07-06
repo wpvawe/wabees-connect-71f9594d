@@ -11,12 +11,12 @@ import { useAgentAvailability } from "@/hooks/useAgentAvailability";
 import { useAutoTriage } from "@/hooks/useAutoTriage";
 import { useCsatCapture } from "@/hooks/useCsatCapture";
 import { useUnreadTitle } from "@/hooks/useUnreadTitle";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { installAutoplayUnlocker } from "@/lib/notification-sound";
 import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
 import { useAnnouncement } from "@/hooks/useAnnouncement";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBullhorn } from "@fortawesome/free-solid-svg-icons";
+import { faBullhorn, faXmark } from "@fortawesome/free-solid-svg-icons";
 
 function waitForFirebaseUser(): Promise<User | null> {
   const auth = fbAuth();
@@ -81,11 +81,32 @@ function AuthenticatedShell() {
 
 function AnnouncementBanner() {
   const ann = useAnnouncement();
-  if (!ann) return null;
+  const key = useMemo(
+    () => (ann ? `${ann.startsAt ?? ""}|${ann.endsAt ?? ""}|${ann.message}` : ""),
+    [ann],
+  );
+  const [dismissedKey, setDismissedKey] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("wabees-dismissed-announcement");
+  });
+  if (!ann || dismissedKey === key) return null;
+  const dismiss = () => {
+    setDismissedKey(key);
+    window.localStorage.setItem("wabees-dismissed-announcement", key);
+  };
   return (
     <div className="flex items-start gap-3 border-b border-primary/20 bg-primary/10 px-4 py-2.5 text-xs text-foreground sm:px-6">
       <FontAwesomeIcon icon={faBullhorn} className="mt-0.5 h-3.5 w-3.5 text-primary" />
       <p className="flex-1 whitespace-pre-wrap">{ann.message}</p>
+      <button
+        type="button"
+        aria-label="Dismiss announcement"
+        title="Dismiss"
+        onClick={dismiss}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground"
+      >
+        <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
+      </button>
     </div>
   );
 }

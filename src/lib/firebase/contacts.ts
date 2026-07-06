@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
-import { incrementContactsUsed, releaseQuota, reserveQuota } from "@/lib/plans/limits";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 export async function upsertContact(
   uid: string,
