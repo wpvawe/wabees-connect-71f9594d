@@ -84,6 +84,19 @@ function PlansPage() {
   const [dialogPlan, setDialogPlan] = useState<Plan | null>(null);
   const waConnected = Boolean(wa?.connected);
 
+  // Source of truth for limits is the plan definition (admin edits `plans/*`
+  // any time). The snapshot on `subscription/current` can lag if the plan
+  // was changed after the user subscribed — always prefer the live plan
+  // values when we can match by planId.
+  const activePlan = useMemo(
+    () => plans?.find((p) => p.id === sub?.planId) ?? null,
+    [plans, sub?.planId],
+  );
+  const maxMessages = activePlan?.maxMessages ?? sub?.maxMessages ?? 0;
+  const maxContacts = activePlan?.maxContacts ?? sub?.maxContacts ?? 0;
+  const maxCampaigns = activePlan?.maxCampaigns ?? sub?.maxCampaigns ?? 0;
+  const maxBots = activePlan?.maxBots ?? sub?.maxBots ?? 0;
+
   // Use maintained counters/list lengths only. Avoid Firestore aggregation
   // reads here because quota exhaustion blocks regular message fetching too.
   const usedMessages =
@@ -98,6 +111,31 @@ function PlansPage() {
   const usedCampaigns =
     realCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
+
+  // Self-heal: if the snapshotted max* on subscription/current disagree with
+  // the current plan definition, quietly sync them so future reads (and the
+  // dashboard, admin, etc.) all see the correct number.
+  const healedLimitsRef = useRef(false);
+  useEffect(() => {
+    if (healedLimitsRef.current) return;
+    if (!uid || !sub || !activePlan) return;
+    const diffs: Record<string, number> = {};
+    if (sub.maxMessages !== activePlan.maxMessages)
+      diffs.maxMessages = activePlan.maxMessages;
+    if (sub.maxContacts !== activePlan.maxContacts)
+      diffs.maxContacts = activePlan.maxContacts;
+    if (sub.maxCampaigns !== activePlan.maxCampaigns)
+      diffs.maxCampaigns = activePlan.maxCampaigns;
+    if (sub.maxBots !== activePlan.maxBots)
+      diffs.maxBots = activePlan.maxBots;
+    if (Object.keys(diffs).length === 0) return;
+    healedLimitsRef.current = true;
+    const db = fbDbOrNull();
+    if (!db) return;
+    void updateDoc(doc(db, "users", uid, "subscription", "current"), diffs).catch(
+      () => {},
+    );
+  }, [uid, sub, activePlan]);
 
   // One-shot self-heal: if the maintained counters disagree with the real
   // campaign count, quietly correct them so the quota bar stops lying.
@@ -230,10 +268,10 @@ function PlansPage() {
                   </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <UsageBar label="Messages" used={usedMessages} max={sub.maxMessages} />
-                  <UsageBar label="Contacts" used={usedContacts} max={sub.maxContacts} />
-                  <UsageBar label="Campaigns" used={usedCampaigns} max={sub.maxCampaigns} />
-                  <UsageBar label="Chatbots" used={usedBots} max={sub.maxBots} />
+                  <UsageBar label="Messages" used={usedMessages} max={maxMessages} />
+                  <UsageBar label="Contacts" used={usedContacts} max={maxContacts} />
+                  <UsageBar label="Campaigns" used={usedCampaigns} max={maxCampaigns} />
+                  <UsageBar label="Chatbots" used={usedBots} max={maxBots} />
                 </div>
               </div>
             ) : (
