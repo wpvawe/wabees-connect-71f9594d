@@ -224,6 +224,7 @@ export async function duplicateCampaign(uid: string, id: string): Promise<{ id: 
     await releaseQuota(uid, "campaigns", 1).catch(() => {});
     throw err;
   }
+  bumpRefetch("campaigns");
   return { id: ref.id };
 }
 
