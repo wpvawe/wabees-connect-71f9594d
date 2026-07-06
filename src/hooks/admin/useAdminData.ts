@@ -704,10 +704,15 @@ export function useUsersWithoutSubscription(users: AdminUser[] | null): {
       for (let i = 0; i < users.length; i += CHUNK) {
         if (cancelled) return;
         const slice = users.slice(i, i + CHUNK);
+        const SUB_TTL = 15 * 60_000;
         const results = await Promise.all(
           slice.map((u) =>
-            getDoc(doc(db, "users", u.id, "subscription", "current"))
-              .then((s) => ({ u, exists: s.exists() }))
+            fetchCached(
+              `admin:userSubExists:${u.id}`,
+              () => getDoc(doc(db, "users", u.id, "subscription", "current")).then((s) => s.exists()),
+              SUB_TTL,
+            )
+              .then((exists) => ({ u, exists }))
               .catch(() => ({ u, exists: true })), // on error assume ok
           ),
         );
