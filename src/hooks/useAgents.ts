@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 import { str, strOrNull, toIso } from "@/lib/firebase/normalizers";
 import type { WorkingHours } from "@/lib/firebase/working-hours";
 import type { Availability } from "@/hooks/useAgentAvailability";
@@ -30,15 +31,14 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
   const [data, setData] = useState<Agent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      collection(db, `users/${uid}/agents`),
-      (snap) => {
-        setData(
-          snap.docs
+    try {
+      const snap = await getDocs(collection(db, `users/${uid}/agents`));
+      setData(
+        snap.docs
             // Never surface the owner themselves as a teammate row —
             // legacy bootstrap code may seed `users/{uid}/agents/{uid}`.
             .filter((d) => d.id !== uid)
@@ -74,12 +74,20 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
           // owner's list — the owner never explicitly removed them and
           // there's no reinstate flow for `left` (only `revoked`).
           .filter((a) => a.status !== "left"),
-        );
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      );
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }, [uid, selfUid, maskOtherEmails]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("agents", () => {
+      void load();
+    });
+    return () => unsub();
+  }, [load]);
 
   return { data, error };
 }
