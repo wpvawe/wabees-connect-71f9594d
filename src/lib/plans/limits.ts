@@ -48,6 +48,7 @@ const CONFIG: Record<LimitKind, LimitConfig> = {
     label: "templates",
     maxField: "maxTemplates",
     usedField: "templatesUsed",
+    profileField: "totalTemplates",
   },
   messages: {
     label: "messages",
