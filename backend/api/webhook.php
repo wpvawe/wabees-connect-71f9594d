@@ -71,7 +71,7 @@ function wabees_timestamp_expired(array $fields): bool
 
 function wabees_subscription_allows(string $userId, string $kind, int $additional = 1): bool
 {
-    $subResp = firestore_get_cached("users/$userId/subscription/current", 30);
+    $subResp = firestore_get("users/$userId/subscription/current");
     if (($subResp['code'] ?? 404) !== 200) return false;
     $fields = $subResp['data']['fields'] ?? [];
     $status = strtolower((string)($fields['status']['stringValue'] ?? 'inactive'));

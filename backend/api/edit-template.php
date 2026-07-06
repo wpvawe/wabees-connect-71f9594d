@@ -63,6 +63,14 @@ if (!is_array($data)) {
     exit;
 }
 
+require_once __DIR__ . '/../config/wa-bearer-auth.php';
+$auth = wabees_apply_bearer_auth($data);
+if (!empty($auth['error'])) {
+    http_response_code((int)($auth['status'] ?? 401));
+    echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
+    exit;
+}
+
 $accessToken  = trim((string)($data['access_token'] ?? ''));
 $hsmId        = trim((string)($data['hsm_id'] ?? ''));
 $category     = isset($data['category']) ? trim((string)$data['category']) : '';
