@@ -67,6 +67,83 @@ function parseOffer(x: unknown): PlanOffer | null {
   };
 }
 
+/**
+ * Cross-mount cache for the plans list. Plans change rarely (admin edits),
+ * yet every dashboard/plans page mount was firing a full
+ * `getDocs(collection("plans"))` — the second-highest billed query in the
+ * Firebase usage dashboard. sessionStorage keeps it warm across reloads;
+ * `subscribeRefetch("plans")` still forces a refresh after admin mutations.
+ */
+const PLANS_CACHE_KEY = "wb:plans:v1";
+const PLANS_TTL_MS = 10 * 60_000;
+type PlansEntry = { at: number; rows: unknown[] };
+let memPlans: PlansEntry | null = null;
+function readPlansCache(): PlansEntry | null {
+  if (memPlans && Date.now() - memPlans.at < PLANS_TTL_MS) return memPlans;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PLANS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PlansEntry;
+    if (!parsed || typeof parsed.at !== "number") return null;
+    if (Date.now() - parsed.at > PLANS_TTL_MS) return null;
+    memPlans = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function writePlansCache(rows: unknown[]): void {
+  memPlans = { at: Date.now(), rows };
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(memPlans));
+  } catch {
+    /* ignore */
+  }
+}
+function invalidatePlansCache(): void {
+  memPlans = null;
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PLANS_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function shapePlan(id: string, x: Record<string, unknown>): Plan {
+  return {
+    id,
+    name: str(x.name),
+    description: str(x.description),
+    priceMonthly: num(x.priceMonthly, num(x.price)),
+    priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
+    currency: str(x.currency, "PKR"),
+    maxMessages: num(x.maxMessages, 1000),
+    maxContacts: num(x.maxContacts, 100),
+    maxCampaigns: num(x.maxCampaigns, 5),
+    maxBots: num(x.maxBots, 2),
+    maxTemplates: num(x.maxTemplates, 10),
+    maxAiMessages: num(x.maxAiMessages, 300),
+    hasAnalytics: bool(x.hasAnalytics),
+    hasPrioritySupport: bool(x.hasPrioritySupport),
+    hasApiAccess: bool(x.hasApiAccess),
+    features: Array.isArray(x.features)
+      ? x.features.filter((v): v is string => typeof v === "string")
+      : [],
+    expiryType: str(x.expiryType, "monthly"),
+    expiryDays: num(x.expiryDays, 30),
+    isActive: x.isActive !== false,
+    sortOrder: num(x.sortOrder),
+    isPopular: bool(x.isPopular),
+    isWelcomePlan: bool(x.isWelcomePlan),
+    createdAt: toIso(x.createdAt),
+    showOnPublic: x.showOnPublic !== false,
+    offer: parseOffer(x.offer),
+  };
+}
+
 export function usePlans(
   opts?: { includeInactive?: boolean; publicOnly?: boolean },
 ): { data: Plan[] | null; error: string | null } {
@@ -75,58 +152,44 @@ export function usePlans(
   const [data, setData] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const db = fbDbOrNull();
-    if (!db) return;
-    try {
-      const snap = await getDocs(collection(db, "plans"));
-      const rows: Plan[] = snap.docs
-        .map((d) => {
-            const x = d.data() as Record<string, unknown>;
-            return {
-              id: d.id,
-              name: str(x.name),
-              description: str(x.description),
-              priceMonthly: num(x.priceMonthly, num(x.price)),
-              priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
-              currency: str(x.currency, "PKR"),
-              maxMessages: num(x.maxMessages, 1000),
-              maxContacts: num(x.maxContacts, 100),
-              maxCampaigns: num(x.maxCampaigns, 5),
-              maxBots: num(x.maxBots, 2),
-              maxTemplates: num(x.maxTemplates, 10),
-              maxAiMessages: num(x.maxAiMessages, 300),
-              hasAnalytics: bool(x.hasAnalytics),
-              hasPrioritySupport: bool(x.hasPrioritySupport),
-              hasApiAccess: bool(x.hasApiAccess),
-              features: Array.isArray(x.features)
-                ? x.features.filter((v): v is string => typeof v === "string")
-                : [],
-              expiryType: str(x.expiryType, "monthly"),
-              expiryDays: num(x.expiryDays, 30),
-              isActive: x.isActive !== false,
-              sortOrder: num(x.sortOrder),
-              isPopular: bool(x.isPopular),
-              isWelcomePlan: bool(x.isWelcomePlan),
-              createdAt: toIso(x.createdAt),
-              showOnPublic: x.showOnPublic !== false,
-              offer: parseOffer(x.offer),
-            };
-          })
-          .filter((p) => includeInactive || p.isActive)
-          .filter((p) => !publicOnly || p.showOnPublic)
-          .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
+  const applyRows = useCallback(
+    (raw: Array<{ id: string; x: Record<string, unknown> }>) => {
+      const rows: Plan[] = raw
+        .map((r) => shapePlan(r.id, r.x))
+        .filter((p) => includeInactive || p.isActive)
+        .filter((p) => !publicOnly || p.showOnPublic)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
       setData(rows);
       setError(null);
+    },
+    [includeInactive, publicOnly],
+  );
+
+  const load = useCallback(async (force = false) => {
+    const db = fbDbOrNull();
+    if (!db) return;
+    if (!force) {
+      const cached = readPlansCache();
+      if (cached) {
+        applyRows(cached.rows as Array<{ id: string; x: Record<string, unknown> }>);
+        return;
+      }
+    }
+    try {
+      const snap = await getDocs(collection(db, "plans"));
+      const raw = snap.docs.map((d) => ({ id: d.id, x: d.data() as Record<string, unknown> }));
+      writePlansCache(raw);
+      applyRows(raw);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [includeInactive, publicOnly]);
+  }, [applyRows]);
 
   useEffect(() => {
     void load();
     const unsub = subscribeRefetch("plans", () => {
-      void load();
+      invalidatePlansCache();
+      void load(true);
     });
     return () => unsub();
   }, [load]);

@@ -21,7 +21,41 @@ export const DEFAULT_COUNT_TTL_MS = 60_000;
 /** 5-minute cool-down after a 429 so we stop hammering the quota. */
 export const QUOTA_BACKOFF_MS = 5 * 60_000;
 
+/**
+ * sessionStorage backup so counts survive a page reload. Without this the
+ * in-memory Map is wiped on every hard refresh — admin dashboards then
+ * re-run every `getCountFromServer` / `getAggregateFromServer` RPC, which
+ * were the top billed reads in the Firebase usage dashboard.
+ */
+const SS_KEY = "wb:countCache:v1";
+let hydrated = false;
+function hydrate(): void {
+  if (hydrated || typeof window === "undefined") return;
+  hydrated = true;
+  try {
+    const raw = window.sessionStorage.getItem(SS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, Entry<unknown>>;
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v && typeof v.at === "number") cache.set(k, v);
+    }
+  } catch {
+    /* ignore corrupt cache */
+  }
+}
+function persist(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const obj: Record<string, Entry<unknown>> = {};
+    for (const [k, v] of cache) obj[k] = v;
+    window.sessionStorage.setItem(SS_KEY, JSON.stringify(obj));
+  } catch {
+    /* quota or serialization error — best-effort only */
+  }
+}
+
 export function getCachedCount<T>(key: string, ttlMs = DEFAULT_COUNT_TTL_MS): T | null {
+  hydrate();
   const hit = cache.get(key) as Entry<T> | undefined;
   if (!hit) return null;
   if (Date.now() - hit.at > ttlMs) return null;
@@ -45,6 +79,7 @@ export async function fetchCached<T>(
   loader: () => Promise<T>,
   ttlMs = DEFAULT_COUNT_TTL_MS,
 ): Promise<T | null> {
+  hydrate();
   const fresh = getCachedCount<T>(key, ttlMs);
   if (fresh !== null) return fresh;
   if (isBackoff(key)) {
@@ -59,6 +94,7 @@ export async function fetchCached<T>(
       const value = await loader();
       cache.set(key, { at: Date.now(), value });
       backoffUntil.delete(key);
+      persist();
       return value;
     } catch (err) {
       const code = (err as { code?: string })?.code ?? "";
