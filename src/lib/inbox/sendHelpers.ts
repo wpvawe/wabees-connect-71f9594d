@@ -8,6 +8,7 @@ import {
   doc,
   getDoc,
   updateDoc,
+  type DocumentData,
   type DocumentReference,
   type Firestore,
 } from "firebase/firestore";
@@ -62,7 +63,7 @@ export async function refundMessageQuota(uid: string): Promise<void> {
  * transient Firestore hiccup doesn't turn into an unhandled rejection.
  */
 export async function markSendFailed(
-  msgRef: DocumentReference,
+  msgRef: DocumentReference<DocumentData, DocumentData>,
   errorReason: string,
 ): Promise<void> {
   try {
