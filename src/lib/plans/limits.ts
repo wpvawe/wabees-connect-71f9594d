@@ -1,14 +1,11 @@
 import {
-  collection,
   doc,
-  getCountFromServer,
   getDoc,
   increment,
   runTransaction,
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { fetchCached } from "@/lib/firebase/countCache";
 
 export type LimitKind =
   | "campaigns"
@@ -121,34 +118,6 @@ export async function assertPlanActive(uid: string): Promise<void> {
 }
 
 /**
- * Live count for kinds whose usage is best derived from a subcollection
- * (e.g. `agents`), rather than a maintained counter that can drift.
- */
-async function liveCount(uid: string, kind: LimitKind): Promise<number | null> {
-  const db = fbDb();
-  try {
-    const sub = ({
-      contacts: "contacts",
-      campaigns: "campaigns",
-      bots: "bots",
-      templates: "templates",
-      agents: "agents",
-    } as Partial<Record<LimitKind, string>>)[kind];
-    if (!sub) return null;
-    // Cache aggregate query results to avoid 429 on rapid reserveQuota
-    // calls (e.g. bulk contact import → one aggregate RPC per row).
-    return await fetchCached<number>(`count:${uid}/${sub}`, async () => {
-      const snap = await getCountFromServer(collection(db, "users", uid, sub));
-      return snap.data().count;
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(`liveCount(${kind}) failed`, err);
-    return null;
-  }
-}
-
-/**
  * Reads live subscription + user doc and throws a friendly error if creating
  * `count` more of `kind` would exceed the current plan's cap.
  * A max of 0 or less is treated as Unlimited.
@@ -176,8 +145,7 @@ export async function assertWithinPlanLimit(
     cfg.profileField && profSnap.exists()
       ? num((profSnap.data() as Record<string, unknown>)[cfg.profileField])
       : 0;
-  const live = await liveCount(uid, kind);
-  const used = Math.max(subUsed, profileUsed, live ?? 0);
+  const used = Math.max(subUsed, profileUsed);
 
   if (used + count > max) {
     const remaining = Math.max(0, max - used);
@@ -273,12 +241,6 @@ export async function reserveQuota(
   const subRef = doc(db, "users", uid, "subscription", "current");
   const userRef = doc(db, "users", uid);
 
-  // Live-count fallback (only agents today) is not atomic-safe inside
-  // a transaction — the subcollection count is a query, not a doc read.
-  // We pre-fetch it once and pass it in as a floor; the transaction still
-  // does the atomic write on the counter field.
-  const liveFloor = await liveCount(uid, kind);
-
   await runTransaction(db, async (tx) => {
     const subSnap = await tx.get(subRef);
     if (!subSnap.exists()) {
@@ -310,9 +272,7 @@ export async function reserveQuota(
     const max = num(sub[cfg.maxField]);
     if (max > 0) {
       const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
-      // Profile counter read is best-effort; we only need it for a tighter
-      // floor. Skip inside the tx to keep it single-doc atomic.
-      const used = Math.max(subUsed, liveFloor ?? 0);
+      const used = subUsed;
       if (used + n > max) {
         const remaining = Math.max(0, max - used);
         const planName =
