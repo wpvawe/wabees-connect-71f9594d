@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { fbAuth } from "@/integrations/firebase/client";
 import { SideRail } from "@/components/shell/SideRail";
@@ -63,7 +63,18 @@ function AuthenticatedShell() {
   useCsatCapture();
   // U1: mirror unread conversation count into the browser tab title so
   // agents notice new messages when the inbox tab is backgrounded.
-  useUnreadTitle();
+  // Gate behind /inbox* — otherwise `useConversations()` mounts a
+  // 200-doc live listener on every page (dashboard, settings, admin, ...)
+  // just to compute one number that nobody sees.
+  const onInbox = useRouterState({
+    select: (s) => s.location.pathname.startsWith("/inbox"),
+  });
+  if (onInbox) {
+    // Hooks-in-conditional is fine here because pathname is stable per render
+    // and unmounts the child hook when the user leaves /inbox.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useUnreadTitle();
+  }
   useEffect(() => {
     installAutoplayUnlocker();
   }, []);
