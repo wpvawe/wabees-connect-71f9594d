@@ -160,7 +160,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
           await updateDoc(msgRef, {
             status: "sent",
             whatsappMessageId: extractWamid(res.raw),
-          });
+          }).catch(() => {});
         }),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
