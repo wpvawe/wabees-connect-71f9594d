@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
-import { assertWithinPlanLimit, incrementContactsUsed } from "@/lib/plans/limits";
+import { incrementContactsUsed, releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 export async function upsertContact(
   uid: string,
@@ -25,8 +25,10 @@ export async function upsertContact(
 ): Promise<{ id: string }> {
   const db = fbDb();
   const isUpdate = Boolean(input.id);
+  let quotaReserved = false;
   if (!isUpdate) {
-    await assertWithinPlanLimit(uid, "contacts");
+    await reserveQuota(uid, "contacts", 1);
+    quotaReserved = true;
   }
   const ref = isUpdate
     ? doc(db, "users", uid, "contacts", input.id!)
@@ -52,11 +54,11 @@ export async function upsertContact(
     payload.totalMessages = 0;
     payload.createdAt = serverTimestamp();
   }
-  await setDoc(ref, payload, { merge: true });
-  if (!isUpdate) {
-    // Keep subscription.contactsUsed + users.totalContacts in sync with
-    // the actual contacts subcollection size so plan caps stay accurate.
-    await incrementContactsUsed(uid, 1);
+  try {
+    await setDoc(ref, payload, { merge: true });
+  } catch (err) {
+    if (quotaReserved) await releaseQuota(uid, "contacts", 1).catch(() => {});
+    throw err;
   }
   return { id: ref.id };
 }
@@ -80,31 +82,34 @@ export async function bulkImportContacts(
   }>,
 ): Promise<{ imported: number }> {
   if (rows.length === 0) return { imported: 0 };
-  await assertWithinPlanLimit(uid, "contacts", rows.length);
+  await reserveQuota(uid, "contacts", rows.length);
   const db = fbDb();
   let imported = 0;
-  for (let i = 0; i < rows.length; i += 400) {
-    const chunk = rows.slice(i, i + 400);
-    const batch = writeBatch(db);
-    for (const r of chunk) {
-      const ref = doc(collection(db, "users", uid, "contacts"));
-      batch.set(ref, {
-        name: r.name,
-        phone: normalizePhone(r.phone),
-        email: r.email ?? null,
-        company: r.company ?? null,
-        notes: r.notes ?? null,
-        tags: r.tags ?? [],
-        group: r.group ?? null,
-        totalMessages: 0,
-        createdAt: serverTimestamp(),
-      });
+  try {
+    for (let i = 0; i < rows.length; i += 400) {
+      const chunk = rows.slice(i, i + 400);
+      const batch = writeBatch(db);
+      for (const r of chunk) {
+        const ref = doc(collection(db, "users", uid, "contacts"));
+        batch.set(ref, {
+          name: r.name,
+          phone: normalizePhone(r.phone),
+          email: r.email ?? null,
+          company: r.company ?? null,
+          notes: r.notes ?? null,
+          tags: r.tags ?? [],
+          group: r.group ?? null,
+          totalMessages: 0,
+          createdAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      imported += chunk.length;
     }
-    await batch.commit();
-    imported += chunk.length;
-  }
-  if (imported > 0) {
-    await incrementContactsUsed(uid, imported);
+  } catch (err) {
+    const uncreated = Math.max(0, rows.length - imported);
+    if (uncreated > 0) await releaseQuota(uid, "contacts", uncreated).catch(() => {});
+    throw err;
   }
   return { imported };
 }
