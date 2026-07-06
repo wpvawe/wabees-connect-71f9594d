@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  collection,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  Timestamp,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { mediaProxyUrl } from "@/lib/wabees/api";
@@ -78,6 +89,140 @@ export type Message = {
 const PAGE_SIZE = 300;
 const PAGE_STEP = 200;
 
+// Parse a raw Firestore message doc into our Message DTO. Extracted so
+// both the live snapshot handler and the `loadMore` one-shot fetch share
+// the exact same shape — previously duplicated logic drifted.
+function parseMessageDoc(
+  d: QueryDocumentSnapshot,
+  fallbackPhone: string,
+  uid: string,
+): Message {
+  const x = d.data() as Record<string, unknown>;
+  const contactPhone = str(x.contactPhone, fallbackPhone);
+  const locRaw = (x.location as Record<string, unknown> | undefined) ?? null;
+  const latitude =
+    typeof x.latitude === "number"
+      ? (x.latitude as number)
+      : typeof locRaw?.latitude === "number"
+        ? (locRaw.latitude as number)
+        : null;
+  const longitude =
+    typeof x.longitude === "number"
+      ? (x.longitude as number)
+      : typeof locRaw?.longitude === "number"
+        ? (locRaw.longitude as number)
+        : null;
+  const body = str(x.body);
+  const otpFromBody = /\b(\d{4,8})\b/.exec(body);
+  const looksLikeOtp =
+    /\b(otp|verification|code|pin)\b/i.test(body) && otpFromBody;
+  const rawMediaUrl = strOrNull(x.mediaUrl);
+  const rawMediaId = strOrNull(x.mediaId);
+  const mediaUrl =
+    rawMediaUrl ?? (rawMediaId && uid ? mediaProxyUrl(rawMediaId, uid) : null);
+  return {
+    id: d.id,
+    contactPhone: normalizePhone(contactPhone),
+    contactName: str(x.contactName, normalizePhone(contactPhone)),
+    type: str(x.type, "text"),
+    direction: ((x.direction as string) === "outgoing" ? "outgoing" : "incoming") as
+      | "incoming"
+      | "outgoing",
+    status: str(x.status, "sent"),
+    body,
+    mediaUrl,
+    mediaId: rawMediaId,
+    mimeType: strOrNull(x.mimeType),
+    caption: strOrNull(x.caption),
+    fileName: strOrNull(x.fileName),
+    templateName: strOrNull(x.templateName),
+    headerText: strOrNull(x.headerText),
+    footerText: strOrNull(x.footerText),
+    quickReplies: Array.isArray(x.quickReplies)
+      ? (x.quickReplies as Array<Record<string, unknown>>)
+      : null,
+    ctaButton:
+      x.ctaButton && typeof x.ctaButton === "object"
+        ? (x.ctaButton as Record<string, unknown>)
+        : null,
+    whatsappMessageId: strOrNull(x.whatsappMessageId),
+    errorReason: strOrNull(x.errorReason),
+    createdAt: toIso(x.createdAt),
+    reactionEmoji: strOrNull(x.reactionEmoji),
+    reactionMsgId: strOrNull(x.reactionMsgId),
+    reactionAt: toIso(x.reactionAt),
+    botName: strOrNull(x.botName),
+    deliveredAt: toIso(x.deliveredAt),
+    readAt: toIso(x.readAt),
+    fileSize: typeof x.fileSize === "number" ? x.fileSize : null,
+    latitude,
+    longitude,
+    locationName: strOrNull(locRaw?.name),
+    locationAddress: strOrNull(locRaw?.address),
+    contactsPayload: Array.isArray(x.contacts)
+      ? (x.contacts as Array<Record<string, unknown>>)
+      : null,
+    buttonReplyId: strOrNull(x.buttonReplyId),
+    buttonReplyText: strOrNull(x.buttonReplyText),
+    interactiveType: strOrNull(x.interactiveType),
+    ctaUrl: strOrNull(x.ctaUrl),
+    otpCode: strOrNull(x.otpCode) ?? (looksLikeOtp ? otpFromBody![1] : null),
+    replyToId: strOrNull(x.replyToId),
+    replyToBody: strOrNull(x.replyToBody),
+    replyToWamid: strOrNull(x.replyToWamid),
+    replyToType: strOrNull(x.replyToType),
+    raw: null,
+    starred: x.starred === true,
+    orderItems: Array.isArray(x.orderItems)
+      ? (x.orderItems as Array<Record<string, unknown>>).map((it) => ({
+          productRetailerId: String(it.productRetailerId ?? ""),
+          quantity: Number(it.quantity ?? 1),
+          itemPrice: Number(it.itemPrice ?? 0),
+          currency: String(it.currency ?? ""),
+          lineTotal: Number(
+            it.lineTotal ?? Number(it.itemPrice ?? 0) * Number(it.quantity ?? 1),
+          ),
+        }))
+      : null,
+    orderTotal: typeof x.orderTotal === "number" ? x.orderTotal : null,
+    orderCurrency: strOrNull(x.orderCurrency),
+    orderCatalogId: strOrNull(x.orderCatalogId),
+    orderNote: strOrNull(x.orderNote),
+    flowResponse:
+      x.flowResponse && typeof x.flowResponse === "object"
+        ? (x.flowResponse as Record<string, unknown>)
+        : null,
+  };
+}
+
+function mergeReactions(rows: Message[]): Message[] {
+  const byWamid = new Map<string, Message>();
+  const byId = new Map<string, Message>();
+  for (const m of rows) {
+    byId.set(m.id, m);
+    if (m.whatsappMessageId) byWamid.set(m.whatsappMessageId, m);
+  }
+  for (const m of rows) {
+    if (m.type === "reaction" && m.reactionMsgId) {
+      const candidates = [m.reactionMsgId, m.reactionMsgId.replace(/^msg_/, "")];
+      for (const k of candidates) {
+        const parent = byWamid.get(k) ?? byId.get(k);
+        if (parent) {
+          const orphanAt = m.createdAt ?? "";
+          const parentAt = parent.reactionAt ?? "";
+          if (!parent.reactionEmoji || orphanAt > parentAt) {
+            parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
+            parent.reactionMsgId = m.reactionMsgId;
+            parent.reactionAt = orphanAt || parent.reactionAt;
+          }
+          break;
+        }
+      }
+    }
+  }
+  return rows.filter((m) => !(m.type === "reaction" && !m.mediaUrl));
+}
+
 export function useMessages(phone: string | undefined): {
   data: Message[] | null;
   error: string | null;
@@ -86,23 +231,31 @@ export function useMessages(phone: string | undefined): {
   loadingMore: boolean;
 } {
   const uid = useEffectiveUid();
-  const [data, setData] = useState<Message[] | null>(null);
+  // Live rows come from the fixed-size onSnapshot listener (only the
+  // newest PAGE_SIZE messages stay subscribed). Older rows are appended
+  // once via getDocs on `loadMore` so we do NOT re-bill the entire
+  // listener every time the user pages back.
+  const [liveRows, setLiveRows] = useState<Message[] | null>(null);
+  const [olderRows, setOlderRows] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [pageLimit, setPageLimit] = useState<number>(PAGE_SIZE);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const oldestOlderCreatedRef = useRef<Date | null>(null);
+  const oldestLiveCreatedRef = useRef<Date | null>(null);
 
   // Reset paging when the thread changes.
   useEffect(() => {
-    setPageLimit(PAGE_SIZE);
     setHasMore(false);
+    setOlderRows([]);
+    oldestOlderCreatedRef.current = null;
+    oldestLiveCreatedRef.current = null;
   }, [phone]);
 
   useEffect(() => {
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
-    setData(null);
+    setLiveRows(null);
     const candidates = phoneQueryCandidates(phone);
     const q = query(
       collection(db, `users/${uid}/messages`),
@@ -110,167 +263,25 @@ export function useMessages(phone: string | undefined): {
         ? where("contactPhone", "==", candidates[0])
         : where("contactPhone", "in", candidates),
       orderBy("createdAt", "desc"),
-      limit(pageLimit),
+      limit(PAGE_SIZE),
     );
     const unsub = onSnapshot(
       q,
       (snap) => {
-        // If we hit the current page cap, older messages likely exist —
-        // enable "Load older" until a fetch returns fewer than requested.
-        setHasMore(snap.docs.length >= pageLimit);
+        // Hit the live cap? Older messages likely exist; "Load older" fetches
+        // them on demand without disturbing this listener.
+        setHasMore((prev) => (snap.docs.length >= PAGE_SIZE ? true : prev));
         setLoadingMore(false);
-        const allRows: Message[] = snap.docs
-          .map((d) => {
-            const x = d.data() as Record<string, unknown>;
-            const contactPhone = str(x.contactPhone, phone);
-            const locRaw = (x.location as Record<string, unknown> | undefined) ?? null;
-            const latitude =
-              typeof x.latitude === "number"
-                ? (x.latitude as number)
-                : typeof locRaw?.latitude === "number"
-                  ? (locRaw.latitude as number)
-                  : null;
-            const longitude =
-              typeof x.longitude === "number"
-                ? (x.longitude as number)
-                : typeof locRaw?.longitude === "number"
-                  ? (locRaw.longitude as number)
-                  : null;
-            const body = str(x.body);
-            const otpFromBody = /\b(\d{4,8})\b/.exec(body);
-            const looksLikeOtp =
-              /\b(otp|verification|code|pin)\b/i.test(body) && otpFromBody;
-            const rawMediaUrl = strOrNull(x.mediaUrl);
-            const rawMediaId = strOrNull(x.mediaId);
-            // Bug fix: incoming webhook writes `mediaId` first and stamps
-            // `mediaUrl` in a follow-up commit ~200ms later. When the
-            // follow-up commit fails (Firestore contact query 5xx, Meta
-            // token expiry, function timeout), the message is left with a
-            // mediaId but no mediaUrl — the bubble then renders blank
-            // forever. Synthesize the same proxy URL the backend would
-            // stamp so the media is always displayable when mediaId exists.
-            const mediaUrl =
-              rawMediaUrl ??
-              (rawMediaId && uid ? mediaProxyUrl(rawMediaId, uid) : null);
-            return {
-              id: d.id,
-              contactPhone: normalizePhone(contactPhone),
-              contactName: str(x.contactName, normalizePhone(contactPhone)),
-              type: str(x.type, "text"),
-              direction: ((x.direction as string) === "outgoing" ? "outgoing" : "incoming") as
-                | "incoming"
-                | "outgoing",
-              status: str(x.status, "sent"),
-              body,
-              mediaUrl,
-              mediaId: rawMediaId,
-              mimeType: strOrNull(x.mimeType),
-              caption: strOrNull(x.caption),
-              fileName: strOrNull(x.fileName),
-              templateName: strOrNull(x.templateName),
-              headerText: strOrNull(x.headerText),
-              footerText: strOrNull(x.footerText),
-              quickReplies: Array.isArray(x.quickReplies)
-                ? (x.quickReplies as Array<Record<string, unknown>>)
-                : null,
-              ctaButton:
-                x.ctaButton && typeof x.ctaButton === "object"
-                  ? (x.ctaButton as Record<string, unknown>)
-                  : null,
-              whatsappMessageId: strOrNull(x.whatsappMessageId),
-              errorReason: strOrNull(x.errorReason),
-              createdAt: toIso(x.createdAt),
-              reactionEmoji: strOrNull(x.reactionEmoji),
-              reactionMsgId: strOrNull(x.reactionMsgId),
-              reactionAt: toIso(x.reactionAt),
-              botName: strOrNull(x.botName),
-              deliveredAt: toIso(x.deliveredAt),
-              readAt: toIso(x.readAt),
-              fileSize: typeof x.fileSize === "number" ? x.fileSize : null,
-              latitude,
-              longitude,
-              locationName: strOrNull(locRaw?.name),
-              locationAddress: strOrNull(locRaw?.address),
-              contactsPayload: Array.isArray(x.contacts)
-                ? (x.contacts as Array<Record<string, unknown>>)
-                : null,
-              buttonReplyId: strOrNull(x.buttonReplyId),
-              buttonReplyText: strOrNull(x.buttonReplyText),
-              interactiveType: strOrNull(x.interactiveType),
-              ctaUrl: strOrNull(x.ctaUrl),
-              otpCode:
-                strOrNull(x.otpCode) ??
-                (looksLikeOtp ? otpFromBody![1] : null),
-              replyToId: strOrNull(x.replyToId),
-              replyToBody: strOrNull(x.replyToBody),
-              replyToWamid: strOrNull(x.replyToWamid),
-              replyToType: strOrNull(x.replyToType),
-              raw: null,
-              starred: x.starred === true,
-              orderItems: Array.isArray(x.orderItems)
-                ? (x.orderItems as Array<Record<string, unknown>>).map((it) => ({
-                    productRetailerId: String(it.productRetailerId ?? ""),
-                    quantity: Number(it.quantity ?? 1),
-                    itemPrice: Number(it.itemPrice ?? 0),
-                    currency: String(it.currency ?? ""),
-                    lineTotal: Number(it.lineTotal ?? Number(it.itemPrice ?? 0) * Number(it.quantity ?? 1)),
-                  }))
-                : null,
-              orderTotal: typeof x.orderTotal === "number" ? x.orderTotal : null,
-              orderCurrency: strOrNull(x.orderCurrency),
-              orderCatalogId: strOrNull(x.orderCatalogId),
-              orderNote: strOrNull(x.orderNote),
-              flowResponse:
-                x.flowResponse && typeof x.flowResponse === "object"
-                  ? (x.flowResponse as Record<string, unknown>)
-                  : null,
-            };
-          });
-        // Merge orphan reaction events onto the original message so the chip
-        // shows even when the webhook stored them as separate docs.
-        // P-perf: build a doc-id map alongside the wamid map so the
-        // fallback lookup is O(1) instead of O(n) `find` per reaction.
-        const byWamid = new Map<string, Message>();
-        const byId = new Map<string, Message>();
-        for (const m of allRows) {
-          byId.set(m.id, m);
-          if (m.whatsappMessageId) byWamid.set(m.whatsappMessageId, m);
+        const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
+        // Firestore returned desc-by-createdAt. Track the oldest live doc
+        // as the pagination cursor for the first "Load older" fetch.
+        const oldest = snap.docs[snap.docs.length - 1];
+        if (oldest) {
+          const raw = oldest.data().createdAt;
+          if (raw instanceof Timestamp) oldestLiveCreatedRef.current = raw.toDate();
+          else if (raw instanceof Date) oldestLiveCreatedRef.current = raw;
         }
-        for (const m of allRows) {
-          if (m.type === "reaction" && m.reactionMsgId) {
-            // reactionMsgId can be "msg_<wamid>" (webhook) or the bare wamid.
-            const candidates = [
-              m.reactionMsgId,
-              m.reactionMsgId.replace(/^msg_/, ""),
-            ];
-            for (const k of candidates) {
-              const parent = byWamid.get(k) ?? byId.get(k);
-              if (parent) {
-                // Newer reaction wins. Parent.reactionAt is set when the
-                // website/app writes a reaction directly on the parent doc,
-                // so we don't let a stale orphan webhook doc overwrite a
-                // fresh local reaction.
-                const orphanAt = m.createdAt ?? "";
-                const parentAt = parent.reactionAt ?? "";
-                if (!parent.reactionEmoji || orphanAt > parentAt) {
-                  parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
-                  parent.reactionMsgId = m.reactionMsgId;
-                  parent.reactionAt = orphanAt || parent.reactionAt;
-                }
-                break;
-              }
-            }
-          }
-        }
-        // P9 fix: Firestore already returns docs in `orderBy("createdAt","desc")`
-        // order, so a full O(n log n) sort on every delivery-status tick is
-        // wasted work. Filter + reverse is O(n) and produces the same
-        // ascending order the UI expects.
-        const filtered = allRows.filter(
-          (m) => !(m.type === "reaction" && !m.mediaUrl),
-        );
-        const rows: Message[] = filtered.reverse();
-        setData(rows);
+        setLiveRows(mergeReactions(parsed).reverse());
       },
       (err) => {
         setError(err.message);
@@ -278,12 +289,60 @@ export function useMessages(phone: string | undefined): {
       },
     );
     return () => unsub();
-  }, [uid, phone, pageLimit]);
+  }, [uid, phone]);
 
-  const loadMore = useCallback(() => {
+  const loadMore = useCallback(async () => {
+    if (!uid || !phone) return;
+    const db = fbDbOrNull();
+    if (!db) return;
+    const cursor = oldestOlderCreatedRef.current ?? oldestLiveCreatedRef.current;
+    if (!cursor) return;
     setLoadingMore(true);
-    setPageLimit((n) => n + PAGE_STEP);
-  }, []);
+    try {
+      const candidates = phoneQueryCandidates(phone);
+      const snap = await getDocs(
+        query(
+          collection(db, `users/${uid}/messages`),
+          candidates.length === 1
+            ? where("contactPhone", "==", candidates[0])
+            : where("contactPhone", "in", candidates),
+          orderBy("createdAt", "desc"),
+          startAfter(Timestamp.fromDate(cursor)),
+          limit(PAGE_STEP),
+        ),
+      );
+      const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
+      const oldest = snap.docs[snap.docs.length - 1];
+      if (oldest) {
+        const raw = oldest.data().createdAt;
+        if (raw instanceof Timestamp) oldestOlderCreatedRef.current = raw.toDate();
+        else if (raw instanceof Date) oldestOlderCreatedRef.current = raw;
+      }
+      setOlderRows((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const merged = [...prev];
+        for (const m of parsed) if (!seen.has(m.id)) merged.push(m);
+        return merged;
+      });
+      setHasMore(snap.docs.length >= PAGE_STEP);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [uid, phone]);
+
+  // Combined view: older (desc-fetched) prepended before live rows;
+  // reactions merged again since older docs may reference live parents.
+  const data = useMemo<Message[] | null>(() => {
+    if (liveRows === null) return null;
+    if (olderRows.length === 0) return liveRows;
+    const seen = new Set(liveRows.map((m) => m.id));
+    const olderAsc = [...olderRows]
+      .filter((m) => !seen.has(m.id))
+      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+    return mergeReactions([...olderAsc, ...liveRows]);
+  }, [liveRows, olderRows]);
 
   return { data, error, hasMore, loadMore, loadingMore };
 }
