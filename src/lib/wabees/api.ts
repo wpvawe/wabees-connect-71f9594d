@@ -342,6 +342,7 @@ export function sendLocationMessage(args: {
   name?: string;
   address?: string;
   context_message_id?: string | null;
+  quota_reserved?: boolean;
 }) {
   return postJson("send-message.php", { ...args, type: "location" });
 }
