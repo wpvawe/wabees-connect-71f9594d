@@ -21,9 +21,6 @@ import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
-import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
-import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
-import { useLiveSubcollectionCount } from "@/hooks/useLiveSubcollectionCount";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -52,27 +49,20 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
-  const { data: campaignAgg } = useCampaignAggregate();
-  const { data: liveMessages } = useLiveMessageCount();
-  const { data: liveContacts } = useLiveSubcollectionCount("contacts");
-  const { data: liveBots } = useLiveSubcollectionCount("bots");
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
   const [dialogPlan, setDialogPlan] = useState<Plan | null>(null);
   const waConnected = Boolean(wa?.connected);
 
-  // Prefer per-cycle counters from the subscription doc; fall back to
-  // lifetime profile totals only when the sub doc reports zero — this keeps
-  // usage visible even on cycles where the webhook hasn't yet touched sub.
-  // Live subcollection count wins (deletions reflected). Falls back to the
-  // subscription meter / profile counter for cold-cache paint.
+  // Use maintained counters/list lengths only. Avoid Firestore aggregation
+  // reads here because quota exhaustion blocks regular message fetching too.
   const usedMessages =
-    liveMessages ?? sub?.messagesUsed ?? profile?.totalMessages ?? 0;
+    sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   const usedContacts =
-    liveContacts ?? sub?.contactsUsed ?? profile?.totalContacts ?? (contacts ? contacts.length : 0);
-  const usedCampaigns = campaignAgg?.totalCampaigns || sub?.campaignsUsed || profile?.totalCampaigns || 0;
-  const usedBots = liveBots ?? sub?.botsUsed ?? profile?.totalBots ?? 0;
+    contacts?.length ?? sub?.contactsUsed ?? profile?.totalContacts ?? 0;
+  const usedCampaigns = sub?.campaignsUsed || profile?.totalCampaigns || 0;
+  const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
 
   const pendingPlan = useMemo(
     () => plans?.find((p) => p.id === pending?.planId) ?? null,
