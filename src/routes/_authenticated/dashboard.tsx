@@ -30,6 +30,8 @@ import { useBots } from "@/hooks/useBots";
 import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { usePlans } from "@/hooks/usePlans";
+import { useMemo } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +54,19 @@ function DashboardPage() {
   const { data: agents } = useAgents();
   const { data: usageCounts } = useUsageCounts();
   const { data: campaigns } = useCampaigns();
+  const { data: plans } = usePlans({ includeInactive: true });
+
+  // Prefer the live plan definition over the snapshot stored on
+  // subscription/current — admin edits to plans/* should be reflected
+  // immediately on the dashboard.
+  const activePlan = useMemo(
+    () => plans?.find((p) => p.id === subscription?.planId) ?? null,
+    [plans, subscription?.planId],
+  );
+  const maxMessages = activePlan?.maxMessages ?? subscription?.maxMessages ?? 0;
+  const maxContacts = activePlan?.maxContacts ?? subscription?.maxContacts ?? 0;
+  const maxCampaigns = activePlan?.maxCampaigns ?? subscription?.maxCampaigns ?? 0;
+  const maxBots = activePlan?.maxBots ?? subscription?.maxBots ?? 0;
 
   // Use maintained counters/list lengths only. Firestore aggregation reads
   // can exhaust quota and block normal inbox/message reads for the workspace.
@@ -146,25 +161,25 @@ function DashboardPage() {
                 icon={faPaperPlane}
                 label="Messages"
                 used={messagesUsed}
-                max={subscription?.maxMessages ?? 0}
+                max={maxMessages}
               />
               <UsageStat
                 icon={faAddressBook}
                 label="Contacts"
                 used={contactsUsed}
-                max={subscription?.maxContacts ?? 0}
+                max={maxContacts}
               />
               <UsageStat
                 icon={faBullhorn}
                 label="Campaigns"
                 used={campaignsUsed}
-                max={subscription?.maxCampaigns ?? 0}
+                max={maxCampaigns}
               />
               <UsageStat
                 icon={faRobot}
                 label="Bots"
                 used={botsUsed}
-                max={subscription?.maxBots ?? 0}
+                max={maxBots}
               />
             </div>
 
