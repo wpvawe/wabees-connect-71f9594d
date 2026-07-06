@@ -1,42 +1,48 @@
-# Chat / Inbox audit — DONE
+# Sprint 2 — `useAnalytics` daily rollup
 
-Ab jo aitems reh gaye the (frontend + PHP backend dono), sequence me
-karenge. Backend access `docs/RULES.md` + `HOSTINGER_SSH_*` env se hai —
-`webhook.php` (3942 lines) aur `cron/dispatch-scheduled.php` (442 lines)
-SSH ke through edit karenge. Har PHP edit ke pehle server-side `.bak`
-banega taakay rollback safe rahe.
+## Problem
 
-## Order of execution
+`useAnalytics` runs `getDocs(users/{uid}/messages where createdAt >= start limit 5000)` on every range change. On active accounts this bills up to 5k reads per toggle, is capped (so totals become approximate), and gets slower as history grows.
 
-### Batch A — Backend (PHP webhook + cron)
-1. **Structured order persistence** — `webhook.php` case 'order' now parses `product_items[]`, computes total, persists `orderItems / orderTotal / orderCurrency / orderCatalogId / orderNote`.
-2. **Flow (nfm_reply) response persistence** — decodes `response_json` into `flowResponse` for interactive bubble rendering.
-3. **Cron subscription counter** — `dispatch-scheduled.php` now increments `subscription/current.messagesUsed` on every server-side send.
-4. Backups: `webhook.php.bak.1783225747`, `cron/dispatch-scheduled.php.bak.1783225747`.
+## Constraint (from project memory)
 
-### Batch B — Frontend rich payloads
-5. **useMessages**: exposes `orderItems / orderTotal / orderCurrency / orderCatalogId / orderNote / flowResponse`.
-6. **MessageBubble**: new `OrderCard` (receipt with line items + total) and `FlowResponseCard` (key/value grid) renderers.
+Firestore client SDK only — no Firebase Admin, no Cloud Functions, no server-side cron. Messages are written by both the React client and the PHP webhook (WhatsApp inbound), so we cannot rely on incremental counter writes at message-create time from the client alone.
 
-### Batch C — Frontend UX
-7. **StarredDrawer**: right-side panel with all starred messages, click → smooth scroll + `wb-star-flash` highlight.
-8. **Inbox-wide message search**: `useMessageSearch` hook + "Messages" section in `ConversationList` (2+ chars, 250 ms debounce, last 1000 messages, top 50 shown, match highlighted).
-9. **Chat export**: `lib/inbox/export.ts` (TXT WhatsApp-style + CSV RFC-4180). Header menu item downloads both.
-10. **Bubble anchors** (`data-msg-id`) for jump-to-message.
+## Approach — lazy daily aggregates written from the client
 
-## Skipped (documented reasons)
-- **Inbound typing indicator** — WhatsApp Cloud API does NOT forward customer typing to businesses. No webhook signal exists to render it. Meta limitation, not our bug.
-- **Virtualized list**, **business-hours auto-reply** — out of plan scope.
+Keep the raw `messages` collection untouched. Add a new per-user aggregate collection:
 
-## Out of scope (confirmed)
-- Virtualized message list (needs `@tanstack/react-virtual` + heavier refactor).
-- Business-hours auto-reply.
-- Push deep-link (already working per prior audit).
-- Whatsapp catalog product image fetch (would need Meta catalog API, separate feature).
+```text
+users/{uid}/analytics_daily/{YYYY-MM-DD}
+  sent, delivered, read, failed, pending, incoming, outgoing: number
+  byType: { text: n, image: n, ... }        // small map
+  topContacts: { "+9198…": { name, count } } // capped to top 50 for the day
+  uniqueContacts: number
+  computedAt: Timestamp
+  source: "client-rollup-v1"
+```
 
-## Rollback strategy
-- Every PHP file edited via SSH gets copied to `<file>.bak.<timestamp>` first (mirrors existing `.bak` convention on the server). Frontend changes are in git.
+Read flow (`useAnalytics(range)`):
 
-## Confirm to proceed
-Bolo "haan" ya specific batch (A/B/C) pick karo — main phir order me
-execute karke har batch ke baad short summary + verification result dunga.
+1. Compute `[start,end]` day list for the requested range.
+2. `getDocs(analytics_daily where __name__ in [dayIds])` — 1 read per cached day (batched via `in` queries of 10).
+3. For missing days and for **today** (always stale), run one `getDocs(messages where createdAt in that day)` per day, compute the aggregate, `setDoc(analytics_daily/{day})`. Today's doc is rewritten each visit; past days are written once and reused forever.
+4. Merge day docs into the same `AnalyticsData` shape the UI already consumes — no chart/component changes.
+
+## Cost math
+
+- First visit for a 30-day range on an account with ~500 msgs/day: 30 × ~500 = 15k message reads, capped at 5000 today ≈ same cost as current, but writes 30 aggregate docs.
+- Every subsequent visit for that range: 30 aggregate reads + 1 recompute for today (~500 msg reads). ~30× cheaper.
+- Range switches between `7d`/`30d`/`month`/`lastMonth` reuse the same cached days.
+
+## Files touched
+
+- `src/lib/firebase/analyticsRollup.ts` — new. Pure helpers: `dayIdsForRange`, `fetchCachedDays`, `computeDayFromMessages`, `writeDayAggregate`, `mergeDaysIntoAnalyticsData`.
+- `src/hooks/useAnalytics.ts` — replace the single `getDocs(messages)` effect with the rollup flow above; keep the exported `AnalyticsData` shape and `reload()` API unchanged so `src/routes/_authenticated/analytics.tsx` needs no edits.
+
+Nothing else changes. No schema migration, no backend touch, no security-rule change (writes are under `users/{uid}/…`, already covered by existing per-user rules).
+
+## Out of scope
+
+- Precomputing on message write (would need PHP backend cooperation — separate sprint).
+- Backfilling historical aggregates in the background — happens naturally on first visit per range.
