@@ -18,6 +18,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 export type CannedResponse = {
   id: string;
@@ -73,6 +74,7 @@ export async function createCanned(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  bumpRefetch("canned");
   return ref.id;
 }
 
@@ -87,10 +89,12 @@ export async function updateCanned(
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.body !== undefined) payload.body = patch.body;
   await updateDoc(doc(db, `users/${ownerUid}/canned/${id}`), payload);
+  bumpRefetch("canned");
 }
 
 export async function deleteCanned(ownerUid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), `users/${ownerUid}/canned/${id}`));
+  bumpRefetch("canned");
 }
 
 /**
