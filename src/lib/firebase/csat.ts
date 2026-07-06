@@ -160,6 +160,7 @@ export async function sendCsatSurvey(args: {
     button_text: "Rate 1–5",
     footer_text: settings.footer || DEFAULT_CSAT.footer,
     sections: [{ title: "Your rating", rows }],
+    quota_reserved: true,
   }).catch((e: unknown) => ({
     success: false,
     message: e instanceof Error ? e.message : "send failed",
@@ -183,8 +184,6 @@ export async function sendCsatSurvey(args: {
     return null;
   }
   await updateDoc(surveyRef, { wamid });
-  // CSAT list message is a real outbound WhatsApp send — count it (B-3).
-  await incrementMessagesUsed(ownerUid, 1);
   // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
   try {
     await setDoc(convRef, { csatLastSentAt: serverTimestamp() }, { merge: true });
@@ -235,11 +234,9 @@ export async function recordCsatRating(args: {
     access_token: "",
     to: whatsappRecipientId(phone),
     message: commentPrompt || DEFAULT_CSAT.commentPrompt,
+    quota_reserved: true,
   })
-    .then((r) => {
-      // Only count when Meta actually accepted the message.
-      if (r?.success) void incrementMessagesUsed(ownerUid, 1);
-    })
+    .then(() => {})
     .catch(() => {});
 }
 

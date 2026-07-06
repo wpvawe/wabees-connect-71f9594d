@@ -165,6 +165,7 @@ export function useScheduledDispatcher() {
                 access_token: "",
                 to: whatsappRecipientId(phone),
                 message: body,
+                quota_reserved: true,
               });
               const wamid = extractWamid(res.raw);
               if (!res.success) {
@@ -203,10 +204,6 @@ export function useScheduledDispatcher() {
                 updatedAt: serverTimestamp(),
                 dispatchedBy: "client",
               });
-              // Shared helper — mirrors every other outbound path so plan
-              // limits stay accurate whether the message was sent inline,
-              // via forward, interactive, resend, or scheduled dispatcher.
-              await incrementMessagesUsed(uid!, 1).catch(() => {});
             } catch (e) {
               await updateDoc(d.ref, {
                 status: "failed",

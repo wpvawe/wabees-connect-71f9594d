@@ -324,6 +324,7 @@ export async function runCampaign(
           template_name: opts!.templateName!,
           language_code: opts?.templateLanguage || "en_US",
           components,
+          quota_reserved: true,
         });
       } else {
         res = await sendTextMessage({
@@ -331,6 +332,7 @@ export async function runCampaign(
           access_token: "",
           to,
           message: messageBody,
+          quota_reserved: true,
         });
       }
     } catch (e) {

@@ -165,12 +165,14 @@ export function TemplateGrid() {
       return;
     }
     setSending(true);
+    let quotaReserved = false;
     try {
       const creds = await loadWaConnection(selfUid);
       if (!creds) throw new Error("Connect WhatsApp first");
       if (uid) {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "messages");
+        const { reserveQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "messages", 1);
+        quotaReserved = true;
       }
       const components: Array<Record<string, unknown>> =
         selected.variables.length > 0
@@ -191,8 +193,16 @@ export function TemplateGrid() {
         template_name: selected.name,
         language_code: selected.languageCode || "en_US",
         components,
+        quota_reserved: true,
       });
-      if (!res.success) throw new Error(res.message ?? "Send failed");
+      if (!res.success) {
+        if (uid && quotaReserved) {
+          const { releaseQuota } = await import("@/lib/plans/limits");
+          await releaseQuota(uid, "messages", 1).catch(() => {});
+          quotaReserved = false;
+        }
+        throw new Error(res.message ?? "Send failed");
+      }
       if (uid) {
         try {
           const db = fbDb();
@@ -236,19 +246,15 @@ export function TemplateGrid() {
         } catch {
           /* non-fatal */
         }
-        // Bump plan usage counter — template quick-send was previously
-        // missing this, so template sends slipped past monthly caps.
-        try {
-          const { incrementMessagesUsed } = await import("@/lib/plans/limits");
-          await incrementMessagesUsed(uid, 1);
-        } catch {
-          /* non-fatal */
-        }
       }
       toast.success("Template sent");
       setShowSend(false);
       setPhone("");
     } catch (e) {
+      if (uid && quotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "messages", 1).catch(() => {});
+      }
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setSending(false);

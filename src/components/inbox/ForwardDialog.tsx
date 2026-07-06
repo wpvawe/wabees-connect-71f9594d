@@ -83,9 +83,9 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
         toast.error("Connect WhatsApp first");
         return;
       }
+      const { releaseQuota, reserveQuota } = await import("@/lib/plans/limits");
       try {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "messages", list.length);
+        await reserveQuota(uid, "messages", list.length);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -141,12 +141,14 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
                     : {}),
                 ...(body && mediaKind !== "audio" && mediaKind !== "sticker" ? { caption: body } : {}),
                 ...(mediaKind === "document" && message.fileName ? { filename: message.fileName } : {}),
+                quota_reserved: true,
               })
             : await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
                 access_token: "",
                 to,
                 message: body,
+                quota_reserved: true,
               });
           if (!res.success) {
             await updateDoc(msgRef, {
@@ -163,12 +165,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const bad = results.length - ok;
-      // Bump plan counter for every successfully forwarded message so
-      // forwards don't silently bypass the messagesUsed quota (B-1).
-      if (ok > 0) {
-        const { incrementMessagesUsed } = await import("@/lib/plans/limits");
-        await incrementMessagesUsed(uid, ok);
-      }
+      if (bad > 0) await releaseQuota(uid, "messages", bad).catch(() => {});
       if (ok) toast.success(`Forwarded to ${ok} chat${ok > 1 ? "s" : ""}`);
       if (bad) toast.error(`${bad} forward${bad > 1 ? "s" : ""} failed`);
       onClose();
