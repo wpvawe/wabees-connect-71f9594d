@@ -31,6 +31,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
+import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -54,13 +55,20 @@ function DashboardPage() {
   const { data: usageCounts } = useUsageCounts();
   const { data: campaigns } = useCampaigns();
   const { data: campaignAgg } = useCampaignAggregate();
+  const { data: liveMessages } = useLiveMessageCount();
 
   // Prefer LIVE counts over cached totals so deletions reflect immediately.
   // Cached counters (profile.totalX / subscription.xUsed) are quota meters
   // that only increment — they leave stale numbers on the dashboard after
   // the user deletes campaigns/contacts/bots.
+  // Prefer LIVE server-side count (reflects deletions) but fall back to the
+  // subscription meter for brand-new accounts where the count is still 0.
   const messagesUsed =
-    subscription?.messagesUsed ?? profile?.totalMessages ?? usageCounts.messages ?? 0;
+    liveMessages ??
+    subscription?.messagesUsed ??
+    profile?.totalMessages ??
+    usageCounts.messages ??
+    0;
   const contactsUsed =
     contacts?.length ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
