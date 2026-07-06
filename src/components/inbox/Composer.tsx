@@ -329,20 +329,15 @@ export function Composer({
       if (!res.success) {
         // Meta rejected — refund the reserved quota so counter stays accurate.
         if (quotaReserved) {
-          const { releaseQuota } = await import("@/lib/plans/limits");
-          await releaseQuota(uid, "messages", 1);
+          await refundMessageQuota(uid);
           quotaReserved = false;
         }
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: res.message ?? "Send failed",
-        });
+        await markSendFailed(msgRef, res.message ?? "Send failed");
         toast.error(res.message ?? "Could not send template");
         return;
       }
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
         quotaReserved = false;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
@@ -350,16 +345,12 @@ export function Composer({
     } catch (err) {
       // Release the reservation if we never actually sent (Meta call threw).
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
       }
       if (msgRef) {
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: err instanceof Error ? err.message : "Send failed",
-        }).catch(() => {});
+        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
       }
-      toast.error(err instanceof Error ? err.message : "Could not send template");
+      toast.error(errorMessageOf(err, "Could not send template"));
     } finally {
       setSending(false);
     }
