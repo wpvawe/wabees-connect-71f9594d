@@ -17,6 +17,7 @@ import {
 import { getDoc } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { toIso } from "@/lib/firebase/normalizers";
+import { fetchCached } from "@/lib/firebase/countCache";
 
 // ============ ALL USERS (REALTIME) ============
 export type AdminUser = {
@@ -381,22 +382,25 @@ export function usePlatformCounts(): PlatformCounts {
     (async () => {
       try {
         const users = collection(db, "users");
+        // Cache for 5 minutes — admin dashboard mounts should not re-fire
+        // 7 aggregation RPCs each time. Prevents 429 storms.
+        const TTL = 5 * 60_000;
         const [total, active, pending, suspended, connected, agents, msgSum] = await Promise.all([
-          getCountFromServer(users),
-          getCountFromServer(query(users, where("status", "==", "active"))),
-          getCountFromServer(query(users, where("status", "==", "pending"))),
-          getCountFromServer(query(users, where("status", "==", "suspended"))),
-          getCountFromServer(query(users, where("whatsappConnected", "==", true))),
-          getCountFromServer(collectionGroup(db, "agents")).catch(() => null),
-          getAggregateFromServer(users, { total: sum("totalMessages") }).catch(() => null),
+          fetchCached("admin:users:total", () => getCountFromServer(users), TTL),
+          fetchCached("admin:users:active", () => getCountFromServer(query(users, where("status", "==", "active"))), TTL),
+          fetchCached("admin:users:pending", () => getCountFromServer(query(users, where("status", "==", "pending"))), TTL),
+          fetchCached("admin:users:suspended", () => getCountFromServer(query(users, where("status", "==", "suspended"))), TTL),
+          fetchCached("admin:users:connected", () => getCountFromServer(query(users, where("whatsappConnected", "==", true))), TTL),
+          fetchCached("admin:agents:group", () => getCountFromServer(collectionGroup(db, "agents")), TTL).catch(() => null),
+          fetchCached("admin:users:msgSum", () => getAggregateFromServer(users, { total: sum("totalMessages") }), TTL).catch(() => null),
         ]);
         if (cancelled) return;
         setCounts({
-          total: total.data().count,
-          active: active.data().count,
-          pending: pending.data().count,
-          suspended: suspended.data().count,
-          connected: connected.data().count,
+          total: total ? total.data().count : 0,
+          active: active ? active.data().count : 0,
+          pending: pending ? pending.data().count : 0,
+          suspended: suspended ? suspended.data().count : 0,
+          connected: connected ? connected.data().count : 0,
           agents: agents ? agents.data().count : 0,
           totalMessages: msgSum ? Number(msgSum.data().total ?? 0) : 0,
           loading: false,
@@ -536,18 +540,19 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
     setState((s) => ({ ...s, loading: true }));
     (async () => {
       try {
+        const TTL = 5 * 60_000;
         const [messages, contacts, bots, campaigns] = await Promise.all([
-          getCountFromServer(collection(db, "users", uid, "messages")),
-          getCountFromServer(collection(db, "users", uid, "contacts")),
-          getCountFromServer(collection(db, "users", uid, "bots")),
-          getCountFromServer(collection(db, "users", uid, "campaigns")),
+          fetchCached(`admin:user:${uid}:messages`, () => getCountFromServer(collection(db, "users", uid, "messages")), TTL),
+          fetchCached(`admin:user:${uid}:contacts`, () => getCountFromServer(collection(db, "users", uid, "contacts")), TTL),
+          fetchCached(`admin:user:${uid}:bots`, () => getCountFromServer(collection(db, "users", uid, "bots")), TTL),
+          fetchCached(`admin:user:${uid}:campaigns`, () => getCountFromServer(collection(db, "users", uid, "campaigns")), TTL),
         ]);
         if (cancelled) return;
         setState({
-          messages: messages.data().count,
-          contacts: contacts.data().count,
-          bots: bots.data().count,
-          campaigns: campaigns.data().count,
+          messages: messages ? messages.data().count : 0,
+          contacts: contacts ? contacts.data().count : 0,
+          bots: bots ? bots.data().count : 0,
+          campaigns: campaigns ? campaigns.data().count : 0,
           loading: false,
         });
       } catch {
