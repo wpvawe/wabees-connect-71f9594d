@@ -135,10 +135,13 @@ export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
     payload,
     debugPayload: firestoreDebugValue(payload) as Record<string, unknown>,
     async commit(): Promise<{ id: string }> {
-      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-      await assertWithinPlanLimit(uid, "campaigns");
-      await setDoc(ref, payload);
-      await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
+      await reserveQuota(uid, "campaigns", 1);
+      try {
+        await setDoc(ref, payload);
+      } catch (err) {
+        await releaseQuota(uid, "campaigns", 1).catch(() => {});
+        throw err;
+      }
       return { id: ref.id };
     },
   };
@@ -153,6 +156,7 @@ export async function createCampaign(
 
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
+  await releaseQuota(uid, "campaigns", 1).catch(() => {});
 }
 
 export async function pauseCampaign(uid: string, id: string): Promise<void> {
@@ -185,31 +189,34 @@ export async function restartCampaign(uid: string, id: string): Promise<void> {
 export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
   const src = await getDoc(doc(fbDb(), "users", uid, "campaigns", id));
   if (!src.exists()) throw new Error("Campaign not found");
-  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-  await assertWithinPlanLimit(uid, "campaigns");
+  await reserveQuota(uid, "campaigns", 1);
   const data = src.data() as Record<string, unknown>;
   const db = fbDb();
   const ref = doc(collection(db, "users", uid, "campaigns"));
   const audiencePhones = (data.audiencePhones as string[] | undefined) ?? [];
-  await setDoc(
-    ref,
-    buildCampaignCreatePayload({
-      name: `${(data.name as string) ?? "Untitled"} (copy)`,
-      description: (data.description as string) ?? "",
-      messageType: ((data.messageType as string) ?? "text") as "text" | "template",
-      messageBody: (data.messageBody as string) ?? "",
-      templateName: (data.templateName as string | null) ?? null,
-      templateLanguage: (data.templateLanguage as string | null) ?? null,
-      selectedTemplateId: (data.selectedTemplateId as string | null) ?? null,
-      templateVariables: (data.templateVariables as string[] | undefined) ?? [],
-      variableSource: ((data.variableSource as string) ?? "static") as VariableSource,
-      staticVariableValues:
-        (data.staticVariableValues as Record<string, string> | undefined) ?? {},
-      contactFieldMap: (data.contactFieldMap as Record<string, string> | undefined) ?? {},
-      audiencePhones,
-    }),
-  );
-  await updateDoc(doc(db, "users", uid), { totalCampaigns: increment(1) }).catch(() => {});
+  try {
+    await setDoc(
+      ref,
+      buildCampaignCreatePayload({
+        name: `${(data.name as string) ?? "Untitled"} (copy)`,
+        description: (data.description as string) ?? "",
+        messageType: ((data.messageType as string) ?? "text") as "text" | "template",
+        messageBody: (data.messageBody as string) ?? "",
+        templateName: (data.templateName as string | null) ?? null,
+        templateLanguage: (data.templateLanguage as string | null) ?? null,
+        selectedTemplateId: (data.selectedTemplateId as string | null) ?? null,
+        templateVariables: (data.templateVariables as string[] | undefined) ?? [],
+        variableSource: ((data.variableSource as string) ?? "static") as VariableSource,
+        staticVariableValues:
+          (data.staticVariableValues as Record<string, string> | undefined) ?? {},
+        contactFieldMap: (data.contactFieldMap as Record<string, string> | undefined) ?? {},
+        audiencePhones,
+      }),
+    );
+  } catch (err) {
+    await releaseQuota(uid, "campaigns", 1).catch(() => {});
+    throw err;
+  }
   return { id: ref.id };
 }
 
