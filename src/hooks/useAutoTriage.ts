@@ -135,32 +135,39 @@ export function useAutoTriage(): void {
               lastByPhone.current.set(phone, Date.now());
               const user = fbAuth().currentUser;
               if (!user) return;
-              // Enforce AI-messages cap + plan expiry before spending a
-              // classification credit. If the plan is expired or the user
-              // has hit their maxAiMessages, skip triage silently.
+              // Atomically reserve an aiMessages slot BEFORE spending the
+              // classification credit. This closes the race window where
+              // parallel inbound messages could all pass the check and
+              // slip past maxAiMessages. Released on failure so a network
+              // error doesn't burn quota.
+              let aiQuotaReserved = false;
               try {
-                const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-                await assertWithinPlanLimit(uid, "aiMessages", 1);
+                const { reserveQuota } = await import("@/lib/plans/limits");
+                await reserveQuota(uid, "aiMessages", 1);
+                aiQuotaReserved = true;
               } catch (limitErr) {
                 // eslint-disable-next-line no-console
                 console.warn("auto-triage skipped (plan limit)", limitErr);
                 return;
               }
               const idToken = await user.getIdToken();
-              const result = await classifyMessage({
-                data: {
-                  idToken,
-                  text: body,
-                  categories: settings.categories,
-                  contactName,
-                },
-              });
-              // Bump AI usage counter only after a successful classification.
+              let result;
               try {
-                const { incrementAiMessagesUsed } = await import("@/lib/plans/limits");
-                await incrementAiMessagesUsed(uid, 1);
-              } catch {
-                /* non-fatal */
+                result = await classifyMessage({
+                  data: {
+                    idToken,
+                    text: body,
+                    categories: settings.categories,
+                    contactName,
+                  },
+                });
+              } catch (classifyErr) {
+                // Release the reserved slot — classification never happened.
+                if (aiQuotaReserved) {
+                  const { releaseQuota } = await import("@/lib/plans/limits");
+                  await releaseQuota(uid, "aiMessages", 1).catch(() => {});
+                }
+                throw classifyErr;
               }
               await applyTriageToConversation(
                 uid,

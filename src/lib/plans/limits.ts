@@ -48,6 +48,7 @@ const CONFIG: Record<LimitKind, LimitConfig> = {
     label: "templates",
     maxField: "maxTemplates",
     usedField: "templatesUsed",
+    profileField: "totalTemplates",
   },
   messages: {
     label: "messages",
@@ -285,7 +286,16 @@ export async function reserveQuota(
 
   await runTransaction(db, async (tx) => {
     const subSnap = await tx.get(subRef);
-    if (!subSnap.exists()) return; // legacy account without sub doc — skip
+    if (!subSnap.exists()) {
+      // Legacy account without subscription doc. Log loudly so admin can
+      // notice and back-fill, but don't block the action — otherwise every
+      // legacy user gets stuck at launch.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[limits] reserveQuota(${kind}) SKIPPED — user ${uid} has no subscription/current doc. Admin should assign a plan.`,
+      );
+      return;
+    }
     const sub = subSnap.data() as Record<string, unknown>;
 
     // Expiry / status guard (same rules as assertPlanActive).
@@ -306,7 +316,11 @@ export async function reserveQuota(
     }
 
     const max = num(sub[cfg.maxField]);
-    if (max > 0) {
+    if (max <= 0) {
+      // max=0 in the plan doc is treated as UNLIMITED by design.
+      // eslint-disable-next-line no-console
+      console.debug(`[limits] reserveQuota(${kind}) unlimited (max=0) for ${uid}`);
+    } else {
       const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
       // Profile counter read is best-effort; we only need it for a tighter
       // floor. Skip inside the tx to keep it single-doc atomic.
