@@ -659,33 +659,27 @@ export function Composer({
       const wamid = extractWamid(res.raw);
       if (!res.success) {
         if (quotaReserved) {
-          const { releaseQuota } = await import("@/lib/plans/limits");
-          await releaseQuota(uid, "messages", 1).catch(() => {});
+          await refundMessageQuota(uid);
           quotaReserved = false;
         }
-        await updateDoc(msgRef, { status: "failed", errorReason: res.message ?? "Send failed" });
+        await markSendFailed(msgRef, res.message ?? "Send failed");
         toast.error(res.message ?? "Could not send");
         return;
       }
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
         quotaReserved = false;
       }
       await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
       void markFirstResponseIfNeeded(uid, phone, selfUid);
     } catch (err) {
       if (quotaReserved) {
-        const { releaseQuota } = await import("@/lib/plans/limits");
-        await releaseQuota(uid, "messages", 1).catch(() => {});
+        await refundMessageQuota(uid);
       }
       if (msgRef) {
-        await updateDoc(msgRef, {
-          status: "failed",
-          errorReason: err instanceof Error ? err.message : "Send failed",
-        }).catch(() => {});
+        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
       }
-      toast.error(err instanceof Error ? err.message : "Could not send");
+      toast.error(errorMessageOf(err, "Could not send"));
     } finally {
       setUploading(false);
     }
