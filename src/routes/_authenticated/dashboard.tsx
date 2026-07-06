@@ -32,6 +32,7 @@ import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
+import { useLiveSubcollectionCount } from "@/hooks/useLiveSubcollectionCount";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +57,8 @@ function DashboardPage() {
   const { data: campaigns } = useCampaigns();
   const { data: campaignAgg } = useCampaignAggregate();
   const { data: liveMessages } = useLiveMessageCount();
+  const { data: liveContacts } = useLiveSubcollectionCount("contacts");
+  const { data: liveBots } = useLiveSubcollectionCount("bots");
 
   // Prefer LIVE counts over cached totals so deletions reflect immediately.
   // Cached counters (profile.totalX / subscription.xUsed) are quota meters
@@ -70,10 +73,11 @@ function DashboardPage() {
     usageCounts.messages ??
     0;
   const contactsUsed =
-    contacts?.length ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
+    liveContacts ?? contacts?.length ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
     campaignAgg?.totalCampaigns ?? campaigns?.length ?? usageCounts.campaigns ?? 0;
-  const botsUsed = bots?.length ?? usageCounts.bots ?? profile?.totalBots ?? 0;
+  const botsUsed =
+    liveBots ?? bots?.length ?? usageCounts.bots ?? profile?.totalBots ?? 0;
 
   return (
     <>
