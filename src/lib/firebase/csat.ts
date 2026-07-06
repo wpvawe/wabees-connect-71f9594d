@@ -24,6 +24,7 @@ import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/
 import { sendListMessage, sendTextMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 export const CSAT_ROW_PREFIX = "csat:";
 

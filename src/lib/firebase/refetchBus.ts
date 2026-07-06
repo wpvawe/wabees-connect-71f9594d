@@ -22,7 +22,8 @@ export type RefetchKey =
   | "supportChats"
   | "userSub"
   | "configDoc"
-  | "adminUsers";
+  | "adminUsers"
+  | "csatSurveys";
 
 type Listener = () => void;
 

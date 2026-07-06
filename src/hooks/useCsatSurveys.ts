@@ -3,11 +3,11 @@
  * the workload dashboard to compute team CSAT and by the settings screen
  * to show recent ratings.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
+  getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
 } from "firebase/firestore";
@@ -15,6 +15,7 @@ import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import type { CsatSurvey } from "@/lib/firebase/csat";
 import { toIso } from "@/lib/firebase/normalizers";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type CsatStats = {
   sent: number;
@@ -33,22 +34,23 @@ export function useCsatSurveys(max = 200): {
   const uid = useEffectiveUid();
   const [data, setData] = useState<CsatSurvey[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastLoadRef = useRef(0);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(
-      collection(db, `users/${uid}/csat_surveys`),
-      orderBy("sentAt", "desc"),
-      limit(max),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows: CsatSurvey[] = snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          const status = (() => {
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, `users/${uid}/csat_surveys`),
+          orderBy("sentAt", "desc"),
+          limit(max),
+        ),
+      );
+      const rows: CsatSurvey[] = snap.docs.map((d) => {
+        const x = d.data() as Record<string, unknown>;
+        const status = (() => {
             const s = typeof x.status === "string" ? x.status : "pending";
             return s === "responded" || s === "expired" || s === "failed"
               ? s
@@ -75,13 +77,30 @@ export function useCsatSurveys(max = 200): {
             respondedAt: toIso(x.respondedAt),
             error: typeof x.error === "string" ? x.error : null,
           };
-        });
-        setData(rows);
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      });
+      setData(rows);
+      lastLoadRef.current = Date.now();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "load failed");
+    }
   }, [uid, max]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("csatSurveys", () => {
+      void load();
+    });
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadRef.current < 5 * 60_000) return;
+      void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      unsub();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
 
   const stats = useMemo<CsatStats>(() => {
     const dist: [number, number, number, number, number] = [0, 0, 0, 0, 0];
