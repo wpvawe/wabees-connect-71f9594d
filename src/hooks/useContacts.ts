@@ -84,14 +84,6 @@ function subscribeShared(uid: string, cb: Sub): () => void {
     };
     const load = async () => {
       if (registration.loading) return;
-      // Skip if we already have fresh data (<5 min). Prevents
-      // visibility-change refetches on quick tab switches.
-      if (
-        registration.last.data &&
-        Date.now() - lastLoadedAt < 5 * 60_000
-      ) {
-        return;
-      }
       registration.loading = true;
       const next = await fetchContacts(uid);
       registration.loading = false;
@@ -102,7 +94,14 @@ function subscribeShared(uid: string, cb: Sub): () => void {
     void load();
     const unsubBus = subscribeRefetch("contacts", () => void load());
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      // Skip visibility refetch when data is <5 min old. Local mutations
+      // (via refetchBus above) still refresh immediately.
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadedAt > 5 * 60_000
+      ) {
+        void load();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     registration.cleanup = () => {
