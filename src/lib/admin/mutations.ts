@@ -124,6 +124,7 @@ export async function setUserStatus(uid: string, status: string) {
     }
   }
   void logAudit("user.status", uid, { status });
+  bumpRefetch("adminUsers");
 }
 
 export async function setUserRole(uid: string, role: string) {
@@ -136,6 +137,7 @@ export async function setUserRole(uid: string, role: string) {
     updatedAt: serverTimestamp(),
   });
   void logAudit("user.role", uid, { role });
+  bumpRefetch("adminUsers");
 }
 
 // Restricted whitelist to prevent arbitrary field overwrites from the admin
@@ -154,6 +156,7 @@ export async function setUserField(uid: string, field: string, value: unknown) {
     updatedAt: serverTimestamp(),
   });
   void logAudit("user.field", uid, { field, value });
+  bumpRefetch("adminUsers");
 }
 
 // Hard-delete a user + all subcollections we know about. This is destructive
@@ -209,6 +212,7 @@ export async function deleteUserData(uid: string) {
     /* absent */
   }
   void logAudit("user.delete", uid, {});
+  bumpRefetch("adminUsers");
 }
 
 // Broadcast a custom notification. `uids: null` means "every user" and paginates
