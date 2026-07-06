@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { collection, doc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, doc, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { toIso } from "@/lib/firebase/normalizers";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type Campaign = {
   id: string;
@@ -40,19 +41,19 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
   const [data, setData] = useState<Campaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const q = query(
-      collection(db, `users/${uid}/campaigns`),
-      orderBy("createdAt", "desc"),
-      limit(100),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows: Campaign[] = snap.docs
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, `users/${uid}/campaigns`),
+          orderBy("createdAt", "desc"),
+          limit(100),
+        ),
+      );
+      const rows: Campaign[] = snap.docs
           .map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
@@ -97,20 +98,30 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
               completedAt: toIso(x.completedAt),
             };
           })
-          // Pending server timestamps arrive as null on the local snapshot
-          // for a moment; treat them as newest so a freshly created campaign
-          // appears at the top of the list immediately.
           .sort((a, b) => {
             const av = a.createdAt ?? "\uffff";
             const bv = b.createdAt ?? "\uffff";
             return bv.localeCompare(av);
           });
-        setData(rows);
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      setData(rows);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }, [uid]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("campaigns", () => void load());
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      unsub();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
 
   return { data, error };
 }
