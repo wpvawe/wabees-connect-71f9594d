@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, getCountFromServer } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { fetchCached } from "@/lib/firebase/countCache";
 
 /**
  * One-shot server-side count of the owner's messages subcollection. Unlike
@@ -24,10 +25,13 @@ export function useLiveMessageCount(): { data: number | null; loading: boolean }
     if (!db) return;
     let cancelled = false;
     setLoading(true);
-    getCountFromServer(collection(db, `users/${uid}/messages`))
-      .then((snap) => {
+    fetchCached<number>(`count:${uid}/messages`, async () => {
+      const snap = await getCountFromServer(collection(db, `users/${uid}/messages`));
+      return snap.data().count;
+    })
+      .then((value) => {
         if (cancelled) return;
-        setData(snap.data().count);
+        setData(value);
         setLoading(false);
       })
       .catch(() => {
