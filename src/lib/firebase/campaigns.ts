@@ -355,6 +355,7 @@ export async function runCampaign(
       failed++;
       if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
     }
+    if (ok && quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
     const wamid = (res.raw?.messages as Array<{ id?: string }> | undefined)?.[0]?.id ?? null;
     await setDoc(doc(collection(campaignRef, "logs")), {
       phone: to,

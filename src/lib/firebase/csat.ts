@@ -188,7 +188,10 @@ export async function sendCsatSurvey(args: {
     });
     return null;
   }
-  quotaReserved = false;
+  if (quotaReserved) {
+    await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+    quotaReserved = false;
+  }
   await updateDoc(surveyRef, { wamid });
   // Stamp the conversation so cooldown-aware auto-sends can skip repeats.
   try {
@@ -250,7 +253,10 @@ export async function recordCsatRating(args: {
     quota_reserved: true,
   })
     .then(async (r) => {
-      if (r?.success) quotaReserved = false;
+      if (r?.success) {
+        await releaseQuota(ownerUid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       else if (quotaReserved) await releaseQuota(ownerUid, "messages", 1).catch(() => {});
     })
     .catch(async () => {

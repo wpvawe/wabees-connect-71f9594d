@@ -181,7 +181,10 @@ export function useScheduledDispatcher() {
                 });
                 continue;
               }
-              quotaReserved = false;
+              if (quotaReserved) {
+                await releaseQuota(uid!, "messages", 1).catch(() => {});
+                quotaReserved = false;
+              }
               // Write into the main messages stream so the inbox shows it.
               const msgRef = await addDoc(collection(db!, `users/${uid}/messages`), {
                 contactPhone: phone,

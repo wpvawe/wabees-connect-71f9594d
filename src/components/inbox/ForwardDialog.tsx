@@ -165,7 +165,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const bad = results.length - ok;
-      if (bad > 0) await releaseQuota(uid, "messages", bad).catch(() => {});
+      await releaseQuota(uid, "messages", list.length).catch(() => {});
       if (ok) toast.success(`Forwarded to ${ok} chat${ok > 1 ? "s" : ""}`);
       if (bad) toast.error(`${bad} forward${bad > 1 ? "s" : ""} failed`);
       onClose();

@@ -203,7 +203,11 @@ export function TemplateGrid() {
         }
         throw new Error(res.message ?? "Send failed");
       }
-      quotaReserved = false;
+      if (uid && quotaReserved) {
+        const { releaseQuota } = await import("@/lib/plans/limits");
+        await releaseQuota(uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       if (uid) {
         try {
           const db = fbDb();

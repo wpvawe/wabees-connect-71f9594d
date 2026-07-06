@@ -352,7 +352,7 @@ http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
 
 // After a successful Meta send, increment the owner's usage counters so
 // the next request can enforce the cap. Non-fatal on failure.
-if ($shouldMeter && !$clientReservedQuota && $ownerUid !== '' && $httpCode === 200 && function_exists('firestore_increment')) {
+if ($shouldMeter && $ownerUid !== '' && $httpCode === 200 && function_exists('firestore_increment')) {
     @firestore_increment("users/$ownerUid/subscription/current", 'messagesUsed', 1);
     @firestore_increment("users/$ownerUid", 'totalMessages', 1);
 }

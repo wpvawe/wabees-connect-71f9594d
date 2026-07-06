@@ -292,7 +292,10 @@ function LocationForm(p: {
         quotaReserved = false;
         return toast.error(res.message ?? "Send failed");
       }
-      quotaReserved = false;
+      if (quotaReserved) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -392,7 +395,10 @@ function ButtonsForm(p: {
         quotaReserved = false;
         return toast.error(res.message ?? "Send failed");
       }
-      quotaReserved = false;
+      if (quotaReserved) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -517,7 +523,10 @@ function CtaForm(p: {
         quotaReserved = false;
         return toast.error(res.message ?? "Send failed");
       }
-      quotaReserved = false;
+      if (quotaReserved) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -624,7 +633,10 @@ function ListForm(p: {
         quotaReserved = false;
         return toast.error(res.message ?? "Send failed");
       }
-      quotaReserved = false;
+      if (quotaReserved) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
