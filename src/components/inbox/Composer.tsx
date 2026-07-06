@@ -53,6 +53,13 @@ import { fbAuth } from "@/integrations/firebase/client";
 import { assignConversation } from "@/lib/firebase/assignments";
 import { markFirstResponseIfNeeded } from "@/lib/firebase/sla";
 import type { Message } from "@/hooks/useMessages";
+import {
+  errorMessageOf,
+  markSendFailed,
+  refundMessageQuota,
+  reserveMessageQuota,
+  resolveKnownContactName,
+} from "@/lib/inbox/sendHelpers";
 
 export function Composer({
   phone,
