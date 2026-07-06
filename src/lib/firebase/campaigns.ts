@@ -15,6 +15,7 @@ import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 export type VariableSource = "static" | "contact";
 
@@ -142,6 +143,7 @@ export function prepareCampaignCreate(uid: string, input: CreateCampaignInput) {
         await releaseQuota(uid, "campaigns", 1).catch(() => {});
         throw err;
       }
+      bumpRefetch("campaigns");
       return { id: ref.id };
     },
   };
@@ -157,14 +159,17 @@ export async function createCampaign(
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
   await releaseQuota(uid, "campaigns", 1).catch(() => {});
+  bumpRefetch("campaigns");
 }
 
 export async function pauseCampaign(uid: string, id: string): Promise<void> {
   await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), { status: "paused" });
+  bumpRefetch("campaigns");
 }
 
 export async function resumeCampaign(uid: string, id: string): Promise<void> {
   await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), { status: "running" });
+  bumpRefetch("campaigns");
 }
 
 export async function cancelCampaign(uid: string, id: string): Promise<void> {
@@ -172,6 +177,7 @@ export async function cancelCampaign(uid: string, id: string): Promise<void> {
     status: "completed",
     completedAt: serverTimestamp(),
   });
+  bumpRefetch("campaigns");
 }
 
 export async function restartCampaign(uid: string, id: string): Promise<void> {
@@ -184,6 +190,7 @@ export async function restartCampaign(uid: string, id: string): Promise<void> {
     startedAt: null,
     completedAt: null,
   });
+  bumpRefetch("campaigns");
 }
 
 export async function duplicateCampaign(uid: string, id: string): Promise<{ id: string }> {
