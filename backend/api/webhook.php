@@ -54,6 +54,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 // Only load Firebase config for POST requests (incoming webhooks)
 require_once __DIR__ . '/../config/firebase-config.php';
 
+function wabees_int_field(array $fields, string $key, int $fallback = 0): int
+{
+    if (isset($fields[$key]['integerValue'])) return (int)$fields[$key]['integerValue'];
+    if (isset($fields[$key]['doubleValue'])) return (int)$fields[$key]['doubleValue'];
+    return $fallback;
+}
+
+function wabees_timestamp_expired(array $fields): bool
+{
+    $expiryType = strtolower((string)($fields['expiryType']['stringValue'] ?? ''));
+    if ($expiryType === 'lifetime') return false;
+    $endDate = $fields['endDate']['timestampValue'] ?? ($fields['endDate']['stringValue'] ?? '');
+    return !empty($endDate) && strtotime((string)$endDate) < time();
+}
+
+function wabees_subscription_allows(string $userId, string $kind, int $additional = 1): bool
+{
+    $subResp = firestore_get_cached("users/$userId/subscription/current", 30);
+    if (($subResp['code'] ?? 404) !== 200) return false;
+    $fields = $subResp['data']['fields'] ?? [];
+    $status = strtolower((string)($fields['status']['stringValue'] ?? 'inactive'));
+    if ($status !== 'active' || wabees_timestamp_expired($fields)) return false;
+    $maxField = $kind === 'contacts' ? 'maxContacts' : ($kind === 'aiMessages' ? 'maxAiMessages' : 'maxMessages');
+    $usedField = $kind === 'contacts' ? 'contactsUsed' : ($kind === 'aiMessages' ? 'aiMessagesUsed' : 'messagesUsed');
+    $max = wabees_int_field($fields, $maxField, 0);
+    if ($max <= 0) return true;
+    $used = wabees_int_field($fields, $usedField, 0);
+    return ($used + $additional) <= $max;
+}
+
 // AI Bot configuration (API keys + defaults in separate secure config)
 require_once __DIR__ . '/../config/ai-config.php';
 
@@ -1892,7 +1922,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $tokens = get_user_access_token($userId);
             $accessToken = $tokens['accessToken'] ?? null;
         }
-        if ($accessToken) {
+        if ($accessToken && wabees_subscription_allows($userId, 'messages', 1)) {
             // ── SUBSCRIPTION ENFORCEMENT FOR KEYWORD BOTS ──────────────────────
             // Block keyword-bot triggers when the user's subscription is inactive,
             // expired, or has exhausted its message quota.
@@ -1941,7 +1971,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $tokens = get_user_access_token($userId);
             $aiAccessToken = $tokens['accessToken'] ?? null;
         }
-        if ($aiAccessToken) {
+        if ($aiAccessToken && wabees_subscription_allows($userId, 'messages', 1) && wabees_subscription_allows($userId, 'aiMessages', 1)) {
             try {
                 webhook_log("AI_BOT: CALLING _handle_ai_bot userId=$userId botFired=" . ($keywordBotFired ? 'yes' : 'no'));
                 _handle_ai_bot($user, $userId, $phoneNumberId, $from, $contactName, $messageBody, $aiAccessToken, $keywordBotFired);
@@ -2004,7 +2034,7 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
                 break;
             }
         }
-        if (!$contactExists) {
+        if (!$contactExists && wabees_subscription_allows($userId, 'contacts', 1)) {
             $contactDocId = 'contact_' . preg_replace('/[^a-zA-Z0-9]/', '', $from);
             $contactWrites[] = [
                 'update' => [
@@ -2088,7 +2118,7 @@ function auto_save_contact($userId, $phone, $contactName)
         }
     }
 
-    if (!$contactExists) {
+        if (!$contactExists && wabees_subscription_allows($userId, 'contacts', 1)) {
         // Create new contact
         $contactData = [
             'phone' => $phone,
