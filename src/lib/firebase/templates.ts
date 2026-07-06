@@ -10,6 +10,7 @@ import { fbDb } from "@/integrations/firebase/client";
 import { fetchMetaTemplates } from "@/lib/wabees/api";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { reserveQuota, releaseQuota } from "@/lib/plans/limits";
+import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
 type MetaTemplate = {
   id?: string;
@@ -182,5 +183,6 @@ export async function syncTemplatesFromMeta(
   // plan cap reflects the current active count. Only released on successful
   // batch commit; soft-flagged rows stay in Firestore for campaign lookups.
   if (deleted > 0) await releaseQuota(uid, "templates", deleted).catch(() => {});
+  bumpRefetch("templates");
   return { synced, deleted };
 }
