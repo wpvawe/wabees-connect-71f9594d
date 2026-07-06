@@ -559,16 +559,7 @@ export function Composer({
     // M-3 fix: preserve the contact's display name on optimistic media writes
     // too — without this, the conversation list briefly flashed back to the
     // raw phone number whenever you sent a photo/voice/document.
-    let knownName = normalizedPhone;
-    try {
-      const snap = await getDoc(doc(db, "users", uid, "conversations", convId));
-      const existing = snap.data()?.contactName;
-      if (typeof existing === "string" && existing && existing !== normalizedPhone) {
-        knownName = existing;
-      }
-    } catch {
-      /* fall back to phone */
-    }
+    const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
     let quotaReserved = false;
     // Voice-note flag is encoded in the file MIME (audio/ogg from opus-recorder)
     // & file extension. We only set is_voice=true for that specific shape so
@@ -584,11 +575,10 @@ export function Composer({
         return;
       }
       try {
-        const { reserveQuota } = await import("@/lib/plans/limits");
-        await reserveQuota(uid, "messages", 1);
+        await reserveMessageQuota(uid);
         quotaReserved = true;
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Message limit reached");
+        toast.error(errorMessageOf(e, "Message limit reached"));
         return;
       }
       const up = await uploadMedia({
