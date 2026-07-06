@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { toIso } from "@/lib/firebase/normalizers";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type Plan = {
   id: string;
@@ -74,14 +75,13 @@ export function usePlans(
   const [data, setData] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      collection(db, "plans"),
-      (snap) => {
-        const rows: Plan[] = snap.docs
-          .map((d) => {
+    try {
+      const snap = await getDocs(collection(db, "plans"));
+      const rows: Plan[] = snap.docs
+        .map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
               id: d.id,
@@ -116,12 +116,20 @@ export function usePlans(
           .filter((p) => includeInactive || p.isActive)
           .filter((p) => !publicOnly || p.showOnPublic)
           .sort((a, b) => a.sortOrder - b.sortOrder || a.priceMonthly - b.priceMonthly);
-        setData(rows);
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      setData(rows);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }, [includeInactive, publicOnly]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("plans", () => {
+      void load();
+    });
+    return () => unsub();
+  }, [load]);
 
   return { data, error };
 }
