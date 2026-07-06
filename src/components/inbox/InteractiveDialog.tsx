@@ -22,7 +22,7 @@ import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { whatsappRecipientId, normalizePhone, phoneDocId } from "@/lib/firebase/normalizers";
 import { fbDb } from "@/integrations/firebase/client";
 import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { assertWithinPlanLimit, incrementMessagesUsed } from "@/lib/plans/limits";
+import { releaseQuota, reserveQuota } from "@/lib/plans/limits";
 
 type Kind = "menu" | "location" | "buttons" | "cta" | "list";
 
@@ -229,8 +229,6 @@ async function persistOutgoing(
     },
     { merge: true },
   );
-  // Every successful interactive send counts against the plan quota (B-2).
-  if (wamid) await incrementMessagesUsed(uid, 1);
   return ref;
 }
 
@@ -266,9 +264,11 @@ function LocationForm(p: {
       return toast.error("Enter valid latitude & longitude");
     }
     setLoading(true);
+    let quotaReserved = false;
     try {
       try {
-        await assertWithinPlanLimit(p.uid, "messages", 1);
+        await reserveQuota(p.uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -284,9 +284,14 @@ function LocationForm(p: {
         name: name || undefined,
         address: addr || undefined,
         context_message_id: p.contextMessageId,
+        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
-      if (!res.success) return toast.error(res.message ?? "Send failed");
+      if (!res.success) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+        return toast.error(res.message ?? "Send failed");
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -302,6 +307,7 @@ function LocationForm(p: {
       );
       p.onDone();
     } catch (e) {
+      if (quotaReserved) await releaseQuota(p.uid, "messages", 1).catch(() => {});
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setLoading(false);
@@ -357,9 +363,11 @@ function ButtonsForm(p: {
     const filled = buttons.filter((b) => b.title.trim());
     if (filled.length === 0) return toast.error("At least one button required");
     setLoading(true);
+    let quotaReserved = false;
     try {
       try {
-        await assertWithinPlanLimit(p.uid, "messages", 1);
+        await reserveQuota(p.uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -375,9 +383,14 @@ function ButtonsForm(p: {
         footer_text: footer || undefined,
         buttons: filled,
         context_message_id: p.contextMessageId,
+        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
-      if (!res.success) return toast.error(res.message ?? "Send failed");
+      if (!res.success) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+        return toast.error(res.message ?? "Send failed");
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -394,6 +407,7 @@ function ButtonsForm(p: {
       );
       p.onDone();
     } catch (e) {
+      if (quotaReserved) await releaseQuota(p.uid, "messages", 1).catch(() => {});
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setLoading(false);
@@ -472,9 +486,11 @@ function CtaForm(p: {
     if (!displayText.trim()) return toast.error("Button text required");
     if (!/^https?:\/\//i.test(url)) return toast.error("URL must start with http(s)://");
     setLoading(true);
+    let quotaReserved = false;
     try {
       try {
-        await assertWithinPlanLimit(p.uid, "messages", 1);
+        await reserveQuota(p.uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -491,9 +507,14 @@ function CtaForm(p: {
         header_text: header || undefined,
         footer_text: footer || undefined,
         context_message_id: p.contextMessageId,
+        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
-      if (!res.success) return toast.error(res.message ?? "Send failed");
+      if (!res.success) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+        return toast.error(res.message ?? "Send failed");
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -511,6 +532,7 @@ function CtaForm(p: {
       );
       p.onDone();
     } catch (e) {
+      if (quotaReserved) await releaseQuota(p.uid, "messages", 1).catch(() => {});
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setLoading(false);
@@ -561,9 +583,11 @@ function ListForm(p: {
     const filled = rows.filter((r) => r.title.trim());
     if (filled.length === 0) return toast.error("At least one row required");
     setLoading(true);
+    let quotaReserved = false;
     try {
       try {
-        await assertWithinPlanLimit(p.uid, "messages", 1);
+        await reserveQuota(p.uid, "messages", 1);
+        quotaReserved = true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         return;
@@ -589,9 +613,14 @@ function ListForm(p: {
           },
         ],
         context_message_id: p.contextMessageId,
+        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
-      if (!res.success) return toast.error(res.message ?? "Send failed");
+      if (!res.success) {
+        await releaseQuota(p.uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+        return toast.error(res.message ?? "Send failed");
+      }
       await persistOutgoing(
         p.uid,
         p.phone,
@@ -608,6 +637,7 @@ function ListForm(p: {
       );
       p.onDone();
     } catch (e) {
+      if (quotaReserved) await releaseQuota(p.uid, "messages", 1).catch(() => {});
       toast.error(e instanceof Error ? e.message : "Send failed");
     } finally {
       setLoading(false);
