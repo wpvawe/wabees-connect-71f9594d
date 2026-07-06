@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useEffect, useRef } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { fbDbOrNull } from "@/integrations/firebase/client";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
@@ -19,6 +22,7 @@ import { usePendingSubscription } from "@/hooks/usePendingSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useContacts } from "@/hooks/useContacts";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import {
@@ -49,6 +53,7 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const { data: contacts } = useContacts();
+  const { data: campaignAgg } = useCampaignAggregate();
   const messages = useSubscriptionMessages();
   const { data: wa, loading: waLoading } = useWhatsAppConfig("effective");
   const uid = useFirebaseUid();
@@ -61,8 +66,39 @@ function PlansPage() {
     sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   const usedContacts =
     contacts?.length ?? sub?.contactsUsed ?? profile?.totalContacts ?? 0;
-  const usedCampaigns = sub?.campaignsUsed || profile?.totalCampaigns || 0;
+  // Prefer the server-side aggregate count (real number of campaign docs)
+  // over the maintained counter, because the counter can drift if a
+  // campaign is deleted outside deleteCampaign() or a reservation succeeds
+  // but the doc write fails partway. Falls back to the counters when the
+  // aggregate hasn't loaded yet.
+  const usedCampaigns =
+    campaignAgg?.totalCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
+
+  // One-shot self-heal: if the maintained counters disagree with the real
+  // campaign count, quietly correct them so the quota bar stops lying.
+  const healedRef = useRef(false);
+  useEffect(() => {
+    if (healedRef.current) return;
+    if (!uid || !sub || !campaignAgg) return;
+    const real = campaignAgg.totalCampaigns;
+    const subUsed = sub.campaignsUsed ?? 0;
+    const profUsed = profile?.totalCampaigns ?? 0;
+    if (subUsed === real && profUsed === real) return;
+    healedRef.current = true;
+    const db = fbDbOrNull();
+    if (!db) return;
+    void Promise.all([
+      subUsed !== real
+        ? updateDoc(doc(db, "users", uid, "subscription", "current"), {
+            campaignsUsed: real,
+          }).catch(() => {})
+        : Promise.resolve(),
+      profUsed !== real
+        ? updateDoc(doc(db, "users", uid), { totalCampaigns: real }).catch(() => {})
+        : Promise.resolve(),
+    ]);
+  }, [uid, sub, profile?.totalCampaigns, campaignAgg]);
 
   const pendingPlan = useMemo(
     () => plans?.find((p) => p.id === pending?.planId) ?? null,
