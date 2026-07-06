@@ -87,12 +87,21 @@ function subscribeShared(uid: string, cb: Sub): () => void {
       registration.loading = true;
       const next = await fetchContacts(uid);
       registration.loading = false;
+      lastLoadedAt = Date.now();
       emit(next);
     };
+    let lastLoadedAt = 0;
     void load();
     const unsubBus = subscribeRefetch("contacts", () => void load());
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      // Skip visibility refetch when data is <5 min old. Local mutations
+      // (via refetchBus above) still refresh immediately.
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadedAt > 5 * 60_000
+      ) {
+        void load();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     registration.cleanup = () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { fbDb, fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
@@ -28,6 +28,7 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
   const selfUid = useFirebaseUid();
   const [data, setData] = useState<Lead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid || !selfUid) return;
@@ -63,6 +64,7 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
       rows.sort((a, b) => (b.lastContactAt || "").localeCompare(a.lastContactAt || ""));
       setData(rows);
       setError(null);
+      lastLoadRef.current = Date.now();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -72,7 +74,12 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
     void load();
     const unsub = subscribeRefetch("leads", () => void load());
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadRef.current > 5 * 60_000
+      ) {
+        void load();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, doc, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -40,6 +40,9 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
   const uid = useEffectiveUid();
   const [data, setData] = useState<Campaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Track last successful load so visibility-change doesn't refetch on
+  // every tab switch. Refetches only when data is >5 min stale.
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -105,6 +108,7 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
           });
       setData(rows);
       setError(null);
+      lastLoadRef.current = Date.now();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -114,7 +118,12 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
     void load();
     const unsub = subscribeRefetch("campaigns", () => void load());
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadRef.current > 5 * 60_000
+      ) {
+        void load();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
