@@ -84,6 +84,15 @@ function wabees_subscription_allows(string $userId, string $kind, int $additiona
     return ($used + $additional) <= $max;
 }
 
+function wabees_increment_message_usage(string $userId, int $count = 1): void
+{
+    if ($count <= 0) return;
+    if (function_exists('firestore_increment')) {
+        @firestore_increment("users/$userId/subscription/current", 'messagesUsed', $count);
+        @firestore_increment("users/$userId", 'totalMessages', $count);
+    }
+}
+
 // AI Bot configuration (API keys + defaults in separate secure config)
 require_once __DIR__ . '/../config/ai-config.php';
 
@@ -2720,7 +2729,7 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
 
         if (!empty($validQuickReplies) || $validCta) {
             $GLOBALS['__bot_header_text'] = $validHeader;
-            send_bot_interactive_reply(
+            $mainSent = send_bot_interactive_reply(
                 $phoneNumberId,
                 $accessToken,
                 $from,
@@ -2731,8 +2740,9 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
             );
             unset($GLOBALS['__bot_header_text']);
         } else {
-            send_bot_text_reply($phoneNumberId, $accessToken, $from, $responseText);
+            $mainSent = send_bot_text_reply($phoneNumberId, $accessToken, $from, $responseText);
         }
+        $sentBotReplies = !empty($mainSent) ? 1 : 0;
         webhook_log('TIMER: wa_api_send=' . round((microtime(true) - $waSendStart) * 1000) . 'ms');
 
         // ============ SEND ADDITIONAL RESPONSES (multi-message) ============
@@ -2770,7 +2780,7 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
             webhook_log("BOT: Additional response " . ($idx + 1) . " for '$botName'");
             if (!empty($addQr) || $addCta) {
                 $GLOBALS['__bot_header_text'] = (!empty($addHeader) && trim($addHeader) !== '') ? $addHeader : null;
-                send_bot_interactive_reply(
+                $addSent = send_bot_interactive_reply(
                     $phoneNumberId,
                     $accessToken,
                     $from,
@@ -2781,8 +2791,9 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
                 );
                 unset($GLOBALS['__bot_header_text']);
             } else {
-                send_bot_text_reply($phoneNumberId, $accessToken, $from, $addText);
+                $addSent = send_bot_text_reply($phoneNumberId, $accessToken, $from, $addText);
             }
+            if (!empty($addSent)) $sentBotReplies++;
 
             // Store additional response in Firestore so it shows in chat
             $addDocId = 'msg_bot_' . time() . '_' . rand(10000, 99999) . '_add' . ($idx + 1);
@@ -2907,6 +2918,7 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
         // Additional responses are already committed individually above
         $botCommitStart = microtime(true);
         firestore_commit($writes);
+        wabees_increment_message_usage($userId, $sentBotReplies);
         webhook_log('TIMER: bot_firestore_commit=' . round((microtime(true) - $botCommitStart) * 1000) . 'ms (' . count($writes) . ' writes)');
 
         // Only trigger first matching bot (prevent multiple auto-replies)
@@ -3065,14 +3077,15 @@ function send_bot_interactive_reply($phoneNumberId, $accessToken, $to, $body, $f
             }
         } else {
             // Fallback
-            send_bot_text_reply($phoneNumberId, $accessToken, $to, $body);
-            return;
+            return send_bot_text_reply($phoneNumberId, $accessToken, $to, $body);
         }
 
         $result = _wa_relay_send($phoneNumberId, $accessToken, $payload);
         webhook_log("BOT REPLY (interactive): HTTP {$result['code']} ({$result['elapsed']}ms) => " . $result['response']);
+        return (int)($result['code'] ?? 0) >= 200 && (int)($result['code'] ?? 0) < 300;
     } catch (\Throwable $e) {
         webhook_log("SEND ERROR (interactive): " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+        return false;
     }
 }
 
@@ -3288,7 +3301,9 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
             $ahFile = sys_get_temp_dir() . '/wabees_ai_ah_' . md5($userId . '_' . $clientPhone) . '.lock';
             if (!file_exists($ahFile) || (time() - filemtime($ahFile)) > 14400) {
                 @file_put_contents($ahFile, time());
-                send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $afterHoursMsg);
+                if (send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $afterHoursMsg)) {
+                    wabees_increment_message_usage($userId, 1);
+                }
                 webhook_log("AI_BOT: After-hours message sent to $clientPhone");
             }
         }
@@ -3379,7 +3394,9 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
             $handoffSent = ($convFields['aiHandoffSent']['booleanValue'] ?? false);
             if ($handoffSent !== true && $handoffSent !== 'true') {
                 $handoffMsg = "Aap ka masla behtar tareeqe se samajhne ke liye main aap ko hamare team se connect karta/karti hoon. Woh jald aap se rabta karein ge. Shukriya! 🙏";
-                send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $handoffMsg);
+                if (send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $handoffMsg)) {
+                    wabees_increment_message_usage($userId, 1);
+                }
                 firestore_set("users/$userId/conversations/$clientPhone", ['aiHandoffSent' => true], true);
                 webhook_log("AI_BOT: Message cap reached ($aiMsgCount) — handoff message sent");
             }
@@ -3488,7 +3505,9 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
     foreach ($dumpPatterns as $pattern) {
         if (strpos($lowerBody, $pattern) !== false) {
             $safeReply = "I'm here to help you with " . ($configFields['businessName']['stringValue'] ?? 'our business') . "! 😊 What can I assist you with today?";
-            send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $safeReply);
+            if (send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $safeReply)) {
+                wabees_increment_message_usage($userId, 1);
+            }
             webhook_log("AI_BOT: PROMPT INJECTION detected pattern='$pattern' — safe reply sent, DeepSeek skipped");
             _save_ai_conversation($userId, $clientPhone, $clientName, $messageBody, $safeReply, $history);
             return;
@@ -3520,7 +3539,11 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
     webhook_log("AI_BOT: REPLY (" . strlen($aiReply) . " chars) in " . round((microtime(true) - $aiStart) * 1000) . "ms");
 
     // 13. Send reply via WhatsApp
-    send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $aiReply);
+    $aiSent = send_bot_text_reply($phoneNumberId, $accessToken, $clientPhone, $aiReply);
+    if (!$aiSent) {
+        webhook_log("AI_BOT: WhatsApp send failed — skipping Firestore/counter write");
+        return;
+    }
 
     // 14. BATCHED Firestore writes — single commit for all post-reply data
     $nowIso = gmdate('Y-m-d\TH:i:s\Z');
@@ -3587,6 +3610,7 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
     _save_ai_conversation($userId, $clientPhone, $clientName, $messageBody, $aiReply, $history);
     _extract_and_save_lead($userId, $clientPhone, $clientName, $messageBody, $aiReply, $configFields);
     firestore_increment("users/$userId/subscription/current", 'aiMessagesUsed', 1);
+    wabees_increment_message_usage($userId, 1);
 
     webhook_log("AI_BOT: COMPLETE client=$clientPhone used=" . ($usedThisMonth + 1) . "/$limit total=" . round((microtime(true) - $aiStart) * 1000) . "ms");
 }
