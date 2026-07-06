@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 
 export type Template = {
   id: string;
@@ -29,19 +30,20 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
   const [data, setData] = useState<Template[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      query(
-        collection(db, `users/${uid}/templates`),
-        orderBy("name", "asc"),
-        limit(500),
-      ),
-      (snap) => {
-        const rows: Template[] = snap.docs
-          .map((d) => {
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, `users/${uid}/templates`),
+          orderBy("name", "asc"),
+          limit(500),
+        ),
+      );
+      const rows: Template[] = snap.docs
+        .map((d) => {
             const x = d.data() as Record<string, unknown>;
             return {
               id: d.id,
@@ -79,12 +81,20 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
             };
           })
           .sort((a, b) => a.name.localeCompare(b.name));
-        setData(rows);
-      },
-      (err) => setError(err.message),
-    );
-    return () => unsub();
+      setData(rows);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }, [uid]);
+
+  useEffect(() => {
+    void load();
+    const unsub = subscribeRefetch("templates", () => {
+      void load();
+    });
+    return () => unsub();
+  }, [load]);
 
   return { data, error };
 }
