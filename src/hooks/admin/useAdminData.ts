@@ -524,9 +524,11 @@ export function useUserSubscription(uid: string | null): {
     setLoading(true);
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(
-      doc(db, "users", uid, "subscription", "current"),
-      (snap) => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDoc(doc(db!, "users", uid!, "subscription", "current"));
+        if (cancelled) return;
         setLoading(false);
         if (!snap.exists()) {
           setData(null);
@@ -553,10 +555,21 @@ export function useUserSubscription(uid: string | null): {
           aiMessagesUsed: (x.aiMessagesUsed as number) ?? 0,
           maxAiMessages: (x.maxAiMessages as number) ?? 0,
         });
-      },
-      () => setLoading(false),
-    );
-    return () => unsub();
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("userSub", () => void load());
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, [uid]);
   return { data, loading };
 }
@@ -570,11 +583,28 @@ export function useConfigDoc<T extends Record<string, unknown>>(
   useEffect(() => {
     const db = fbDbOrNull();
     if (!db) return;
-    const unsub = onSnapshot(doc(db, path[0], path[1]), (snap) => {
-      setLoading(false);
-      setData(snap.exists() ? ((snap.data() as unknown) as T) : null);
-    });
-    return () => unsub();
+    let cancelled = false;
+    async function load() {
+      try {
+        const snap = await getDoc(doc(db!, path[0], path[1]));
+        if (cancelled) return;
+        setLoading(false);
+        setData(snap.exists() ? ((snap.data() as unknown) as T) : null);
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const unsubBus = subscribeRefetch("configDoc", () => void load());
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      unsubBus();
+    };
   }, [path[0], path[1]]);
   return { data, loading };
 }
