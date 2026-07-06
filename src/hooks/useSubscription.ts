@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { toIso } from "@/lib/firebase/normalizers";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 
 export type Subscription = {
   id: string;
@@ -57,23 +56,20 @@ export function useSubscription(): {
       setLoading(false);
       return;
     }
-    const db = fbDbOrNull();
-    if (!db) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
-    const unsub = onSnapshot(
-      doc(db, "users", uid, "subscription", "current"),
-      (snap) => {
-        setLoading(false);
-        if (!snap.exists()) {
-          setData(null);
-          return;
-        }
-        const x = snap.data() as Record<string, unknown>;
-        setData({
-          id: snap.id,
+    const unsub = subscribeDoc(["users", uid, "subscription", "current"], (snap) => {
+      setLoading(false);
+      if (snap.error) {
+        setError(snap.error);
+        return;
+      }
+      if (!snap.exists || !snap.data) {
+        setData(null);
+        return;
+      }
+      const x = snap.data as Record<string, unknown>;
+      setData({
+          id: "current",
           planId: str(x.planId),
           planName: str(x.planName),
           status: str(x.status, "active"),
@@ -100,13 +96,8 @@ export function useSubscription(): {
           createdAt: toIso(x.createdAt),
           pendingPlanId: str(x.pendingPlanId) || null,
           pendingPlanName: str(x.pendingPlanName) || null,
-        });
-      },
-      (err) => {
-        setLoading(false);
-        setError(err.message);
-      },
-    );
+      });
+    });
     return () => unsub();
   }, [uid]);
 

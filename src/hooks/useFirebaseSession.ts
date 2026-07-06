@@ -13,8 +13,8 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbAuth, fbDb } from "@/integrations/firebase/client";
+import { fbAuth } from "@/integrations/firebase/client";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 import { repairWhatsAppOwnership } from "@/lib/firebase/whatsapp-config";
 import { repairWhatsAppOwnerServer } from "@/lib/firebase/owner-repair.functions";
 
@@ -193,29 +193,16 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      unsubProfile = onSnapshot(
-        doc(fbDb(), "users", user.uid),
-        (snap) => {
-          profileLoaded = true;
-          profile = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-          recomputeSession();
-        },
-        () => {
-          profileLoaded = true;
-          profile = {};
-          recomputeSession();
-        },
-      );
-      unsubConfig = onSnapshot(
-        doc(fbDb(), "users", user.uid, "whatsapp_config", "config"),
+      unsubProfile = subscribeDoc(["users", user.uid], (snap) => {
+        profileLoaded = true;
+        profile = snap.data ?? {};
+        recomputeSession();
+      });
+      unsubConfig = subscribeDoc(
+        ["users", user.uid, "whatsapp_config", "config"],
         (snap) => {
           configLoaded = true;
-          config = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-          recomputeSession();
-        },
-        () => {
-          configLoaded = true;
-          config = {};
+          config = snap.data ?? {};
           recomputeSession();
         },
       );
