@@ -72,28 +72,67 @@ export function useAllUsers(): { data: AdminUser[] | null; error: string | null 
     const db = fbDbOrNull();
     if (!db) return;
     // Was onSnapshot (200 docs streamed on every isOnline heartbeat /
-    // totalMessages increment — massive quota drain). Now one-shot
-    // getDocs on mount; refetch on window focus. Admins can navigate
-    // away and back for a fresh list.
+    // totalMessages increment — massive quota drain).
+    // Now:
+    //  1. sessionStorage cache (60s) so admin nav in/out doesn't re-fire
+    //     the 200-doc read every mount — this was the #1 billed query.
+    //  2. Refetch only on explicit admin mutations via refetchBus, NOT on
+    //     visibility change (tab-switch spam re-read all 200 docs).
     let cancelled = false;
     const q = query(collection(db, "users"), orderBy("createdAt", "desc"), limit(200));
-    async function load() {
+    const CACHE_KEY = "wb:adminUsers:v1";
+    const TTL_MS = 60_000;
+    type CachedShape = { at: number; rows: AdminUser[] };
+    function readCache(): CachedShape | null {
+      if (typeof window === "undefined") return null;
+      try {
+        const raw = window.sessionStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as CachedShape;
+        if (!parsed || typeof parsed.at !== "number") return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+    function writeCache(rows: AdminUser[]): void {
+      if (typeof window === "undefined") return;
+      try {
+        window.sessionStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({ at: Date.now(), rows }),
+        );
+      } catch {
+        /* ignore quota */
+      }
+    }
+    async function load(force = false) {
+      if (!force) {
+        const cached = readCache();
+        if (cached && Date.now() - cached.at < TTL_MS) {
+          setData(cached.rows);
+          return;
+        }
+        if (cached) {
+          // Serve stale immediately for instant paint, then refresh.
+          setData(cached.rows);
+        }
+      }
       try {
         const snap = await getDocs(q);
         if (cancelled) return;
-        setData(snap.docs.map((d) => toAdminUser(d.id, d.data() as Record<string, unknown>)));
+        const rows = snap.docs.map((d) => toAdminUser(d.id, d.data() as Record<string, unknown>));
+        writeCache(rows);
+        setData(rows);
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       }
     }
     void load();
-    const onFocus = () => {
-      if (document.visibilityState === "visible") void load();
-    };
-    document.addEventListener("visibilitychange", onFocus);
+    const unsubBus = subscribeRefetch("adminUsers", () => void load(true));
     return () => {
       cancelled = true;
-      document.removeEventListener("visibilitychange", onFocus);
+      unsubBus();
     };
   }, []);
   return { data, error };

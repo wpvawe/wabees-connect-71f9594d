@@ -21,7 +21,8 @@ export type RefetchKey =
   | "adminNotifications"
   | "supportChats"
   | "userSub"
-  | "configDoc";
+  | "configDoc"
+  | "adminUsers";
 
 type Listener = () => void;
 
