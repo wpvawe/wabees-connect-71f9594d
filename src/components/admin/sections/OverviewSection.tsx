@@ -13,6 +13,7 @@ import {
   faHeadset,
   faCreditCard,
   faCircleXmark,
+  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
@@ -21,11 +22,14 @@ import {
   usePendingSubscriptions,
   usePlatformCounts,
   useConfigDoc,
+  useUsersWithoutSubscription,
 } from "@/hooks/admin/useAdminData";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { setUserStatus, saveConfigDoc } from "@/lib/admin/mutations";
 import type { AdminSectionKey } from "@/components/admin/AdminShell";
+import { useState } from "react";
+import { UserDetailDrawer } from "@/components/admin/sections/UserDetailDrawer";
 
 export function OverviewSection({
   onNavigate,
@@ -36,10 +40,13 @@ export function OverviewSection({
   // Server-side aggregate counts — accurate even beyond the 200-user cap.
   const counts = usePlatformCounts();
   const { data: pending } = usePendingSubscriptions();
+  const { data: missingPlan, loading: missingLoading } =
+    useUsersWithoutSubscription(users);
   const { data: ann } = useConfigDoc<{ message?: string; active?: boolean }>([
     "config",
     "announcement",
   ]);
+  const [openUid, setOpenUid] = useState<string | null>(null);
 
   const pendingUsers = (users ?? []).filter((u) => u.status === "pending").slice(0, 5);
 
@@ -224,6 +231,79 @@ export function OverviewSection({
           )}
         </WbCardBody>
       </WbCard>
+
+      {/* Users without a plan — admin needs to assign */}
+      <WbCard>
+        <WbCardHeader
+          title="Users without a plan"
+          subtitle={
+            missingLoading
+              ? "Scanning accounts…"
+              : `${missingPlan?.length ?? 0} account${
+                  (missingPlan?.length ?? 0) === 1 ? "" : "s"
+                } need a subscription assigned`
+          }
+          right={
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">
+              <FontAwesomeIcon
+                icon={faTriangleExclamation}
+                className="mr-1 h-2.5 w-2.5"
+              />
+              Action needed
+            </span>
+          }
+        />
+        <WbCardBody>
+          {missingLoading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              <FontAwesomeIcon
+                icon={faCircleNotch}
+                className="mr-2 h-3.5 w-3.5 animate-spin"
+              />
+              Checking subscriptions…
+            </p>
+          ) : !missingPlan || missingPlan.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Every user has a plan assigned 🎉
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted-foreground">
+                These accounts have no <span className="font-mono">subscription/current</span>{" "}
+                doc. Plan limits are skipped for them until a plan is assigned.
+              </p>
+              <ul className="divide-y divide-border/60">
+                {missingPlan.slice(0, 10).map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {u.businessName || u.email || u.id}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {u.email || u.id}
+                        {u.phoneNumber ? ` · ${u.phoneNumber}` : ""}
+                      </p>
+                    </div>
+                    <WbButton size="sm" onClick={() => setOpenUid(u.id)}>
+                      Assign plan
+                    </WbButton>
+                  </li>
+                ))}
+              </ul>
+              {missingPlan.length > 10 && (
+                <p className="pt-3 text-center text-xs text-muted-foreground">
+                  +{missingPlan.length - 10} more — open the Users section to review.
+                </p>
+              )}
+            </>
+          )}
+        </WbCardBody>
+      </WbCard>
+
+      <UserDetailDrawer uid={openUid} onClose={() => setOpenUid(null)} />
     </div>
   );
 }
