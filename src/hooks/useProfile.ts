@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 
 export type Profile = {
   id: string;
@@ -37,16 +36,18 @@ export function useProfile(scope: "self" | "effective" = "self"): {
       return;
     }
     setLoading(true);
-    const unsub = onSnapshot(
-      doc(fbDb(), "users", uid),
-      (snap) => {
-        setLoading(false);
-        if (!snap.exists()) {
-          setData(null);
-          return;
-        }
-        const d = snap.data();
-        setData({
+    const unsub = subscribeDoc(["users", uid], (snap) => {
+      setLoading(false);
+      if (snap.error) {
+        setError(snap.error);
+        return;
+      }
+      if (!snap.exists || !snap.data) {
+        setData(null);
+        return;
+      }
+      const d = snap.data;
+      setData({
           id: uid,
           email: (d.email as string) ?? "",
           businessName: (d.businessName as string) ?? "",
@@ -60,13 +61,8 @@ export function useProfile(scope: "self" | "effective" = "self"): {
           totalCampaigns: (d.totalCampaigns as number) ?? 0,
           aiBotEnabled: Boolean(d.aiBotEnabled),
           whatsappConnected: d.whatsappConnected === true,
-        });
-      },
-      (err) => {
-        setLoading(false);
-        setError(err.message);
-      },
-    );
+      });
+    });
     return () => unsub();
   }, [uid]);
 
