@@ -288,8 +288,7 @@ export async function activatePendingSubscription(userId: string) {
       throw new Error("No pending request (already processed or removed)");
     }
     const raw = pendingSnap.data() as Record<string, unknown>;
-    const sub = (raw.subscription as Record<string, unknown>) ?? {};
-    const pid = (sub.planId as string) ?? "";
+    const pid = (raw.planId as string) ?? "";
     if (!pid) throw new Error("Pending request has no planId");
 
     const planSnap = await tx.get(doc(db, "plans", pid));
@@ -541,10 +540,7 @@ export async function rejectPendingSubscription(userId: string) {
   const pendingRef = doc(db, "pending_subscriptions", userId);
   const pendingSnap = await getDoc(pendingRef);
   const planName =
-    pendingSnap.exists()
-      ? ((pendingSnap.data()?.subscription as Record<string, unknown> | undefined)?.planName as string) ?? "plan"
-      : "plan";
-
+  const planName = (pendingSnap.data()?.planName as string) ?? "plan";
   const subRef = doc(db, "users", userId, "subscription", "current");
   try {
     await updateDoc(subRef, {
