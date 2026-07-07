@@ -269,6 +269,15 @@ service cloud.firestore {
         allow read, write: if isAdmin();
       }
 
+      // ============ Analytics Daily Rollup ============
+      // Client-side computed per-day aggregate cache under the owner's
+      // subtree. Only the owner (and their agents / admin) may read; only
+      // the owner writes — agents don't compute rollups.
+      match /analytics_daily/{dayId} {
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
+      }
+
       // ============ Agent Invites (owner's own list) ============
       // Owner creates/revokes invite tokens; agents can read for future
       // supervisor UI. Global mirror at /agent_invites/{code} handles the
