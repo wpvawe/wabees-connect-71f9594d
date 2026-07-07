@@ -238,7 +238,7 @@ function AnalyticsPage() {
                       Templates
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {templates?.length ?? 0}
+                      {totalTemplates}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
@@ -280,7 +280,7 @@ function AnalyticsPage() {
                       Contacts
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {contacts?.length ?? 0}
+                      {totalContacts}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center">
