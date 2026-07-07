@@ -70,6 +70,13 @@ function AgentsPage() {
   const session = useFirebaseSession();
   const dataOwner = session.status === "ready" ? session.dataOwner : null;
   const { data: agents, error } = useAgents();
+  const { data: sub } = useSubscription();
+  const { data: plans } = usePlans();
+  const activePlan = plans?.find((p) => p.id === sub?.planId) ?? null;
+  const maxAgents = activePlan?.maxAgents ?? sub?.maxAgents ?? 0;
+  const activeAgentsCount = (agents ?? []).filter(
+    (a) => a.status !== "revoked" && a.status !== "left",
+  ).length;
   const isOwner = !dataOwner && selfUid === ownerUid;
   const owner = useOwnerInfo();
 
