@@ -10,43 +10,40 @@
  * Unassigned only). Supervisors and owners see everything.
  */
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 
 export type AgentRole = "owner" | "supervisor" | "agent";
 
 export function useAgentRole(): AgentRole | null {
   const session = useFirebaseSession();
+  // Depend on primitives so a fresh session object per parent render
+  // doesn't tear down + re-attach the agent doc listener.
+  const ready = session.status === "ready";
+  const uid = ready ? session.uid : null;
+  const dataOwner = ready ? session.dataOwner : null;
   const [role, setRole] = useState<AgentRole | null>(null);
 
   useEffect(() => {
-    if (session.status !== "ready") {
+    if (!ready || !uid) {
       setRole(null);
       return;
     }
-    const { uid, dataOwner } = session;
     // No dataOwner override → this is the owner's own account.
     if (!dataOwner || dataOwner === uid) {
       setRole("owner");
       return;
     }
-    const db = fbDbOrNull();
-    if (!db) {
-      setRole("agent");
-      return;
-    }
-    const unsub = onSnapshot(
-      doc(db, `users/${dataOwner}/agents/${uid}`),
-      (snap) => {
-        const data = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-        const r = typeof data.role === "string" ? data.role : "agent";
-        setRole(r === "supervisor" ? "supervisor" : "agent");
-      },
-      () => setRole("agent"),
-    );
-    return () => unsub();
-  }, [session]);
+    return subscribeDoc(["users", dataOwner, "agents", uid], (snap) => {
+      if (snap.error) {
+        setRole("agent");
+        return;
+      }
+      const data = (snap.exists ? snap.data : {}) as Record<string, unknown>;
+      const r = typeof data?.role === "string" ? data.role : "agent";
+      setRole(r === "supervisor" ? "supervisor" : "agent");
+    });
+  }, [ready, uid, dataOwner]);
 
   return role;
 }

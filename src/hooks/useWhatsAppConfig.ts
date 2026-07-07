@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 
 export type WhatsAppConfig = {
   phone_number_id: string | null;
@@ -38,6 +37,8 @@ export function useWhatsAppConfig(scope: "self" | "effective" = "self"): {
     // Mirror the Flutter app: source of truth is `whatsapp_config/config`.
     // Also watch the top-level user doc for legacy fields written by older
     // website builds (whatsappPhoneNumberId, whatsappConnected, etc.).
+    // Both docs go through the shared docBroker so we don't duplicate the
+    // `users/{uid}` listener already opened by session/profile/ownerInfo.
     let userDoc: Record<string, unknown> | null = null;
     let subDoc: Record<string, unknown> | null = null;
     let userReady = false;
@@ -79,30 +80,26 @@ export function useWhatsAppConfig(scope: "self" | "effective" = "self"): {
         method: sub.connectedVia === "embedded_signup" ? "embedded_signup" : "manual",
       });
     }
-    const unsubUser = onSnapshot(
-      doc(fbDb(), "users", uid),
-      (snap) => {
-        userReady = true;
-        userDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
-        merge();
-      },
-      (err) => {
+    const unsubUser = subscribeDoc(["users", uid], (snap) => {
+      if (snap.error) {
         setLoading(false);
-        setError(err.message);
-      },
-    );
-    const unsubSub = onSnapshot(
-      doc(fbDb(), "users", uid, "whatsapp_config", "config"),
-      (snap) => {
-        subReady = true;
-        subDoc = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
-        merge();
-      },
-      (err) => {
+        setError(snap.error);
+        return;
+      }
+      userReady = true;
+      userDoc = snap.exists ? (snap.data as Record<string, unknown>) : null;
+      merge();
+    });
+    const unsubSub = subscribeDoc(["users", uid, "whatsapp_config", "config"], (snap) => {
+      if (snap.error) {
         setLoading(false);
-        setError(err.message);
-      },
-    );
+        setError(snap.error);
+        return;
+      }
+      subReady = true;
+      subDoc = snap.exists ? (snap.data as Record<string, unknown>) : null;
+      merge();
+    });
     return () => {
       unsubUser();
       unsubSub();

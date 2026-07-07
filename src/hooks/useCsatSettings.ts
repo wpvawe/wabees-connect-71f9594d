@@ -2,14 +2,13 @@
  * Live snapshot of the owner's CSAT settings. Agents inherit via effective UID.
  */
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import {
   DEFAULT_CSAT,
   csatSettingsPath,
   type CsatSettings,
 } from "@/lib/firebase/csat";
+import { subscribeDoc } from "@/lib/firebase/docBroker";
 
 export function useCsatSettings(): CsatSettings {
   const uid = useEffectiveUid();
@@ -17,16 +16,17 @@ export function useCsatSettings(): CsatSettings {
 
   useEffect(() => {
     if (!uid) return;
-    const db = fbDbOrNull();
-    if (!db) return;
-    const unsub = onSnapshot(
-      doc(db, csatSettingsPath(uid)),
-      (snap) => {
-        if (!snap.exists()) {
-          setS(DEFAULT_CSAT);
-          return;
-        }
-        const x = snap.data() as Record<string, unknown>;
+    const path = csatSettingsPath(uid).split("/");
+    return subscribeDoc(path, (snap) => {
+      if (snap.error) {
+        setS(DEFAULT_CSAT);
+        return;
+      }
+      if (!snap.exists || !snap.data) {
+        setS(DEFAULT_CSAT);
+        return;
+      }
+      const x = snap.data as Record<string, unknown>;
         setS({
           enabled: Boolean(x.enabled),
           autoOnResolve: x.autoOnResolve !== false,
@@ -44,10 +44,7 @@ export function useCsatSettings(): CsatSettings {
               ? x.commentPrompt
               : DEFAULT_CSAT.commentPrompt,
         });
-      },
-      () => setS(DEFAULT_CSAT),
-    );
-    return () => unsub();
+    });
   }, [uid]);
 
   return s;
