@@ -21,6 +21,11 @@ import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 
 const HEARTBEAT_MS = 90_000;
+// P-perf — coalesce visibility-change bursts. If we beat within this
+// window already, skip the redundant write. Modern browsers fire
+// `visibilitychange` on tab focus/blur, iOS Safari also on pageshow —
+// without a throttle we'd stack 2-3 writes per swipe.
+const MIN_BEAT_GAP_MS = 30_000;
 
 export function useAgentPresence(): void {
   const session = useFirebaseSession();
@@ -41,9 +46,17 @@ export function useAgentPresence(): void {
     const ref = doc(db, `users/${ownerUid}/agents/${uid}`);
     let cancelled = false;
     let emailWritten = false;
+    let lastOnline: boolean | null = null;
+    let lastBeatAt = 0;
 
-    const beat = async (online: boolean) => {
+    const beat = async (online: boolean, force = false) => {
       if (cancelled) return;
+      const now = Date.now();
+      // Skip if state hasn't flipped AND we beat recently. `force` bypasses
+      // for the initial mount beat and the unload write.
+      if (!force && lastOnline === online && now - lastBeatAt < MIN_BEAT_GAP_MS) return;
+      lastOnline = online;
+      lastBeatAt = now;
       try {
         const payload: Record<string, unknown> = {
           isOnline: online,
@@ -63,7 +76,7 @@ export function useAgentPresence(): void {
       }
     };
 
-    void beat(true);
+    void beat(true, true);
     const iv = window.setInterval(() => {
       if (document.visibilityState === "visible") void beat(true);
     }, HEARTBEAT_MS);
