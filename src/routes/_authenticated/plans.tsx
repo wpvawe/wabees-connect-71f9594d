@@ -23,6 +23,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { fetchCached } from "@/lib/firebase/countCache";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
+import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useAgents } from "@/hooks/useAgents";
@@ -57,6 +58,7 @@ function PlansPage() {
   const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
   const { data: realBots } = useOwnerCollectionCount("bots", "bots");
   const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
+  const { data: realMessages } = useLiveMessageCount();
   const { data: agents } = useAgents();
   const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
   useEffect(() => {
@@ -106,8 +108,9 @@ function PlansPage() {
 
   // Use maintained counters/list lengths only. Avoid Firestore aggregation
   // reads here because quota exhaustion blocks regular message fetching too.
+  // Same story as the dashboard — prefer the actual message doc count.
   const usedMessages =
-    sub?.messagesUsed ?? profile?.totalMessages ?? 0;
+    realMessages ?? sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   // Prefer the actively-maintained counter (decremented on delete) over
   // `profile.totalContacts` (a high-water mark that isn't decremented).
   // Using Math.max would show a stale count after batch deletes.

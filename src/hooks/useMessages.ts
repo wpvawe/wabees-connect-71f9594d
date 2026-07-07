@@ -86,8 +86,11 @@ export type Message = {
   flowResponse?: Record<string, unknown> | null;
 };
 
-const PAGE_SIZE = 300;
-const PAGE_STEP = 200;
+// Initial live listener window: keep it tight so opening a thread only
+// bills for the newest 20 messages. Older messages load lazily via
+// `loadMore` (also small pages) as the user scrolls back.
+const PAGE_SIZE = 20;
+const PAGE_STEP = 20;
 
 // Parse a raw Firestore message doc into our Message DTO. Extracted so
 // both the live snapshot handler and the `loadMore` one-shot fetch share
