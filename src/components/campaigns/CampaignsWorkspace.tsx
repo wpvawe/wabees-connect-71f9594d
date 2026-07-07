@@ -22,6 +22,9 @@ import {
   faEye,
 } from "@fortawesome/free-solid-svg-icons";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
+import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useCampaignLogs } from "@/hooks/useCampaignLogs";
 import {
   runCampaign,
@@ -59,6 +62,9 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function CampaignsWorkspace() {
   const { data, error } = useCampaigns();
+  const { data: agg } = useCampaignAggregate();
+  const { data: profile } = useProfile("effective");
+  const { data: sub } = useSubscription();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,9 +108,23 @@ export function CampaignsWorkspace() {
     <div className="space-y-5">
       {/* KPI row */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-        <Kpi icon={faBullhorn} label="Campaigns" value={stats.total} tone="primary" />
+        <Kpi
+          icon={faBullhorn}
+          label="Campaigns"
+          value={Math.max(
+            agg?.totalCampaigns ?? 0,
+            profile?.totalCampaigns ?? 0,
+            sub?.campaignsUsed ?? 0,
+            stats.total,
+          )}
+          tone="primary"
+        />
         <Kpi icon={faChartLine} label="Active" value={stats.active} tone="success" />
-        <Kpi icon={faPaperPlane} label="Messages sent" value={stats.sent} />
+        <Kpi
+          icon={faPaperPlane}
+          label="Messages sent"
+          value={Math.max(agg?.sent ?? 0, stats.sent)}
+        />
         <Kpi icon={faTriangleExclamation} label="Failed" value={stats.failed} tone="danger" />
       </div>
 

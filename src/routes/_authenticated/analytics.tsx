@@ -44,6 +44,9 @@ import { useContacts } from "@/hooks/useContacts";
 import { useAgents } from "@/hooks/useAgents";
 import { useConversations } from "@/hooks/useConversations";
 import { useCanManageTeam } from "@/hooks/useAgentRole";
+import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
+import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
@@ -69,6 +72,9 @@ function AnalyticsPage() {
   const { data: agents } = useAgents();
   const { data: conversations } = useConversations();
   const canSeeAgentPerf = useCanManageTeam();
+  const { data: campaignAgg } = useCampaignAggregate();
+  const { data: profile } = useProfile("effective");
+  const { data: sub } = useSubscription();
 
   // Build per-agent performance from live conversations + agents.
   // Owner/Supervisor only — scoped agents don't see this section.
@@ -134,10 +140,26 @@ function AnalyticsPage() {
   const completedCampaigns = campaigns?.filter((c) => (c.status || "").toLowerCase() === "completed").length ?? 0;
   // Use the loaded campaign rows only; avoid aggregation reads because they
   // can exhaust Firestore quota and interfere with regular message fetching.
-  const campaignSent = campaigns?.reduce((a, c) => a + (c.sentCount ?? 0), 0) ?? 0;
-  const campaignDelivered = campaigns?.reduce((a, c) => a + (c.deliveredCount ?? 0), 0) ?? 0;
-  const campaignRead = campaigns?.reduce((a, c) => a + (c.readCount ?? 0), 0) ?? 0;
-  const totalCampaigns = campaigns?.length ?? 0;
+  // Prefer the server-side aggregate (accurate across ALL campaigns);
+  // fall back to a reduce over the loaded page while it's loading.
+  const campaignSent =
+    campaignAgg?.sent ??
+    (campaigns?.reduce((a, c) => a + (c.sentCount ?? 0), 0) ?? 0);
+  const campaignDelivered =
+    campaignAgg?.delivered ??
+    (campaigns?.reduce((a, c) => a + (c.deliveredCount ?? 0), 0) ?? 0);
+  const campaignRead =
+    campaignAgg?.read ??
+    (campaigns?.reduce((a, c) => a + (c.readCount ?? 0), 0) ?? 0);
+  const totalCampaigns =
+    campaignAgg?.totalCampaigns ??
+    Math.max(sub?.campaignsUsed ?? 0, profile?.totalCampaigns ?? 0, campaigns?.length ?? 0);
+  const totalTemplates = Math.max(sub?.templatesUsed ?? 0, templates?.length ?? 0);
+  const totalContacts = Math.max(
+    profile?.totalContacts ?? 0,
+    sub?.contactsUsed ?? 0,
+    contacts?.length ?? 0,
+  );
 
   const topCampaigns = (campaigns ?? [])
     .filter((c) => (c.sentCount ?? 0) > 0)
@@ -216,7 +238,7 @@ function AnalyticsPage() {
                       Templates
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {templates?.length ?? 0}
+                      {totalTemplates}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
@@ -258,7 +280,7 @@ function AnalyticsPage() {
                       Contacts
                     </div>
                     <span className="text-2xl font-semibold text-foreground">
-                      {contacts?.length ?? 0}
+                      {totalContacts}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center">
