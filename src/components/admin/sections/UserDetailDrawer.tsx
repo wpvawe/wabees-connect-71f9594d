@@ -160,7 +160,7 @@ export function UserDetailDrawer({
               </div>
 
               {/* Current subscription */}
-              <SubscriptionCard sub={sub} loading={subLoading} />
+              <SubscriptionCard sub={sub} liveAgents={live.agents} loading={subLoading} />
 
               {/* Full plan management: assign, customise limits, extend expiry */}
               <PlanManagementCard uid={user.id} />
@@ -463,9 +463,11 @@ function StatTile({
 
 function SubscriptionCard({
   sub,
+  liveAgents,
   loading,
 }: {
   sub: UserSubscriptionRow | null;
+  liveAgents: number;
   loading: boolean;
 }) {
   return (
@@ -505,7 +507,7 @@ function SubscriptionCard({
                   ? `Renews ${format(new Date(sub.endDate), "PP")} · ${formatDistanceToNow(new Date(sub.endDate), { addSuffix: true })}`
                   : "No expiry date"}
             </p>
-            <LivePlanUsage sub={sub} />
+            <LivePlanUsage sub={sub} liveAgents={liveAgents} />
           </>
         )}
       </WbCardBody>
@@ -513,7 +515,7 @@ function SubscriptionCard({
   );
 }
 
-function LivePlanUsage({ sub }: { sub: UserSubscriptionRow }) {
+function LivePlanUsage({ sub, liveAgents }: { sub: UserSubscriptionRow; liveAgents: number }) {
   // Prefer the live plan definition (admin edits `plans/*` any time) so the
   // max* limits reflect the current plan, not the snapshotted values on
   // the user's subscription doc which can lag.
@@ -534,7 +536,7 @@ function LivePlanUsage({ sub }: { sub: UserSubscriptionRow }) {
       <UsageBar label="Campaigns" used={sub.campaignsUsed} max={maxCampaigns} />
       <UsageBar label="Bots" used={sub.botsUsed} max={maxBots} />
       <UsageBar label="Templates" used={sub.templatesUsed} max={maxTemplates} />
-      <UsageBar label="Agents" used={sub.agentsUsed} max={maxAgents} />
+      <UsageBar label="Agents" used={liveAgents} max={maxAgents} />
     </div>
   );
 }

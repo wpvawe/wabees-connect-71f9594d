@@ -671,6 +671,7 @@ export type UserLiveCounts = {
   contacts: number;
   bots: number;
   campaigns: number;
+  agents: number;
   loading: boolean;
 };
 
@@ -680,11 +681,12 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
     contacts: 0,
     bots: 0,
     campaigns: 0,
+    agents: 0,
     loading: true,
   });
   useEffect(() => {
     if (!uid) {
-      setState({ messages: 0, contacts: 0, bots: 0, campaigns: 0, loading: false });
+      setState({ messages: 0, contacts: 0, bots: 0, campaigns: 0, agents: 0, loading: false });
       return;
     }
     const db = fbDbOrNull();
@@ -696,11 +698,12 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
         const TTL = 5 * 60_000;
         const countOf = async (path: string[]) =>
           (await getCountFromServer(collection(db, path[0], ...path.slice(1)))).data().count;
-        const [messages, contacts, bots, campaigns] = await Promise.all([
+        const [messages, contacts, bots, campaigns, agents] = await Promise.all([
           fetchCached<number>(`admin:user:${uid}:messages`, () => countOf(["users", uid, "messages"]), TTL),
           fetchCached<number>(`admin:user:${uid}:contacts`, () => countOf(["users", uid, "contacts"]), TTL),
           fetchCached<number>(`admin:user:${uid}:bots`, () => countOf(["users", uid, "bots"]), TTL),
           fetchCached<number>(`admin:user:${uid}:campaigns`, () => countOf(["users", uid, "campaigns"]), TTL),
+          fetchCached<number>(`admin:user:${uid}:agents`, () => countOf(["users", uid, "agents"]), TTL),
         ]);
         if (cancelled) return;
         setState({
@@ -708,6 +711,7 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
           contacts: contacts ?? 0,
           bots: bots ?? 0,
           campaigns: campaigns ?? 0,
+          agents: agents ?? 0,
           loading: false,
         });
       } catch {
