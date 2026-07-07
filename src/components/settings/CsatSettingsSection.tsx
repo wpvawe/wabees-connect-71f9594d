@@ -53,29 +53,29 @@ export function CsatSettingsSection() {
       <WbCardBody className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3">
           <Metric
-            label="Response rate"
+            label="Recent response rate"
             value={
               stats.sent > 0
                 ? `${Math.round(stats.responseRate * 100)}%`
                 : "—"
             }
-            hint={`${stats.responded} / ${stats.sent} sent`}
+            hint={`${stats.responded} / ${stats.sent} sent · latest ${stats.sampleSize}/${stats.windowSize}`}
           />
           <Metric
-            label="Avg rating"
+            label="Recent avg rating"
             value={
               stats.averageRating != null
                 ? stats.averageRating.toFixed(2)
                 : "—"
             }
-            hint="1 (poor) — 5 (excellent)"
+            hint="Latest survey sample"
             icon={faStar}
             accent="text-amber-500"
           />
           <Metric
-            label="CSAT score"
+            label="Recent CSAT score"
             value={stats.csatPct != null ? `${Math.round(stats.csatPct)}%` : "—"}
-            hint="% rating 4★ or higher"
+            hint="% 4★+ in latest survey sample"
             icon={stats.csatPct != null && stats.csatPct >= 70 ? faSmile : faFrown}
             accent={
               stats.csatPct != null && stats.csatPct >= 70

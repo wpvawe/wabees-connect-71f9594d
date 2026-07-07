@@ -244,28 +244,28 @@ function WorkloadPage() {
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <CsatTile
             icon={faStar}
-            label="Avg CSAT"
+            label="Recent avg CSAT"
             value={csat.averageRating != null ? csat.averageRating.toFixed(2) : "—"}
-            hint={csat.responded > 0 ? `${csat.responded} ratings` : "No ratings yet"}
+            hint={csat.responded > 0 ? `${csat.responded} ratings · latest ${csat.sampleSize}/${csat.windowSize}` : `Latest ${csat.windowSize} surveys`}
           />
           <CsatTile
             icon={faSmile}
-            label="CSAT score"
+            label="Recent CSAT"
             value={csat.csatPct != null ? `${Math.round(csat.csatPct)}%` : "—"}
-            hint="% rating 4★+"
+            hint="% 4★+ in latest surveys"
             tone={csat.csatPct != null && csat.csatPct >= 70 ? "good" : csat.csatPct != null ? "bad" : "default"}
           />
           <CsatTile
             icon={faInbox}
             label="Surveys sent"
             value={String(csat.sent)}
-            hint={`${csat.responded} responded`}
+            hint={`${csat.responded} responded · latest ${csat.sampleSize}/${csat.windowSize}`}
           />
           <CsatTile
             icon={faGauge}
             label="Response rate"
             value={csat.sent > 0 ? `${Math.round(csat.responseRate * 100)}%` : "—"}
-            hint="Ratings / sent"
+            hint="Ratings / sent in latest surveys"
           />
         </div>
 

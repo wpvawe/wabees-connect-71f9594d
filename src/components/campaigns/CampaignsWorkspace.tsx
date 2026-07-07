@@ -101,6 +101,12 @@ export function CampaignsWorkspace() {
     () => (data && selectedId ? (data.find((c) => c.id === selectedId) ?? null) : null),
     [data, selectedId],
   );
+  const totalCampaignCount = Math.max(
+    agg?.totalCampaigns ?? 0,
+    profile?.totalCampaigns ?? 0,
+    sub?.campaignsUsed ?? 0,
+    stats.total,
+  );
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
 
@@ -111,12 +117,7 @@ export function CampaignsWorkspace() {
         <Kpi
           icon={faBullhorn}
           label="Campaigns"
-          value={Math.max(
-            agg?.totalCampaigns ?? 0,
-            profile?.totalCampaigns ?? 0,
-            sub?.campaignsUsed ?? 0,
-            stats.total,
-          )}
+          value={totalCampaignCount}
           tone="primary"
         />
         <Kpi icon={faChartLine} label="Active" value={stats.active} tone="success" />
@@ -146,7 +147,7 @@ export function CampaignsWorkspace() {
           {FILTERS.map((f) => {
             const count =
               f.key === "all"
-                ? (data?.length ?? 0)
+                ? totalCampaignCount
                 : (data?.filter((c) => c.status === f.key).length ?? 0);
             return (
               <button
