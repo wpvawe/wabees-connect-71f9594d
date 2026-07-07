@@ -99,10 +99,10 @@ function PlansPage() {
   // reads here because quota exhaustion blocks regular message fetching too.
   const usedMessages =
     sub?.messagesUsed ?? profile?.totalMessages ?? 0;
-  // Prefer maintained counters — the previous `contacts.length` fallback
-  // was capped at 2000 by useContacts() and silently under-reported.
-  const usedContacts =
-    Math.max(sub?.contactsUsed ?? 0, profile?.totalContacts ?? 0);
+  // Prefer the actively-maintained counter (decremented on delete) over
+  // `profile.totalContacts` (a high-water mark that isn't decremented).
+  // Using Math.max would show a stale count after batch deletes.
+  const usedContacts = sub?.contactsUsed ?? profile?.totalContacts ?? 0;
   // Prefer the server-side aggregate count (real number of campaign docs)
   // over the maintained counter, because the counter can drift if a
   // campaign is deleted outside deleteCampaign() or a reservation succeeds
