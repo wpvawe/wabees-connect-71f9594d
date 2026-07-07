@@ -12,4 +12,30 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    build: {
+      rollupOptions: {
+        output: {
+          // Split heavy vendor deps out of the main entry chunk so the
+          // auth landing page doesn't need to download firestore up front.
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (id.includes("@firebase/firestore") || id.includes("firebase/firestore")) {
+              return "firebase-firestore";
+            }
+            if (id.includes("@firebase/auth") || id.includes("firebase/auth")) {
+              return "firebase-auth";
+            }
+            if (id.includes("@firebase/") || id.includes("firebase/")) {
+              return "firebase-core";
+            }
+            if (id.includes("recharts") || id.includes("/d3-")) {
+              return "recharts";
+            }
+            return undefined;
+          },
+        },
+      },
+    },
+  },
 });
