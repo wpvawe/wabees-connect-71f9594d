@@ -29,6 +29,7 @@ import { WbEmpty } from "@/components/wb/WbEmpty";
 import { Switch } from "@/components/ui/switch";
 import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 import { useBots, type Bot } from "@/hooks/useBots";
+import { useProfile } from "@/hooks/useProfile";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { fbDb } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
