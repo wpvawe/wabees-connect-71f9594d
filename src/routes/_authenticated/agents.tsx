@@ -723,6 +723,8 @@ function AgentsPage() {
           ownerUid={selfUid}
           ownerEmail={currentEmail}
           ownerBusinessName={owner?.businessName ?? owner?.displayName ?? null}
+          activeAgentsCount={activeAgentsCount}
+          maxAgents={maxAgents}
         />
       )}
       <AlertDialog
