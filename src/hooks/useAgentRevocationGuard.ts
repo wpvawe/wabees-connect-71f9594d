@@ -24,10 +24,15 @@ import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 export function useAgentRevocationGuard(): void {
   const session = useFirebaseSession();
   const healedFor = useRef<string | null>(null);
+  // P-perf — depend on primitive fields so a fresh `session` object on
+  // every parent render doesn't tear down + re-attach this listener on
+  // `users/{owner}/agents/{uid}` each cycle.
+  const ready = session.status === "ready";
+  const uid = ready ? session.uid : null;
+  const dataOwner = ready ? session.dataOwner : null;
 
   useEffect(() => {
-    if (session.status !== "ready") return;
-    const { uid, dataOwner } = session;
+    if (!ready || !uid) return;
     if (!dataOwner || dataOwner === uid) return;
     const db = fbDbOrNull();
     if (!db) return;
@@ -98,5 +103,5 @@ export function useAgentRevocationGuard(): void {
       },
     );
     return () => unsub();
-  }, [session]);
+  }, [ready, uid, dataOwner]);
 }
