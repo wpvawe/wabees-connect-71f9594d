@@ -20,7 +20,6 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { usePendingSubscription } from "@/hooks/usePendingSubscription";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
-import { useContacts } from "@/hooks/useContacts";
 import { fetchCached } from "@/lib/firebase/countCache";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
@@ -52,7 +51,6 @@ function PlansPage() {
   const { data: sub, loading } = useSubscription();
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
-  const { data: contacts } = useContacts();
   const effectiveUid = useEffectiveUid();
   const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
   useEffect(() => {
@@ -101,8 +99,10 @@ function PlansPage() {
   // reads here because quota exhaustion blocks regular message fetching too.
   const usedMessages =
     sub?.messagesUsed ?? profile?.totalMessages ?? 0;
+  // Prefer maintained counters — the previous `contacts.length` fallback
+  // was capped at 2000 by useContacts() and silently under-reported.
   const usedContacts =
-    contacts?.length ?? sub?.contactsUsed ?? profile?.totalContacts ?? 0;
+    Math.max(sub?.contactsUsed ?? 0, profile?.totalContacts ?? 0);
   // Prefer the server-side aggregate count (real number of campaign docs)
   // over the maintained counter, because the counter can drift if a
   // campaign is deleted outside deleteCampaign() or a reservation succeeds
