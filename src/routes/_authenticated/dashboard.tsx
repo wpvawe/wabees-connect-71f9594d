@@ -15,6 +15,7 @@ import {
   faCrown,
   faPaperPlane,
   faUserGroup,
+  faFileLines,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { TopBar } from "@/components/shell/TopBar";
@@ -52,6 +53,7 @@ function DashboardPage() {
   const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
   const { data: realCampaigns } = useOwnerCollectionCount("campaigns", "campaigns");
   const { data: realBots } = useOwnerCollectionCount("bots", "bots");
+  const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
   const { data: preview } = useDashboardPreview();
   const conversations = preview.conversations;
   const contacts = preview.contacts;
@@ -68,6 +70,8 @@ function DashboardPage() {
   const maxContacts = activePlan?.maxContacts ?? subscription?.maxContacts ?? 0;
   const maxCampaigns = activePlan?.maxCampaigns ?? subscription?.maxCampaigns ?? 0;
   const maxBots = activePlan?.maxBots ?? subscription?.maxBots ?? 0;
+  const maxTemplates = activePlan?.maxTemplates ?? subscription?.maxTemplates ?? 0;
+  const maxAgents = activePlan?.maxAgents ?? subscription?.maxAgents ?? 0;
 
   // Use maintained counters/list lengths only. Firestore aggregation reads
   // can exhaust quota and block normal inbox/message reads for the workspace.
@@ -82,6 +86,9 @@ function DashboardPage() {
     realCampaigns ?? usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const botsUsed =
     realBots ?? usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
+  const templatesUsed =
+    realTemplates ?? subscription?.templatesUsed ?? 0;
+  const agentsUsed = (agents ?? []).filter((a) => a.status !== "revoked" && a.status !== "left").length;
 
   return (
     <>
@@ -157,7 +164,7 @@ function DashboardPage() {
             </section>
 
             {/* Usage stats */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <UsageStat
                 icon={faPaperPlane}
                 label="Messages"
@@ -181,6 +188,18 @@ function DashboardPage() {
                 label="Bots"
                 used={botsUsed}
                 max={maxBots}
+              />
+              <UsageStat
+                icon={faFileLines}
+                label="Templates"
+                used={templatesUsed}
+                max={maxTemplates}
+              />
+              <UsageStat
+                icon={faUserGroup}
+                label="Agents"
+                used={agentsUsed}
+                max={maxAgents}
               />
             </div>
 

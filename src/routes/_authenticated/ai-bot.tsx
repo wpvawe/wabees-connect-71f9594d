@@ -92,11 +92,9 @@ function AiBotPage() {
     setForm((f) => ({ ...(f ?? EMPTY_AI_CONFIG), [k]: v }));
   }
 
-  // Plan gating: AI bot requires the current plan to allow AI messages.
-  // maxAiMessages <= 0 on some plans is treated as unlimited; only an
-  // explicit 0 with a loaded subscription blocks the toggle.
-  const planAllowsAi =
-    !subscription || subscription.maxAiMessages !== 0;
+  // maxAiMessages <= 0 means unlimited in the plans system; per-account
+  // access is controlled by profile.aiBotEnabled.
+  const planAllowsAi = !subscription || subscription.maxAiMessages >= 0;
   const featureEnabled = profile?.aiBotEnabled === true && planAllowsAi;
 
   function handleEnableToggle(v: boolean) {

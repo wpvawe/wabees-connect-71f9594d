@@ -614,6 +614,7 @@ export type PlanInput = {
   maxBots: number;
   maxTemplates: number;
   maxAiMessages: number;
+  maxAgents: number;
   hasAnalytics: boolean;
   hasPrioritySupport: boolean;
   hasApiAccess: boolean;

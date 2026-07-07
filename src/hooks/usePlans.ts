@@ -17,6 +17,7 @@ export type Plan = {
   maxBots: number;
   maxTemplates: number;
   maxAiMessages: number;
+  maxAgents: number;
   hasAnalytics: boolean;
   hasPrioritySupport: boolean;
   hasApiAccess: boolean;
@@ -120,12 +121,13 @@ function shapePlan(id: string, x: Record<string, unknown>): Plan {
     priceMonthly: num(x.priceMonthly, num(x.price)),
     priceYearly: typeof x.priceYearly === "number" ? x.priceYearly : null,
     currency: str(x.currency, "PKR"),
-    maxMessages: num(x.maxMessages, 1000),
-    maxContacts: num(x.maxContacts, 100),
-    maxCampaigns: num(x.maxCampaigns, 5),
-    maxBots: num(x.maxBots, 2),
-    maxTemplates: num(x.maxTemplates, 10),
-    maxAiMessages: num(x.maxAiMessages, 300),
+    maxMessages: num(x.maxMessages),
+    maxContacts: num(x.maxContacts),
+    maxCampaigns: num(x.maxCampaigns),
+    maxBots: num(x.maxBots),
+    maxTemplates: num(x.maxTemplates),
+    maxAiMessages: num(x.maxAiMessages),
+    maxAgents: num(x.maxAgents),
     hasAnalytics: bool(x.hasAnalytics),
     hasPrioritySupport: bool(x.hasPrioritySupport),
     hasApiAccess: bool(x.hasApiAccess),
