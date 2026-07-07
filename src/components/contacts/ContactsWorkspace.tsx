@@ -27,6 +27,8 @@ import { WbButton } from "@/components/wb/WbButton";
 import { WbEmpty } from "@/components/wb/WbEmpty";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useProfile } from "@/hooks/useProfile";
+import { useSubscription } from "@/hooks/useSubscription";
 import {
   bulkImportContacts,
   deleteContact,
