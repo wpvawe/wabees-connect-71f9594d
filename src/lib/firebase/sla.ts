@@ -48,6 +48,15 @@ export async function saveSlaSettings(uid: string, s: SlaSettings): Promise<void
  * after an inbound message. Idempotent — no-op if already stamped since the
  * latest inbound. Safe to call unconditionally after every outbound send.
  */
+// P-perf — session-scoped cache: once we've confirmed a conversation is
+// stamped for the current inbound cycle we skip both the getDoc and setDoc
+// on every subsequent outgoing send in this session. The cache key is
+// `${uid}|${convId}`, value is the `lastIncomingMessageAt` ISO we last
+// confirmed as "already answered". If a new inbound arrives, its
+// `lastIncomingMessageAt` will be newer than the cached value so we
+// correctly re-check exactly once for the new cycle. Cleared on tab reload.
+const stampedFor = new Map<string, string>();
+
 export async function markFirstResponseIfNeeded(
   uid: string,
   phone: string,
@@ -56,6 +65,7 @@ export async function markFirstResponseIfNeeded(
   try {
     const db = fbDb();
     const convId = await resolveConversationDocId(uid, phone);
+    const cacheKey = `${uid}|${convId}`;
     const ref = doc(db, `users/${uid}/conversations/${convId}`);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
@@ -64,10 +74,15 @@ export async function markFirstResponseIfNeeded(
       ? data.lastIncomingMessageAt
       : null;
     if (!lastInbound) return;
+    // Fast path — already stamped for this inbound cycle in a prior send.
+    if (stampedFor.get(cacheKey) === lastInbound) return;
     const already =
       typeof data.firstResponseAt === "string" ? data.firstResponseAt : null;
     // Already responded to this inbound cycle → skip.
-    if (already && already >= lastInbound) return;
+    if (already && already >= lastInbound) {
+      stampedFor.set(cacheKey, lastInbound);
+      return;
+    }
     const inboundMs = Date.parse(lastInbound);
     const nowMs = Date.now();
     const elapsedMs = Math.max(0, nowMs - inboundMs);
@@ -80,6 +95,7 @@ export async function markFirstResponseIfNeeded(
       },
       { merge: true },
     );
+    stampedFor.set(cacheKey, lastInbound);
   } catch {
     // Non-fatal — SLA is telemetry, not blocking.
   }
