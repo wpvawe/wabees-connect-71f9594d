@@ -39,6 +39,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAgents } from "@/hooks/useAgents";
+import { useSubscription } from "@/hooks/useSubscription";
+import { usePlans } from "@/hooks/usePlans";
+import { UsageBar } from "@/components/plans/UsageBar";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
