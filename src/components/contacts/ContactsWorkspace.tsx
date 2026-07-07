@@ -29,6 +29,7 @@ import { useContacts, type Contact } from "@/hooks/useContacts";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import {
   bulkImportContacts,
   deleteContact,
@@ -57,10 +58,9 @@ export function ContactsWorkspace() {
   const uid = useEffectiveUid();
   const { data: profile } = useProfile("effective");
   const { data: sub } = useSubscription();
-  const authoritativeTotal = Math.max(
-    profile?.totalContacts ?? 0,
-    sub?.contactsUsed ?? 0,
-  );
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
+  const authoritativeTotal =
+    realContacts ?? Math.max(profile?.totalContacts ?? 0, sub?.contactsUsed ?? 0);
   const fileRef = useRef<HTMLInputElement>(null);
   const can = useCan();
   const canWrite = can("contacts.write");
@@ -225,7 +225,7 @@ export function ContactsWorkspace() {
           <p className="text-sm text-muted-foreground">
             {data === null
               ? "Loading your contacts…"
-              : `${Math.max(authoritativeTotal, stats.total)} contact${Math.max(authoritativeTotal, stats.total) === 1 ? "" : "s"} · ${stats.tags.length} tag${stats.tags.length === 1 ? "" : "s"}`}
+              : `${authoritativeTotal} contact${authoritativeTotal === 1 ? "" : "s"} · ${stats.tags.length} tag${stats.tags.length === 1 ? "" : "s"}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -264,7 +264,7 @@ export function ContactsWorkspace() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={faAddressBook} label="Total contacts" value={Math.max(authoritativeTotal, stats.total)} tone="primary" />
+        <StatCard icon={faAddressBook} label="Total contacts" value={authoritativeTotal} tone="primary" />
         <StatCard icon={faTag} label="With tags" value={stats.tagged} tone="accent" />
         <StatCard icon={faLayerGroup} label="Groups" value={stats.groups.length} tone="muted" />
         <StatCard icon={faMessage} label="Chatted with" value={stats.withMessages} tone="muted" />

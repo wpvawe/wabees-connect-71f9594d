@@ -28,6 +28,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { usePlans } from "@/hooks/usePlans";
 import { useDashboardPreview } from "@/hooks/useDashboardPreview";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { useMemo } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,9 @@ function DashboardPage() {
   const { data: agents } = useAgents();
   const { data: usageCounts } = useUsageCounts();
   const { data: plans } = usePlans({ includeInactive: true });
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
+  const { data: realCampaigns } = useOwnerCollectionCount("campaigns", "campaigns");
+  const { data: realBots } = useOwnerCollectionCount("bots", "bots");
   const { data: preview } = useDashboardPreview();
   const conversations = preview.conversations;
   const contacts = preview.contacts;
@@ -73,11 +77,11 @@ function DashboardPage() {
     usageCounts.messages ??
     0;
   const contactsUsed =
-    usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
+    realContacts ?? usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
-    usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
+    realCampaigns ?? usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const botsUsed =
-    usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
+    realBots ?? usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
 
   return (
     <>

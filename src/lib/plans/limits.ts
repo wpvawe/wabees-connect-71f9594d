@@ -1,6 +1,8 @@
 import {
+  collection,
   doc,
   getDoc,
+  getCountFromServer,
   increment,
   runTransaction,
   updateDoc,
@@ -19,6 +21,7 @@ export type LimitKind =
 type LimitConfig = {
   label: string;
   maxField: string;
+  collectionName?: string;
   usedField?: string; // on subscription doc
   profileField?: string; // fallback counter on users/{uid}
 };
@@ -27,24 +30,28 @@ const CONFIG: Record<LimitKind, LimitConfig> = {
   campaigns: {
     label: "campaigns",
     maxField: "maxCampaigns",
+    collectionName: "campaigns",
     usedField: "campaignsUsed",
     profileField: "totalCampaigns",
   },
   contacts: {
     label: "contacts",
     maxField: "maxContacts",
+    collectionName: "contacts",
     usedField: "contactsUsed",
     profileField: "totalContacts",
   },
   bots: {
     label: "bots",
     maxField: "maxBots",
+    collectionName: "bots",
     usedField: "botsUsed",
     profileField: "totalBots",
   },
   templates: {
     label: "templates",
     maxField: "maxTemplates",
+    collectionName: "templates",
     usedField: "templatesUsed",
     profileField: "totalTemplates",
   },
@@ -62,6 +69,7 @@ const CONFIG: Record<LimitKind, LimitConfig> = {
   agents: {
     label: "team members",
     maxField: "maxAgents",
+    collectionName: "agents",
     usedField: "agentsUsed",
   },
 };
@@ -140,12 +148,17 @@ export async function assertWithinPlanLimit(
   const max = num(sub[cfg.maxField]);
   if (max <= 0) return; // unlimited
 
+  const liveUsed = cfg.collectionName
+    ? await getCountFromServer(collection(db, "users", uid, cfg.collectionName))
+        .then((snap) => snap.data().count)
+        .catch(() => null)
+    : null;
   const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
   const profileUsed =
     cfg.profileField && profSnap.exists()
       ? num((profSnap.data() as Record<string, unknown>)[cfg.profileField])
       : 0;
-  const used = Math.max(subUsed, profileUsed);
+  const used = typeof liveUsed === "number" ? liveUsed : Math.max(subUsed, profileUsed);
 
   if (used + count > max) {
     const remaining = Math.max(0, max - used);
@@ -196,6 +209,17 @@ export async function incrementContactsUsed(uid: string, n = 1): Promise<void> {
     updateDoc(doc(db, "users", uid), { totalContacts: increment(n) }).catch(() => {}),
     updateDoc(doc(db, "users", uid, "subscription", "current"), {
       contactsUsed: increment(n),
+    }).catch(() => {}),
+  ]);
+}
+
+export async function incrementBotsUsed(uid: string, n = 1): Promise<void> {
+  if (!uid || n === 0) return;
+  const db = fbDb();
+  await Promise.all([
+    updateDoc(doc(db, "users", uid), { totalBots: increment(n) }).catch(() => {}),
+    updateDoc(doc(db, "users", uid, "subscription", "current"), {
+      botsUsed: increment(n),
     }).catch(() => {}),
   ]);
 }
@@ -271,8 +295,13 @@ export async function reserveQuota(
 
     const max = num(sub[cfg.maxField]);
     if (max > 0) {
-      const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
-      const used = subUsed;
+        const liveUsed = cfg.collectionName
+          ? await getCountFromServer(collection(db, "users", uid, cfg.collectionName))
+              .then((snap) => snap.data().count)
+              .catch(() => null)
+          : null;
+        const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
+        const used = typeof liveUsed === "number" ? liveUsed : subUsed;
       if (used + n > max) {
         const remaining = Math.max(0, max - used);
         const planName =

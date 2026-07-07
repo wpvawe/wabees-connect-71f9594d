@@ -47,6 +47,7 @@ import { useCanManageTeam } from "@/hooks/useAgentRole";
 import { useCampaignAggregate } from "@/hooks/useCampaignAggregate";
 import { useProfile } from "@/hooks/useProfile";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
@@ -75,6 +76,8 @@ function AnalyticsPage() {
   const { data: campaignAgg } = useCampaignAggregate();
   const { data: profile } = useProfile("effective");
   const { data: sub } = useSubscription();
+  const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
 
   // Build per-agent performance from live conversations + agents.
   // Owner/Supervisor only — scoped agents don't see this section.
@@ -154,12 +157,9 @@ function AnalyticsPage() {
   const totalCampaigns =
     campaignAgg?.totalCampaigns ??
     Math.max(sub?.campaignsUsed ?? 0, profile?.totalCampaigns ?? 0, campaigns?.length ?? 0);
-  const totalTemplates = Math.max(sub?.templatesUsed ?? 0, templates?.length ?? 0);
-  const totalContacts = Math.max(
-    profile?.totalContacts ?? 0,
-    sub?.contactsUsed ?? 0,
-    contacts?.length ?? 0,
-  );
+  const totalTemplates = realTemplates ?? Math.max(sub?.templatesUsed ?? 0, templates?.length ?? 0);
+  const totalContacts =
+    realContacts ?? Math.max(profile?.totalContacts ?? 0, sub?.contactsUsed ?? 0, contacts?.length ?? 0);
 
   const topCampaigns = (campaigns ?? [])
     .filter((c) => (c.sentCount ?? 0) > 0)

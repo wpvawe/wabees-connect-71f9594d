@@ -22,6 +22,7 @@ import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { fetchCached } from "@/lib/firebase/countCache";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import {
@@ -52,6 +53,8 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const effectiveUid = useEffectiveUid();
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
+  const { data: realBots } = useOwnerCollectionCount("bots", "bots");
   const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
   useEffect(() => {
     if (!effectiveUid) return;
@@ -102,7 +105,7 @@ function PlansPage() {
   // Prefer the actively-maintained counter (decremented on delete) over
   // `profile.totalContacts` (a high-water mark that isn't decremented).
   // Using Math.max would show a stale count after batch deletes.
-  const usedContacts = sub?.contactsUsed ?? profile?.totalContacts ?? 0;
+  const usedContacts = realContacts ?? sub?.contactsUsed ?? profile?.totalContacts ?? 0;
   // Prefer the server-side aggregate count (real number of campaign docs)
   // over the maintained counter, because the counter can drift if a
   // campaign is deleted outside deleteCampaign() or a reservation succeeds
@@ -110,7 +113,7 @@ function PlansPage() {
   // aggregate hasn't loaded yet.
   const usedCampaigns =
     realCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
-  const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
+  const usedBots = realBots ?? sub?.botsUsed ?? profile?.totalBots ?? 0;
 
   // Self-heal: if the snapshotted max* on subscription/current disagree with
   // the current plan definition, quietly sync them so future reads (and the
