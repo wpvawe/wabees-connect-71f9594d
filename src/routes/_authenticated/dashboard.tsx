@@ -73,19 +73,16 @@ function DashboardPage() {
   const maxTemplates = activePlan?.maxTemplates ?? subscription?.maxTemplates ?? 0;
   const maxAgents = activePlan?.maxAgents ?? subscription?.maxAgents ?? 0;
 
-  // Use maintained counters/list lengths only. Firestore aggregation reads
-  // can exhaust quota and block normal inbox/message reads for the workspace.
+  // Quota counters prefer live aggregate/subscription counters. Profile totals
+  // are only last-resort legacy fallbacks because they are high-water marks.
   const messagesUsed =
-    subscription?.messagesUsed ??
-    profile?.totalMessages ??
-    usageCounts.messages ??
-    0;
+    subscription?.messagesUsed ?? profile?.totalMessages ?? usageCounts.messages ?? 0;
   const contactsUsed =
-    realContacts ?? usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
+    realContacts ?? subscription?.contactsUsed ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
-    realCampaigns ?? usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
+    realCampaigns ?? subscription?.campaignsUsed ?? usageCounts.campaigns ?? profile?.totalCampaigns ?? 0;
   const botsUsed =
-    realBots ?? usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
+    realBots ?? subscription?.botsUsed ?? usageCounts.bots ?? profile?.totalBots ?? 0;
   const templatesUsed =
     realTemplates ?? subscription?.templatesUsed ?? 0;
   const agentsUsed = (agents ?? []).filter((a) => a.status !== "revoked" && a.status !== "left").length;
