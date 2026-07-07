@@ -286,10 +286,51 @@ export async function loadRangeAggregates(
         });
       }
     }
-    // Persist (fire-and-forget error handling — reads still work).
-    void writeDayAggregates(db, uid, fresh).catch(() => {});
+    // Persist (fire-and-forget error handling — reads still work). Past
+    // days are written unconditionally (first-time cache miss), but today's
+    // aggregate is throttled to once every TODAY_WRITE_THROTTLE_MS per
+    // session — reloading /analytics repeatedly used to re-write today's
+    // doc on every visit even though nothing about the rollup shape
+    // changed within seconds.
+    persistFreshDays(db, uid, fresh, todayId);
     for (const [id, day] of fresh) cached.set(id, day);
   }
 
   return cached;
+}
+
+/** Session cache of the last time we persisted today's aggregate per uid. */
+const lastTodayWrittenAt = new Map<string, number>();
+const TODAY_WRITE_THROTTLE_MS = 5 * 60_000;
+
+function persistFreshDays(
+  db: Firestore,
+  uid: string,
+  fresh: Map<string, DayAggregate>,
+  todayId: string,
+): void {
+  const today = fresh.get(todayId);
+  if (fresh.size === (today ? 1 : 0) && today) {
+    // Common path: only today is fresh — apply throttle.
+    const last = lastTodayWrittenAt.get(uid) ?? 0;
+    if (Date.now() - last < TODAY_WRITE_THROTTLE_MS) return;
+    lastTodayWrittenAt.set(uid, Date.now());
+    void writeDayAggregates(db, uid, new Map([[todayId, today]])).catch(() => {});
+    return;
+  }
+  // Mixed batch: write past days now (first-time misses), and only include
+  // today if it hasn't been throttled.
+  const toWrite = new Map<string, DayAggregate>();
+  for (const [id, day] of fresh) {
+    if (id === todayId) continue;
+    toWrite.set(id, day);
+  }
+  if (today) {
+    const last = lastTodayWrittenAt.get(uid) ?? 0;
+    if (Date.now() - last >= TODAY_WRITE_THROTTLE_MS) {
+      lastTodayWrittenAt.set(uid, Date.now());
+      toWrite.set(todayId, today);
+    }
+  }
+  if (toWrite.size > 0) void writeDayAggregates(db, uid, toWrite).catch(() => {});
 }
