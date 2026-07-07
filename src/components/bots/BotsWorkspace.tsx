@@ -110,6 +110,8 @@ export function BotsWorkspace() {
   const uid = useEffectiveUid();
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
+  const { data: profile } = useProfile("effective");
+  const totalBotsAuthoritative = Math.max(profile?.totalBots ?? 0, (data?.length ?? 0));
 
   const [mode, setMode] = useState<Mode>({ kind: "empty" });
   const [search, setSearch] = useState("");
@@ -242,7 +244,7 @@ export function BotsWorkspace() {
     <div className="space-y-5 px-4 py-6 sm:px-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi icon={faLayerGroup} label="Total bots" value={stats.total} tone="primary" />
+        <Kpi icon={faLayerGroup} label="Total bots" value={Math.max(totalBotsAuthoritative, stats.total)} tone="primary" />
         <Kpi icon={faCircleCheck} label="Active" value={stats.active} tone="success" />
         <Kpi icon={faKeyboard} label="Keyword" value={stats.keyword} />
         <Kpi icon={faBolt} label="Total triggers" value={stats.triggered} tone="warning" />
