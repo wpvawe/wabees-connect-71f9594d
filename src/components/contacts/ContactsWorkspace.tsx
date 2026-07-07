@@ -55,6 +55,12 @@ type CsvRow = {
 export function ContactsWorkspace() {
   const { data, error } = useContacts();
   const uid = useEffectiveUid();
+  const { data: profile } = useProfile("effective");
+  const { data: sub } = useSubscription();
+  const authoritativeTotal = Math.max(
+    profile?.totalContacts ?? 0,
+    sub?.contactsUsed ?? 0,
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const can = useCan();
   const canWrite = can("contacts.write");
