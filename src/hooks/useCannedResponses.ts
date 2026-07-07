@@ -10,6 +10,48 @@ import { str, toIso } from "@/lib/firebase/normalizers";
 import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 import type { CannedResponse } from "@/lib/firebase/canned";
 
+// Shared per-owner coalescing cache. Composer + settings both mount this;
+// without it each inbox thread swap re-billed the full canned collection.
+type RawSnap = Array<{ id: string; data: Record<string, unknown> }>;
+const REGISTRY = new Map<string, { at: number; docs: RawSnap }>();
+const INFLIGHT = new Map<string, Promise<RawSnap>>();
+const REGISTRY_TTL_MS = 60_000;
+
+async function fetchCannedCoalesced(
+  db: ReturnType<typeof fbDbOrNull>,
+  uid: string,
+): Promise<RawSnap> {
+  const hit = REGISTRY.get(uid);
+  if (hit && Date.now() - hit.at < REGISTRY_TTL_MS) return hit.docs;
+  const existing = INFLIGHT.get(uid);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db!, `users/${uid}/canned`),
+          orderBy("shortcut", "asc"),
+          limit(500),
+        ),
+      );
+      const docs: RawSnap = snap.docs.map((d) => ({
+        id: d.id,
+        data: d.data() as Record<string, unknown>,
+      }));
+      REGISTRY.set(uid, { at: Date.now(), docs });
+      return docs;
+    } finally {
+      INFLIGHT.delete(uid);
+    }
+  })();
+  INFLIGHT.set(uid, p);
+  return p;
+}
+
+function invalidateCanned(uid: string): void {
+  REGISTRY.delete(uid);
+}
+
 export function useCannedResponses(): {
   data: CannedResponse[] | null;
   error: string | null;
@@ -23,15 +65,9 @@ export function useCannedResponses(): {
     const db = fbDbOrNull();
     if (!db) return;
     try {
-      const snap = await getDocs(
-        query(
-          collection(db, `users/${uid}/canned`),
-          orderBy("shortcut", "asc"),
-          limit(500),
-        ),
-      );
-      const rows: CannedResponse[] = snap.docs.map((d) => {
-        const x = d.data() as Record<string, unknown>;
+      const docs = await fetchCannedCoalesced(db, uid);
+      const rows: CannedResponse[] = docs.map((d) => {
+        const x = d.data;
         return {
           id: d.id,
           shortcut: str(x.shortcut),
@@ -51,10 +87,11 @@ export function useCannedResponses(): {
   useEffect(() => {
     void load();
     const unsub = subscribeRefetch("canned", () => {
+      if (uid) invalidateCanned(uid);
       void load();
     });
     return () => unsub();
-  }, [load]);
+  }, [load, uid]);
 
   return { data, error };
 }
