@@ -28,11 +28,8 @@ import {
   type CannedResponse,
 } from "@/lib/firebase/canned";
 import {
-  addDoc,
-  collection,
   doc,
   getDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 import {
   sendTextMessage,
@@ -42,6 +39,7 @@ import {
   sendTypingIndicator,
   sendTemplateMessage,
 } from "@/lib/wabees/api";
+import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
@@ -53,6 +51,24 @@ import {
   runSendPipeline,
   type PipelineOutcome,
 } from "@/lib/inbox/sendHelpers";
+
+/** Map a pipeline outcome to a toast + return whether the send actually shipped. */
+function toastPipelineOutcome(outcome: PipelineOutcome, fallback: string): boolean {
+  switch (outcome.status) {
+    case "sent":
+      return true;
+    case "no-creds":
+      toast.error("Connect WhatsApp first");
+      return false;
+    case "quota":
+      toast.error(outcome.message || "Message limit reached");
+      return false;
+    case "meta-failed":
+    case "errored":
+      toast.error(outcome.message || fallback);
+      return false;
+  }
+}
 
 export function Composer({
   phone,
