@@ -33,11 +33,8 @@ import {
   doc,
   getDoc,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from "firebase/firestore";
 import {
-  extractWamid,
   sendTextMessage,
   sendMediaMessage,
   uploadMedia,
@@ -45,7 +42,6 @@ import {
   sendTypingIndicator,
   sendTemplateMessage,
 } from "@/lib/wabees/api";
-import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { fbDb } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { normalizePhone, phoneDocId, whatsappRecipientId } from "@/lib/firebase/normalizers";
@@ -54,11 +50,8 @@ import { assignConversation } from "@/lib/firebase/assignments";
 import { markFirstResponseIfNeeded } from "@/lib/firebase/sla";
 import type { Message } from "@/hooks/useMessages";
 import {
-  errorMessageOf,
-  markSendFailed,
-  refundMessageQuota,
-  reserveMessageQuota,
-  resolveKnownContactName,
+  runSendPipeline,
+  type PipelineOutcome,
 } from "@/lib/inbox/sendHelpers";
 
 export function Composer({
