@@ -281,85 +281,41 @@ export function Composer({
   async function sendTemplateNow(t: import("@/hooks/useTemplates").Template) {
     if (!uid || !selfUid || sending) return;
     setSending(true);
-    const normalizedPhone = normalizePhone(phone);
-    const convId = phoneDocId(phone);
-    const db = fbDb();
-    let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
-    // Hoisted so both the `catch` and the inline failure branches can refund.
-    let quotaReserved = false;
     try {
-      const creds = await loadWaConnection(selfUid);
-      if (!creds) {
-        toast.error("Connect WhatsApp first");
-        return;
-      }
-      // Atomic reserve — closes the race window so N parallel sends can't
-      // collectively exceed the plan cap. Released on send failure below.
-      try {
-        await reserveMessageQuota(uid);
-        quotaReserved = true;
-      } catch (e) {
-        toast.error(errorMessageOf(e, "Message limit reached"));
-        return;
-      }
-      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
-      msgRef = await addDoc(collection(db, "users", uid, "messages"), {
-        contactPhone: normalizedPhone,
-        contactName: knownName,
-        type: "template",
-        direction: "outgoing",
-        status: "pending",
-        body: t.body,
-        templateName: t.name,
-        headerText: t.header ?? null,
-        footerText: t.footer ?? null,
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(
-        doc(db, "users", uid, "conversations", convId),
-        {
+      const outcome = await runSendPipeline({
+        db: fbDb(),
+        uid,
+        selfUid,
+        phone,
+        fallbackError: "Could not send template",
+        optimisticDoc: (knownName, normalizedPhone) => ({
+          contactPhone: normalizedPhone,
+          contactName: knownName,
+          type: "template",
+          direction: "outgoing",
+          status: "pending",
+          body: t.body,
+          templateName: t.name,
+          headerText: t.header ?? null,
+          footerText: t.footer ?? null,
+        }),
+        summaryPatch: (knownName, normalizedPhone) => ({
           contactPhone: normalizedPhone,
           contactName: knownName,
           lastMessage: t.body,
           lastMessageType: "template",
-          lastMessageAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      const res = await sendTemplateMessage({
-        phone_number_id: creds.phone_number_id,
-        access_token: "",
-        to: whatsappRecipientId(phone),
-        template_name: t.name,
-        language_code: t.languageCode,
-        quota_reserved: true,
+        }),
+        sendToMeta: (creds) =>
+          sendTemplateMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: "",
+            to: whatsappRecipientId(phone),
+            template_name: t.name,
+            language_code: t.languageCode,
+            quota_reserved: true,
+          }),
       });
-      const wamid = extractWamid(res.raw);
-      if (!res.success) {
-        // Meta rejected — refund the reserved quota so counter stays accurate.
-        if (quotaReserved) {
-          await refundMessageQuota(uid);
-          quotaReserved = false;
-        }
-        await markSendFailed(msgRef, res.message ?? "Send failed");
-        toast.error(res.message ?? "Could not send template");
-        return;
-      }
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-        quotaReserved = false;
-      }
-      await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      // Counter already bumped atomically by reserveQuota() above.
-    } catch (err) {
-      // Release the reservation if we never actually sent (Meta call threw).
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-      }
-      if (msgRef) {
-        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
-      }
-      toast.error(errorMessageOf(err, "Could not send template"));
+      toastPipelineOutcome(outcome, "Could not send template");
     } finally {
       setSending(false);
     }
