@@ -24,13 +24,10 @@ import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useContacts } from "@/hooks/useContacts";
-import { useConversations } from "@/hooks/useConversations";
-import { useBots } from "@/hooks/useBots";
 import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
-import { useCampaigns } from "@/hooks/useCampaigns";
 import { usePlans } from "@/hooks/usePlans";
+import { useDashboardPreview } from "@/hooks/useDashboardPreview";
 import { useMemo } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -48,13 +45,13 @@ function DashboardPage() {
   const sessionLoading = session.status === "loading";
   const { data: profile } = useProfile("effective");
   const { data: subscription } = useSubscription();
-  const { data: contacts } = useContacts();
-  const { data: conversations } = useConversations();
-  const { data: bots } = useBots();
   const { data: agents } = useAgents();
   const { data: usageCounts } = useUsageCounts();
-  const { data: campaigns } = useCampaigns();
   const { data: plans } = usePlans({ includeInactive: true });
+  const { data: preview } = useDashboardPreview();
+  const conversations = preview.conversations;
+  const contacts = preview.contacts;
+  const bots = preview.bots;
 
   // Prefer the live plan definition over the snapshot stored on
   // subscription/current — admin edits to plans/* should be reflected
@@ -76,11 +73,11 @@ function DashboardPage() {
     usageCounts.messages ??
     0;
   const contactsUsed =
-    contacts?.length ?? usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
+    usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
-    campaigns?.length ?? usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
+    usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
   const botsUsed =
-    bots?.length ?? usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
+    usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
 
   return (
     <>
