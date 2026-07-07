@@ -10,7 +10,7 @@
  * Persisted locally to `localStorage` so the user's choice survives reloads
  * and is re-applied immediately on next sign-in (before the Firestore round-trip).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
@@ -43,20 +43,35 @@ export function useAgentAvailability(): {
     [],
   );
 
-  // Mirror the value onto the agent doc whenever it changes.
+  // P-perf — depend on primitive fields so a fresh `session` object on every
+  // parent render doesn't retrigger this effect and re-write the same
+  // availability value. Also short-circuit if the value we're about to
+  // write matches the last value we successfully wrote for this
+  // (owner, agent) pair — mount + status echo used to cost one write.
+  const ready = session.status === "ready";
+  const uid = ready ? session.uid : null;
+  const dataOwner = ready ? session.dataOwner : null;
+  const lastWrittenRef = useRef<{ key: string; value: Availability } | null>(null);
+
   useEffect(() => {
-    if (session.status !== "ready") return;
+    if (!ready || !uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const ownerUid = session.dataOwner || session.uid;
+    const ownerUid = dataOwner || uid;
+    const key = `${ownerUid}|${uid}`;
+    const last = lastWrittenRef.current;
+    if (last && last.key === key && last.value === status) return;
+    lastWrittenRef.current = { key, value: status };
     setDoc(
-      doc(db, `users/${ownerUid}/agents/${session.uid}`),
+      doc(db, `users/${ownerUid}/agents/${uid}`),
       { availability: status, availabilityUpdatedAt: serverTimestamp() },
       { merge: true },
     ).catch(() => {
-      /* best-effort */
+      // Rollback the marker so a transient error doesn't lock us out of
+      // retrying the next time status actually changes.
+      lastWrittenRef.current = null;
     });
-  }, [session, status]);
+  }, [ready, uid, dataOwner, status]);
 
   return { status, setStatus };
 }
