@@ -35,6 +35,17 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
     let currentDataOwner: string | null = null;
     let repairInFlight = false;
     let verifiedSelfPhoneNumberId = "";
+    // Snapshot of the last state we handed to React. Lets `applyState()` skip
+    // a redundant `setState()` when the profile / config listener fires for
+    // an unrelated field change (e.g. `totalMessages` incrementing on every
+    // ingested message). Without this, every context consumer re-renders on
+    // each counter bump — which cascades into a lot of downstream effects.
+    let lastState: State = { status: "loading" };
+    function applyState(next: State) {
+      if (statesEqual(lastState, next)) return;
+      lastState = next;
+      setState(next);
+    }
     function clearRepairTimer() {
       if (repairTimer) window.clearInterval(repairTimer);
       repairTimer = null;
@@ -54,13 +65,13 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
       repairInFlight = false;
       verifiedSelfPhoneNumberId = "";
       if (!u) {
-        setState({ status: "no_uid" });
+        applyState({ status: "no_uid" });
         return;
       }
       // Keep loading until the first profile snapshot arrives; otherwise
       // agent accounts briefly subscribe to their own empty subcollections
       // before `dataOwner` resolves to the owner UID.
-      setState({ status: "loading" });
+      applyState({ status: "loading" });
       const user = u;
       let profileLoaded = false;
       let configLoaded = false;
@@ -112,7 +123,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
               .then((ownerId) => {
                 if (ownerId && ownerId !== user.uid) {
                   currentDataOwner = ownerId;
-                  setState({
+                  applyState({
                     status: "ready",
                     uid: user.uid,
                     effectiveUid: ownerId,
@@ -132,17 +143,17 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
           verifiedSelfPhoneNumberId !== phoneNumberId
         ) {
           if (repairInFlight) {
-            setState({ status: "loading" });
+            applyState({ status: "loading" });
             return;
           }
           // Do not briefly expose `effectiveUid = self` for a connected account
           // until ownership is checked. That short wrong-state was enough for
           // inbox hooks to subscribe to the website-only data island.
-          setState({ status: "loading" });
+          applyState({ status: "loading" });
           void resolveOwner(phoneNumberId)
             .then((ownerId) => {
               if (ownerId && ownerId !== user.uid) {
-                setState({
+                applyState({
                   status: "ready",
                   uid: user.uid,
                   effectiveUid: ownerId,
@@ -151,7 +162,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
                 });
               } else if (ownerId === user.uid) {
                 verifiedSelfPhoneNumberId = phoneNumberId;
-                setState({
+                applyState({
                   status: "ready",
                   uid: user.uid,
                   effectiveUid: user.uid,
@@ -162,7 +173,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
                 // resolveOwner returned null (server unreachable / no candidate).
                 // Fall back to self so UI is not stuck on "loading" forever;
                 // the 30s interval will retry repair in the background.
-                setState({
+                applyState({
                   status: "ready",
                   uid: user.uid,
                   effectiveUid: user.uid,
@@ -174,7 +185,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
             .catch(() => {
               // On error fall back to self instead of staying stuck in loading;
               // the 30s interval will retry repair.
-              setState({
+              applyState({
                 status: "ready",
                 uid: user.uid,
                 effectiveUid: user.uid,
@@ -184,7 +195,7 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
             });
           return;
         }
-        setState({
+        applyState({
           status: "ready",
           uid: user.uid,
           effectiveUid: dataOwner ?? user.uid,
@@ -215,6 +226,18 @@ export function FirebaseSessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   return createElement(Ctx.Provider, { value: state }, children);
+}
+
+/** Shallow equality on the fields consumers actually observe. */
+function statesEqual(a: State, b: State): boolean {
+  if (a.status !== b.status) return false;
+  if (a.status !== "ready" || b.status !== "ready") return true;
+  return (
+    a.uid === b.uid &&
+    a.effectiveUid === b.effectiveUid &&
+    a.dataOwner === b.dataOwner &&
+    a.user === b.user
+  );
 }
 
 export function useFirebaseSession(): State {
