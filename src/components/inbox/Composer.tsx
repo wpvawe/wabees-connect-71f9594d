@@ -397,99 +397,59 @@ export function Composer({
       return;
     }
     setSending(true);
-    const normalizedPhone = normalizePhone(phone);
-    const to = phoneDocId(phone);
-    const convId = to;
-    const db = fbDb();
-    let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
-    let quotaReserved = false;
+    // Snapshot reply target — clears on optimistic write, but the Meta call
+    // (which runs after) still needs the original context_message_id.
+    const capturedReplyTo = replyTo;
+    // Auto-assign on first outgoing reply from an agent/owner if the
+    // conversation isn't already assigned. Silent — never blocks send.
+    void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
     try {
-      const creds = await loadWaConnection(selfUid);
-      if (!creds) {
-        toast.error("Connect WhatsApp first");
-        return;
-      }
-      // Atomic reserve (see reserveQuota docs) — no race window vs cap.
-      try {
-        await reserveMessageQuota(uid);
-        quotaReserved = true;
-      } catch (e) {
-        toast.error(errorMessageOf(e, "Message limit reached"));
-        return;
-      }
-      // H-1 fix: preserve the known contact name on optimistic writes so the
-      // thread header / conversation list don't briefly flash back to the
-      // raw phone number. Read from the conversation doc that already
-      // tracks contactName (best-effort, cached by Firestore SDK).
-      const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
-      // Auto-assign on first outgoing reply from an agent/owner if the
-      // conversation isn't already assigned. Silent — never blocks send.
-      void maybeAutoAssignOnReply(uid, selfUid, phone).catch(() => undefined);
-      // Optimistic write — message doc + conversation summary (Flutter pattern).
-      msgRef = await addDoc(collection(db, "users", uid, "messages"), {
-        contactPhone: normalizedPhone,
-        contactName: knownName,
-        type: "text",
-        direction: "outgoing",
-        status: "pending",
-        body,
-        ...(replyTo
-          ? {
-              replyToId: replyTo.id,
-              replyToBody: replyPreview(replyTo).slice(0, 200),
-              replyToWamid: replyTo.whatsappMessageId ?? null,
-              replyToType: replyTo.type ?? null,
-            }
-          : {}),
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(
-        doc(db, "users", uid, "conversations", convId),
-        {
+      const outcome = await runSendPipeline({
+        db: fbDb(),
+        uid,
+        selfUid,
+        phone,
+        fallbackError: "Could not send",
+        optimisticDoc: (knownName, normalizedPhone) => ({
+          contactPhone: normalizedPhone,
+          contactName: knownName,
+          type: "text",
+          direction: "outgoing",
+          status: "pending",
+          body,
+          ...(capturedReplyTo
+            ? {
+                replyToId: capturedReplyTo.id,
+                replyToBody: replyPreview(capturedReplyTo).slice(0, 200),
+                replyToWamid: capturedReplyTo.whatsappMessageId ?? null,
+                replyToType: capturedReplyTo.type ?? null,
+              }
+            : {}),
+        }),
+        summaryPatch: (knownName, normalizedPhone) => ({
           contactPhone: normalizedPhone,
           contactName: knownName,
           lastMessage: body,
           lastMessageType: "text",
-          lastMessageAt: serverTimestamp(),
+        }),
+        afterOptimistic: () => {
+          setText("");
+          onClearReply?.();
         },
-        { merge: true },
-      );
-      setText("");
-      onClearReply?.();
-      const res = await sendTextMessage({
-        phone_number_id: creds.phone_number_id,
-        access_token: "",
-        to: whatsappRecipientId(phone),
-        message: body,
-        context_message_id: whatsappContextMessageId(replyTo),
-        quota_reserved: true,
+        sendToMeta: (creds) =>
+          sendTextMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: "",
+            to: whatsappRecipientId(phone),
+            message: body,
+            context_message_id: whatsappContextMessageId(capturedReplyTo),
+            quota_reserved: true,
+          }),
+        onSuccess: () => {
+          void markFirstResponseIfNeeded(uid, phone, selfUid);
+        },
       });
-      const wamid = extractWamid(res.raw);
-      if (!res.success) {
-        // Refund the reservation — Meta rejected the send.
-        if (quotaReserved) {
-          await refundMessageQuota(uid);
-          quotaReserved = false;
-        }
-        await markSendFailed(msgRef, res.message ?? "Send failed");
-        toast.error(res.message ?? "Could not send");
-        return;
-      }
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-        quotaReserved = false;
-      }
-      await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      // Counter already atomically bumped in reserveQuota().
-      void markFirstResponseIfNeeded(uid, phone, selfUid);
-    } catch (err) {
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-      }
-      if (msgRef) {
-        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
-      }
-      toast.error(errorMessageOf(err, "Could not send"));
+      toastPipelineOutcome(outcome, "Could not send");
     } finally {
       setSending(false);
     }
