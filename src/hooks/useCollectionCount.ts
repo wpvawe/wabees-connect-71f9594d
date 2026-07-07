@@ -24,8 +24,9 @@ export function useOwnerCollectionCount(
     }
     const db = fbDbOrNull();
     if (!db) return;
+    const ownerUid = uid;
     let cancelled = false;
-    const cacheKey = `count:${uid}/${collectionName}`;
+    const cacheKey = `count:${ownerUid}/${collectionName}`;
 
     async function load(force = false) {
       if (force) invalidateCachedCount(cacheKey);
@@ -35,7 +36,7 @@ export function useOwnerCollectionCount(
           cacheKey,
           async () => {
             const snap = await getCountFromServer(
-              collection(db!, "users", uid, collectionName),
+              collection(db, `users/${ownerUid}/${collectionName}`),
             );
             return snap.data().count;
           },
