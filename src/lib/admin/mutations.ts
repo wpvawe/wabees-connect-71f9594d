@@ -379,6 +379,7 @@ function buildSubFromPlan(
   const carriedContacts = typeof current.contactsUsed === "number" ? current.contactsUsed : 0;
   const carriedBots = typeof current.botsUsed === "number" ? current.botsUsed : 0;
   const carriedTemplates = typeof current.templatesUsed === "number" ? current.templatesUsed : 0;
+  const carriedAgents = typeof current.agentsUsed === "number" ? current.agentsUsed : 0;
 
   return {
     id: "current",
@@ -390,6 +391,7 @@ function buildSubFromPlan(
     campaignsUsed: 0,
     botsUsed: carriedBots,
     templatesUsed: carriedTemplates,
+    agentsUsed: carriedAgents,
     aiMessagesUsed: 0,
     maxMessages: (plan.maxMessages as number) ?? 0,
     maxContacts: (plan.maxContacts as number) ?? 0,
@@ -397,6 +399,7 @@ function buildSubFromPlan(
     maxBots: (plan.maxBots as number) ?? 0,
     maxTemplates: (plan.maxTemplates as number) ?? 0,
     maxAiMessages: (plan.maxAiMessages as number) ?? 0,
+    maxAgents: (plan.maxAgents as number) ?? 0,
     hasAnalytics: Boolean(plan.hasAnalytics),
     hasPrioritySupport: Boolean(plan.hasPrioritySupport),
     hasApiAccess: Boolean(plan.hasApiAccess),
@@ -464,6 +467,7 @@ export type SubscriptionOverrides = {
   maxBots?: number;
   maxTemplates?: number;
   maxAiMessages?: number;
+  maxAgents?: number;
   hasAnalytics?: boolean;
   hasPrioritySupport?: boolean;
   hasApiAccess?: boolean;
@@ -614,6 +618,7 @@ export type PlanInput = {
   maxBots: number;
   maxTemplates: number;
   maxAiMessages: number;
+  maxAgents: number;
   hasAnalytics: boolean;
   hasPrioritySupport: boolean;
   hasApiAccess: boolean;

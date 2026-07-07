@@ -22,8 +22,10 @@ import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { useProfile } from "@/hooks/useProfile";
 import { fetchCached } from "@/lib/firebase/countCache";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useAgents } from "@/hooks/useAgents";
 import {
   requestSubscription,
   postSubscriptionRequestToSupport,
@@ -52,6 +54,10 @@ function PlansPage() {
   const { data: pending } = usePendingSubscription();
   const { data: profile } = useProfile("effective");
   const effectiveUid = useEffectiveUid();
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
+  const { data: realBots } = useOwnerCollectionCount("bots", "bots");
+  const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
+  const { data: agents } = useAgents();
   const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
   useEffect(() => {
     if (!effectiveUid) return;
@@ -94,6 +100,9 @@ function PlansPage() {
   const maxContacts = activePlan?.maxContacts ?? sub?.maxContacts ?? 0;
   const maxCampaigns = activePlan?.maxCampaigns ?? sub?.maxCampaigns ?? 0;
   const maxBots = activePlan?.maxBots ?? sub?.maxBots ?? 0;
+  const maxTemplates = activePlan?.maxTemplates ?? sub?.maxTemplates ?? 0;
+  const maxAiMessages = activePlan?.maxAiMessages ?? sub?.maxAiMessages ?? 0;
+  const maxAgents = activePlan?.maxAgents ?? sub?.maxAgents ?? 0;
 
   // Use maintained counters/list lengths only. Avoid Firestore aggregation
   // reads here because quota exhaustion blocks regular message fetching too.
@@ -102,7 +111,7 @@ function PlansPage() {
   // Prefer the actively-maintained counter (decremented on delete) over
   // `profile.totalContacts` (a high-water mark that isn't decremented).
   // Using Math.max would show a stale count after batch deletes.
-  const usedContacts = sub?.contactsUsed ?? profile?.totalContacts ?? 0;
+  const usedContacts = realContacts ?? sub?.contactsUsed ?? profile?.totalContacts ?? 0;
   // Prefer the server-side aggregate count (real number of campaign docs)
   // over the maintained counter, because the counter can drift if a
   // campaign is deleted outside deleteCampaign() or a reservation succeeds
@@ -110,7 +119,10 @@ function PlansPage() {
   // aggregate hasn't loaded yet.
   const usedCampaigns =
     realCampaigns ?? sub?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
-  const usedBots = sub?.botsUsed ?? profile?.totalBots ?? 0;
+  const usedBots = realBots ?? sub?.botsUsed ?? profile?.totalBots ?? 0;
+  const usedTemplates = realTemplates ?? sub?.templatesUsed ?? 0;
+  const usedAiMessages = sub?.aiMessagesUsed ?? 0;
+  const usedAgents = (agents ?? []).filter((a) => a.status !== "revoked" && a.status !== "left").length;
 
   // Self-heal: if the snapshotted max* on subscription/current disagree with
   // the current plan definition, quietly sync them so future reads (and the
@@ -267,11 +279,14 @@ function PlansPage() {
                     )}
                   </div>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
                   <UsageBar label="Messages" used={usedMessages} max={maxMessages} />
                   <UsageBar label="Contacts" used={usedContacts} max={maxContacts} />
                   <UsageBar label="Campaigns" used={usedCampaigns} max={maxCampaigns} />
                   <UsageBar label="Chatbots" used={usedBots} max={maxBots} />
+                  <UsageBar label="Templates" used={usedTemplates} max={maxTemplates} />
+                  <UsageBar label="AI messages" used={usedAiMessages} max={maxAiMessages} />
+                  <UsageBar label="Agents" used={usedAgents} max={maxAgents} />
                 </div>
               </div>
             ) : (

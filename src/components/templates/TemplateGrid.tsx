@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { UsageBar } from "@/components/plans/UsageBar";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
@@ -37,6 +38,7 @@ import { useCan } from "@/lib/auth/permissions";
 export function TemplateGrid() {
   const { data, error } = useTemplates();
   const { data: sub } = useSubscription();
+  const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const can = useCan();
@@ -295,7 +297,7 @@ export function TemplateGrid() {
         <div className="grid gap-3 sm:grid-cols-4">
           <UsageBar
             label="Templates used"
-            used={Math.max(sub?.templatesUsed ?? 0, data?.length ?? 0)}
+            used={realTemplates ?? Math.max(sub?.templatesUsed ?? 0, data?.length ?? 0)}
             max={sub?.maxTemplates ?? 0}
           />
           <StatusPill

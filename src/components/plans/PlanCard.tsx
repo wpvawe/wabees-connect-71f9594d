@@ -151,11 +151,14 @@ export function PlanCard({
             % with yearly billing — {plan.currency} {plan.priceYearly.toLocaleString()}/year
           </p>
         )}
-      <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
+      <div className="mt-5 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
         <PlanStat label="Messages" value={limitLabel(plan.maxMessages)} />
         <PlanStat label="Contacts" value={limitLabel(plan.maxContacts)} />
         <PlanStat label="Campaigns" value={limitLabel(plan.maxCampaigns)} />
         <PlanStat label="Bots" value={limitLabel(plan.maxBots)} />
+        <PlanStat label="Templates" value={limitLabel(plan.maxTemplates)} />
+        <PlanStat label="AI replies" value={limitLabel(plan.maxAiMessages)} />
+        <PlanStat label="Agents" value={limitLabel(plan.maxAgents)} />
       </div>
       <ul className="mt-5 flex-1 space-y-2 text-xs text-muted-foreground">
         {featureList.slice(0, 7).map((f) => (
@@ -208,6 +211,7 @@ function deriveFeatures(plan: Plan): string[] {
   if (plan.maxTemplates > 0) out.push(`${limitLabel(plan.maxTemplates)} message templates`);
   if (plan.maxAiMessages > 0)
     out.push(`${limitLabel(plan.maxAiMessages)} AI replies ${per}`.trim());
+  if (plan.maxAgents > 0) out.push(`${limitLabel(plan.maxAgents)} team members`);
   if (plan.hasAnalytics) out.push("Analytics dashboard");
   if (plan.hasPrioritySupport) out.push("Priority support");
   if (plan.hasApiAccess) out.push("Developer API access");

@@ -88,6 +88,13 @@ export function isBackoff(key: string): boolean {
   return typeof until === "number" && Date.now() < until;
 }
 
+export function invalidateCachedCount(key: string): void {
+  hydrate();
+  cache.delete(key);
+  backoffUntil.delete(key);
+  persist();
+}
+
 /**
  * Returns the cached value if fresh; otherwise runs `loader`, caches the
  * result, and shares the in-flight promise with any concurrent caller.

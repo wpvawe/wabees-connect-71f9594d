@@ -22,6 +22,7 @@ const ROWS: Row[] = [
   { label: "Chatbots", render: (p) => limitLabel(p.maxBots) },
   { label: "Message templates", render: (p) => limitLabel(p.maxTemplates) },
   { label: "AI replies", render: (p) => limitLabel(p.maxAiMessages) },
+  { label: "Team members", render: (p) => limitLabel(p.maxAgents) },
   { label: "Analytics dashboard", render: (p) => yesNo(p.hasAnalytics) },
   { label: "Priority support", render: (p) => yesNo(p.hasPrioritySupport) },
   { label: "Developer API access", render: (p) => yesNo(p.hasApiAccess) },

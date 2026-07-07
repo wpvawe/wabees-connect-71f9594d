@@ -20,6 +20,8 @@ import { subscribeRefetch } from "@/lib/firebase/refetchBus";
 export type CsatStats = {
   sent: number;
   responded: number;
+  sampleSize: number;
+  windowSize: number;
   responseRate: number; // 0-1
   averageRating: number | null; // 1-5
   csatPct: number | null; // % ratings >= 4
@@ -108,6 +110,8 @@ export function useCsatSurveys(max = 200): {
       return {
         sent: 0,
         responded: 0,
+        sampleSize: 0,
+        windowSize: max,
         responseRate: 0,
         averageRating: null,
         csatPct: null,
@@ -130,12 +134,14 @@ export function useCsatSurveys(max = 200): {
     return {
       sent,
       responded,
+      sampleSize: data.length,
+      windowSize: max,
       responseRate: sent > 0 ? responded / sent : 0,
       averageRating: responded > 0 ? sum / responded : null,
       csatPct: responded > 0 ? (good / responded) * 100 : null,
       distribution: dist,
     };
-  }, [data]);
+  }, [data, max]);
 
   return { data, stats, error };
 }

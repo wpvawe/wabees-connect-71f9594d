@@ -15,6 +15,7 @@ import {
   faCrown,
   faPaperPlane,
   faUserGroup,
+  faFileLines,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { TopBar } from "@/components/shell/TopBar";
@@ -28,6 +29,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { usePlans } from "@/hooks/usePlans";
 import { useDashboardPreview } from "@/hooks/useDashboardPreview";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { useMemo } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -48,6 +50,10 @@ function DashboardPage() {
   const { data: agents } = useAgents();
   const { data: usageCounts } = useUsageCounts();
   const { data: plans } = usePlans({ includeInactive: true });
+  const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
+  const { data: realCampaigns } = useOwnerCollectionCount("campaigns", "campaigns");
+  const { data: realBots } = useOwnerCollectionCount("bots", "bots");
+  const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
   const { data: preview } = useDashboardPreview();
   const conversations = preview.conversations;
   const contacts = preview.contacts;
@@ -64,20 +70,22 @@ function DashboardPage() {
   const maxContacts = activePlan?.maxContacts ?? subscription?.maxContacts ?? 0;
   const maxCampaigns = activePlan?.maxCampaigns ?? subscription?.maxCampaigns ?? 0;
   const maxBots = activePlan?.maxBots ?? subscription?.maxBots ?? 0;
+  const maxTemplates = activePlan?.maxTemplates ?? subscription?.maxTemplates ?? 0;
+  const maxAgents = activePlan?.maxAgents ?? subscription?.maxAgents ?? 0;
 
-  // Use maintained counters/list lengths only. Firestore aggregation reads
-  // can exhaust quota and block normal inbox/message reads for the workspace.
+  // Quota counters prefer live aggregate/subscription counters. Profile totals
+  // are only last-resort legacy fallbacks because they are high-water marks.
   const messagesUsed =
-    subscription?.messagesUsed ??
-    profile?.totalMessages ??
-    usageCounts.messages ??
-    0;
+    subscription?.messagesUsed ?? profile?.totalMessages ?? usageCounts.messages ?? 0;
   const contactsUsed =
-    usageCounts.contacts ?? subscription?.contactsUsed ?? profile?.totalContacts ?? 0;
+    realContacts ?? subscription?.contactsUsed ?? usageCounts.contacts ?? profile?.totalContacts ?? 0;
   const campaignsUsed =
-    usageCounts.campaigns ?? subscription?.campaignsUsed ?? profile?.totalCampaigns ?? 0;
+    realCampaigns ?? subscription?.campaignsUsed ?? usageCounts.campaigns ?? profile?.totalCampaigns ?? 0;
   const botsUsed =
-    usageCounts.bots ?? subscription?.botsUsed ?? profile?.totalBots ?? 0;
+    realBots ?? subscription?.botsUsed ?? usageCounts.bots ?? profile?.totalBots ?? 0;
+  const templatesUsed =
+    realTemplates ?? subscription?.templatesUsed ?? 0;
+  const agentsUsed = (agents ?? []).filter((a) => a.status !== "revoked" && a.status !== "left").length;
 
   return (
     <>
@@ -153,7 +161,7 @@ function DashboardPage() {
             </section>
 
             {/* Usage stats */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <UsageStat
                 icon={faPaperPlane}
                 label="Messages"
@@ -177,6 +185,18 @@ function DashboardPage() {
                 label="Bots"
                 used={botsUsed}
                 max={maxBots}
+              />
+              <UsageStat
+                icon={faFileLines}
+                label="Templates"
+                used={templatesUsed}
+                max={maxTemplates}
+              />
+              <UsageStat
+                icon={faUserGroup}
+                label="Agents"
+                used={agentsUsed}
+                max={maxAgents}
               />
             </div>
 

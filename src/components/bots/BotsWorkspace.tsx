@@ -31,6 +31,7 @@ import { WhatsAppPreview } from "@/components/shared/WhatsAppPreview";
 import { useBots, type Bot } from "@/hooks/useBots";
 import { useProfile } from "@/hooks/useProfile";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
+import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
 import { fbDb } from "@/integrations/firebase/client";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +112,8 @@ export function BotsWorkspace() {
   const session = useFirebaseSession();
   const isOwner = session.status === "ready" && !session.dataOwner;
   const { data: profile } = useProfile("effective");
-  const totalBotsAuthoritative = Math.max(profile?.totalBots ?? 0, (data?.length ?? 0));
+  const { data: realBots } = useOwnerCollectionCount("bots", "bots");
+  const totalBotsAuthoritative = realBots ?? Math.max(profile?.totalBots ?? 0, data?.length ?? 0);
 
   const [mode, setMode] = useState<Mode>({ kind: "empty" });
   const [search, setSearch] = useState("");
@@ -196,14 +198,20 @@ export function BotsWorkspace() {
         (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
         toast.success("Bot updated");
       } else {
-        const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
-        await assertWithinPlanLimit(uid, "bots");
-        const ref = await addDoc(collection(fbDb(), "users", uid, "bots"), {
-          ...payload,
-          quickReplies: [],
-          totalTriggered: 0,
-          createdAt: serverTimestamp(),
-        });
+        const { reserveQuota, releaseQuota } = await import("@/lib/plans/limits");
+        await reserveQuota(uid, "bots");
+        let ref: Awaited<ReturnType<typeof addDoc>> | null = null;
+        try {
+          ref = await addDoc(collection(fbDb(), "users", uid, "bots"), {
+            ...payload,
+            quickReplies: [],
+            totalTriggered: 0,
+            createdAt: serverTimestamp(),
+          });
+        } catch (err) {
+          await releaseQuota(uid, "bots", 1).catch(() => {});
+          throw err;
+        }
         (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
         toast.success("Bot created");
         setMode({ kind: "edit", id: ref.id });
@@ -230,6 +238,8 @@ export function BotsWorkspace() {
     if (!confirm(`Delete bot "${b.name}"? This cannot be undone.`)) return;
     try {
       await deleteDoc(doc(fbDb(), "users", uid, "bots", b.id));
+      const { releaseQuota } = await import("@/lib/plans/limits");
+      await releaseQuota(uid, "bots", 1).catch(() => {});
       (await import("@/lib/firebase/refetchBus")).bumpRefetch("bots");
       toast.success("Bot deleted");
       if (mode.kind === "edit" && mode.id === b.id) setMode({ kind: "empty" });

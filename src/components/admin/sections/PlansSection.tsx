@@ -105,7 +105,7 @@ export function PlansSection() {
                           p.expiryType === "lifetime"
                             ? "lifetime"
                             : `${billingCycleLabel(p)} · ${p.expiryDays}d`;
-                        return `${priceStr}${orig} · ${validity} · ${p.maxMessages === 0 ? "∞" : p.maxMessages} msgs · ${p.maxAiMessages === 0 ? "∞" : p.maxAiMessages} AI`;
+                        return `${priceStr}${orig} · ${validity} · ${p.maxMessages === 0 ? "∞" : p.maxMessages} msgs · ${p.maxAiMessages === 0 ? "∞" : p.maxAiMessages} AI · ${p.maxAgents === 0 ? "∞" : p.maxAgents} agents`;
                       })()}
                     </p>
                     {p.description && (
@@ -185,6 +185,7 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
     maxBots: existing?.maxBots ?? 5,
     maxTemplates: existing?.maxTemplates ?? 20,
     maxAiMessages: existing?.maxAiMessages ?? 300,
+    maxAgents: existing?.maxAgents ?? 0,
     hasAnalytics: existing?.hasAnalytics ?? false,
     hasPrioritySupport: existing?.hasPrioritySupport ?? false,
     hasApiAccess: existing?.hasApiAccess ?? false,
@@ -389,13 +390,14 @@ function PlanFormDialog({ existing, onClose }: { existing: Plan | null; onClose:
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <NumField label="Max messages (0=∞)" v={form.maxMessages} onChange={(v) => set("maxMessages", v)} />
             <NumField label="Max contacts (0=∞)" v={form.maxContacts} onChange={(v) => set("maxContacts", v)} />
             <NumField label="Max campaigns (0=∞)" v={form.maxCampaigns} onChange={(v) => set("maxCampaigns", v)} />
             <NumField label="Max bots (0=∞)" v={form.maxBots} onChange={(v) => set("maxBots", v)} />
             <NumField label="Max templates (0=∞)" v={form.maxTemplates} onChange={(v) => set("maxTemplates", v)} />
             <NumField label="Max AI msgs (0=∞)" v={form.maxAiMessages} onChange={(v) => set("maxAiMessages", v)} />
+            <NumField label="Max agents (0=∞)" v={form.maxAgents} onChange={(v) => set("maxAgents", v)} />
           </div>
 
           <div>
