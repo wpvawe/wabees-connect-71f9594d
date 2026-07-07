@@ -17,6 +17,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
+import { useSubscription } from "@/hooks/useSubscription";
+import { UsageBar } from "@/components/plans/UsageBar";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -34,6 +36,7 @@ import { useCan } from "@/lib/auth/permissions";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
+  const { data: sub } = useSubscription();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const can = useCan();
@@ -288,6 +291,29 @@ export function TemplateGrid() {
     >
       {/* LEFT — searchable template list */}
       <div className="space-y-4">
+        {/* Quota + status summary */}
+        <div className="grid gap-3 sm:grid-cols-4">
+          <UsageBar
+            label="Templates used"
+            used={Math.max(sub?.templatesUsed ?? 0, data?.length ?? 0)}
+            max={sub?.maxTemplates ?? 0}
+          />
+          <StatusPill
+            label="Approved"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "APPROVED").length ?? 0}
+            tone="emerald"
+          />
+          <StatusPill
+            label="Pending"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "PENDING").length ?? 0}
+            tone="amber"
+          />
+          <StatusPill
+            label="Rejected"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "REJECTED").length ?? 0}
+            tone="red"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1">
             <FontAwesomeIcon
