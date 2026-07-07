@@ -559,3 +559,33 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function StatusPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "amber" | "red";
+}) {
+  const toneClasses =
+    tone === "emerald"
+      ? "bg-emerald-500/10 text-emerald-500"
+      : tone === "amber"
+        ? "bg-amber-500/10 text-amber-500"
+        : "bg-red-500/10 text-red-500";
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-1 flex items-center gap-2">
+        <span className={cn("h-2 w-2 rounded-full", toneClasses)} />
+        <p className="text-lg font-semibold tabular-nums text-foreground">
+          {value.toLocaleString()}
+        </p>
+      </div>
+    </div>
+  );
+}
