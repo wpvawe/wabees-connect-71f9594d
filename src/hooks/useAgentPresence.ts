@@ -1,6 +1,6 @@
 /**
  * Presence heartbeat for the signed-in user against the owner's
- * `agents/{selfUid}` doc. Writes `lastSeenAt` every 45s while the tab is
+ * `agents/{selfUid}` doc. Writes `lastSeenAt` every 90s while the tab is
  * visible and marks `isOnline: false` on blur / unload. Owners running
  * their own account also heartbeat against `users/{uid}/agents/{uid}` so
  * the round-robin picker can consider them a routable target.
@@ -8,13 +8,19 @@
  * The doc is created lazily — if it doesn't exist yet (owner never opened
  * Agents settings) the write is a no-op via `merge: true`. Rules already
  * allow owner + agent to write their own row.
+ *
+ * P-perf — the `email` field is written only on the first beat of the
+ * session (it never changes for a signed-in user), so periodic heartbeats
+ * carry a smaller payload. The interval is 90s (was 45s) which halves
+ * write volume — presence freshness stays sub-2min which is well within
+ * the "online now" UX threshold.
  */
 import { useEffect } from "react";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 
-const HEARTBEAT_MS = 45_000;
+const HEARTBEAT_MS = 90_000;
 
 export function useAgentPresence(): void {
   const session = useFirebaseSession();
@@ -34,19 +40,24 @@ export function useAgentPresence(): void {
 
     const ref = doc(db, `users/${ownerUid}/agents/${uid}`);
     let cancelled = false;
+    let emailWritten = false;
 
     const beat = async (online: boolean) => {
       if (cancelled) return;
       try {
-        await setDoc(
-          ref,
-          {
-            isOnline: online,
-            lastSeenAt: serverTimestamp(),
-            email,
-          },
-          { merge: true },
-        );
+        const payload: Record<string, unknown> = {
+          isOnline: online,
+          lastSeenAt: serverTimestamp(),
+        };
+        // Only write `email` on the first beat — it never changes for a
+        // signed-in user, so repeating it in every heartbeat wastes
+        // bandwidth (and shows up as a dirty field in Firestore change
+        // listeners downstream).
+        if (!emailWritten && email) {
+          payload.email = email;
+          emailWritten = true;
+        }
+        await setDoc(ref, payload, { merge: true });
       } catch {
         /* transient — next tick retries */
       }
