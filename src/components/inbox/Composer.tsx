@@ -477,15 +477,6 @@ export function Composer({
         /* fall back to original file on any encode error */
       }
     }
-    const normalizedPhone = normalizePhone(phone);
-    const convId = phoneDocId(phone);
-    const db = fbDb();
-    let msgRef: Awaited<ReturnType<typeof addDoc>> | null = null;
-    // M-3 fix: preserve the contact's display name on optimistic media writes
-    // too — without this, the conversation list briefly flashed back to the
-    // raw phone number whenever you sent a photo/voice/document.
-    const knownName = await resolveKnownContactName(db, uid, convId, normalizedPhone);
-    let quotaReserved = false;
     // Voice-note flag is encoded in the file MIME (audio/ogg from opus-recorder)
     // & file extension. We only set is_voice=true for that specific shape so
     // documents named "voice.ogg" uploaded via the file picker don't masquerade.
@@ -493,118 +484,101 @@ export function Composer({
       kind === "audio" &&
       file.type.startsWith("audio/ogg") &&
       file.name.startsWith("voice-");
+    const capturedReplyTo = replyTo;
+    // Preflight uploads the media and populates these before the optimistic
+    // write / Meta call read them.
+    let mediaId: string | null = null;
+    let mediaUrl: string | null = null;
+    let caption = "";
     try {
-      const creds = await loadWaConnection(selfUid);
-      if (!creds) {
-        toast.error("Connect WhatsApp first");
-        return;
-      }
-      try {
-        await reserveMessageQuota(uid);
-        quotaReserved = true;
-      } catch (e) {
-        toast.error(errorMessageOf(e, "Message limit reached"));
-        return;
-      }
-      const up = await uploadMedia({
-        phone_number_id: creds.phone_number_id,
-        access_token: "",
-        file,
-        kind,
-      });
-      if (!up.success || (!up.data?.url && !up.data?.id)) {
-        throw new Error(up.message ?? "Upload failed");
-      }
-      const mediaId = up.data?.id ?? null;
-      // If upload only returned a Meta media_id, build a media-proxy URL so the
-      // Flutter app (which renders from `mediaUrl`) can display outgoing media.
-      const mediaUrl =
-        up.data?.url ?? (mediaId ? mediaProxyUrl(mediaId, uid) : null);
-      const caption =
-        kind === "audio"
-          ? ""
-          : typeof captionOverride === "string"
-            ? captionOverride.trim()
-            : text.trim();
-      msgRef = await addDoc(collection(db, "users", uid, "messages"), {
-        contactPhone: normalizedPhone,
-        contactName: knownName,
-        type: kind,
-        direction: "outgoing",
-        status: "pending",
-        body: caption,
-        caption,
-        mediaUrl,
-        mediaId,
-        mimeType: file.type || null,
-        fileName: kind === "document" ? file.name : null,
-        fileSize: file.size,
-        ...(isVoice ? { isVoice: true } : {}),
-        ...(replyTo
-          ? {
-              replyToId: replyTo.id,
-              replyToBody: replyPreview(replyTo).slice(0, 200),
-              replyToWamid: replyTo.whatsappMessageId ?? null,
-              replyToType: replyTo.type ?? null,
-            }
-          : {}),
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(
-        doc(db, "users", uid, "conversations", convId),
-        {
+      const outcome = await runSendPipeline({
+        db: fbDb(),
+        uid,
+        selfUid,
+        phone,
+        fallbackError: "Could not send",
+        preflight: async (creds) => {
+          const up = await uploadMedia({
+            phone_number_id: creds.phone_number_id,
+            access_token: "",
+            file,
+            kind,
+          });
+          if (!up.success || (!up.data?.url && !up.data?.id)) {
+            throw new Error(up.message ?? "Upload failed");
+          }
+          mediaId = up.data?.id ?? null;
+          // If upload only returned a Meta media_id, build a media-proxy URL
+          // so the Flutter app (which renders from `mediaUrl`) can display
+          // outgoing media.
+          mediaUrl =
+            up.data?.url ?? (mediaId ? mediaProxyUrl(mediaId, uid) : null);
+          caption =
+            kind === "audio"
+              ? ""
+              : typeof captionOverride === "string"
+                ? captionOverride.trim()
+                : text.trim();
+        },
+        optimisticDoc: (knownName, normalizedPhone) => ({
+          contactPhone: normalizedPhone,
+          contactName: knownName,
+          type: kind,
+          direction: "outgoing",
+          status: "pending",
+          body: caption,
+          caption,
+          mediaUrl,
+          mediaId,
+          mimeType: file.type || null,
+          fileName: kind === "document" ? file.name : null,
+          fileSize: file.size,
+          ...(isVoice ? { isVoice: true } : {}),
+          ...(capturedReplyTo
+            ? {
+                replyToId: capturedReplyTo.id,
+                replyToBody: replyPreview(capturedReplyTo).slice(0, 200),
+                replyToWamid: capturedReplyTo.whatsappMessageId ?? null,
+                replyToType: capturedReplyTo.type ?? null,
+              }
+            : {}),
+        }),
+        summaryPatch: (knownName, normalizedPhone) => ({
           contactPhone: normalizedPhone,
           contactName: knownName,
           lastMessage: caption || `[${kind}]`,
           lastMessageType: kind,
-          lastMessageAt: serverTimestamp(),
+        }),
+        afterOptimistic: () => {
+          // B7: only clear the composer draft when the caption actually came
+          // from the textarea. If the user supplied their own caption via the
+          // attachment sheet (`captionOverride`), whatever they were typing
+          // in the composer is a separate draft — don't wipe it.
+          if (typeof captionOverride !== "string") setText("");
+          onClearReply?.();
         },
-        { merge: true },
-      );
-      // B7: only clear the composer draft when the caption actually came
-      // from the textarea. If the user supplied their own caption via the
-      // attachment sheet (`captionOverride`), whatever they were typing in
-      // the composer is a separate draft — don't wipe it.
-      if (typeof captionOverride !== "string") {
-        setText("");
-      }
-      onClearReply?.();
-      const res = await sendMediaMessage({
-        phone_number_id: creds.phone_number_id,
-        access_token: "",
-        to: whatsappRecipientId(phone),
-        type: kind,
-        ...(mediaId ? { media_id: mediaId } : mediaUrl ? { media_url: mediaUrl } : {}),
-        ...(caption ? { caption } : {}),
-        ...(kind === "document" ? { filename: file.name } : {}),
-        ...(isVoice ? { is_voice: true } : {}),
-        context_message_id: whatsappContextMessageId(replyTo),
-        quota_reserved: true,
+        sendToMeta: (creds) =>
+          sendMediaMessage({
+            phone_number_id: creds.phone_number_id,
+            access_token: "",
+            to: whatsappRecipientId(phone),
+            type: kind,
+            ...(mediaId
+              ? { media_id: mediaId }
+              : mediaUrl
+                ? { media_url: mediaUrl }
+                : {}),
+            ...(caption ? { caption } : {}),
+            ...(kind === "document" ? { filename: file.name } : {}),
+            ...(isVoice ? { is_voice: true } : {}),
+            context_message_id: whatsappContextMessageId(capturedReplyTo),
+            quota_reserved: true,
+          }),
+        onSuccess: () => {
+          void markFirstResponseIfNeeded(uid, phone, selfUid);
+        },
       });
-      const wamid = extractWamid(res.raw);
-      if (!res.success) {
-        if (quotaReserved) {
-          await refundMessageQuota(uid);
-          quotaReserved = false;
-        }
-        await markSendFailed(msgRef, res.message ?? "Send failed");
-        toast.error(res.message ?? "Could not send");
-        return;
-      }
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-        quotaReserved = false;
-      }
-      await updateDoc(msgRef, { status: "sent", whatsappMessageId: wamid });
-      void markFirstResponseIfNeeded(uid, phone, selfUid);
-    } catch (err) {
-      if (quotaReserved) {
-        await refundMessageQuota(uid);
-      }
-      if (msgRef) {
-        await markSendFailed(msgRef, errorMessageOf(err, "Send failed"));
-      }
-      toast.error(errorMessageOf(err, "Could not send"));
+      toastPipelineOutcome(outcome, "Could not send");
     } finally {
       setUploading(false);
     }
