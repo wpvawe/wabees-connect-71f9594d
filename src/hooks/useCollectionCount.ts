@@ -24,6 +24,7 @@ export function useOwnerCollectionCount(
     }
     const db = fbDbOrNull();
     if (!db) return;
+    const firestore = db;
     const ownerUid = uid;
     let cancelled = false;
     const cacheKey = `count:${ownerUid}/${collectionName}`;
@@ -36,7 +37,7 @@ export function useOwnerCollectionCount(
           cacheKey,
           async () => {
             const snap = await getCountFromServer(
-              collection(db, `users/${ownerUid}/${collectionName}`),
+              collection(firestore, `users/${ownerUid}/${collectionName}`),
             );
             return snap.data().count;
           },
