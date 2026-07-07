@@ -45,6 +45,7 @@ export function PlanManagementCard({ uid }: { uid: string }) {
   const [maxBots, setMaxBots] = useState<number | null>(null);
   const [maxTemplates, setMaxTemplates] = useState<number | null>(null);
   const [maxAiMessages, setMaxAiMessages] = useState<number | null>(null);
+  const [maxAgents, setMaxAgents] = useState<number | null>(null);
 
   useEffect(() => {
     if (!sub) return;
@@ -54,6 +55,7 @@ export function PlanManagementCard({ uid }: { uid: string }) {
     setMaxBots(sub.maxBots);
     setMaxTemplates(sub.maxTemplates);
     setMaxAiMessages(sub.maxAiMessages);
+    setMaxAgents(sub.maxAgents);
   }, [sub?.planId]); // reset the form only when the plan itself changes
 
   async function run(label: string, tag: string, fn: () => Promise<void>) {
@@ -151,6 +153,7 @@ export function PlanManagementCard({ uid }: { uid: string }) {
                 <LimitField label="Campaigns" v={maxCampaigns} onChange={setMaxCampaigns} />
                 <LimitField label="Bots" v={maxBots} onChange={setMaxBots} />
                 <LimitField label="Templates" v={maxTemplates} onChange={setMaxTemplates} />
+                <LimitField label="Agents" v={maxAgents} onChange={setMaxAgents} />
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
                 <WbButton
@@ -166,6 +169,7 @@ export function PlanManagementCard({ uid }: { uid: string }) {
                         maxBots: numOrZero(maxBots),
                         maxTemplates: numOrZero(maxTemplates),
                         maxAiMessages: numOrZero(maxAiMessages),
+                        maxAgents: numOrZero(maxAgents),
                       });
                     })
                   }
@@ -185,6 +189,7 @@ export function PlanManagementCard({ uid }: { uid: string }) {
                     setMaxBots(sub.maxBots);
                     setMaxTemplates(sub.maxTemplates);
                     setMaxAiMessages(sub.maxAiMessages);
+                    setMaxAgents(sub.maxAgents);
                   }}
                 >
                   Discard

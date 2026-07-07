@@ -555,6 +555,8 @@ export type UserSubscriptionRow = {
   maxTemplates: number;
   aiMessagesUsed: number;
   maxAiMessages: number;
+  agentsUsed: number;
+  maxAgents: number;
 };
 
 export function useUserSubscription(uid: string | null): {
@@ -602,6 +604,8 @@ export function useUserSubscription(uid: string | null): {
           maxTemplates: (x.maxTemplates as number) ?? 0,
           aiMessagesUsed: (x.aiMessagesUsed as number) ?? 0,
           maxAiMessages: (x.maxAiMessages as number) ?? 0,
+          agentsUsed: (x.agentsUsed as number) ?? 0,
+          maxAgents: (x.maxAgents as number) ?? 0,
         });
       } catch {
         if (!cancelled) setLoading(false);

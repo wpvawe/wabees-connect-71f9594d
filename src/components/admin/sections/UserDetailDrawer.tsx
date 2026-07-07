@@ -525,6 +525,7 @@ function LivePlanUsage({ sub }: { sub: UserSubscriptionRow }) {
   const maxCampaigns = activePlan?.maxCampaigns ?? sub.maxCampaigns;
   const maxBots = activePlan?.maxBots ?? sub.maxBots;
   const maxTemplates = activePlan?.maxTemplates ?? sub.maxTemplates;
+  const maxAgents = activePlan?.maxAgents ?? sub.maxAgents;
   return (
     <div className="mt-3 space-y-2">
       <UsageBar label="Messages" used={sub.messagesUsed} max={maxMessages} />
@@ -533,6 +534,7 @@ function LivePlanUsage({ sub }: { sub: UserSubscriptionRow }) {
       <UsageBar label="Campaigns" used={sub.campaignsUsed} max={maxCampaigns} />
       <UsageBar label="Bots" used={sub.botsUsed} max={maxBots} />
       <UsageBar label="Templates" used={sub.templatesUsed} max={maxTemplates} />
+      <UsageBar label="Agents" used={sub.agentsUsed} max={maxAgents} />
     </div>
   );
 }
