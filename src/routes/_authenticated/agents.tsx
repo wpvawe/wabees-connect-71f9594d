@@ -474,10 +474,17 @@ function AgentsPage() {
         <WbCard>
           <WbCardHeader
             title="Agents"
-            subtitle="Real-time list of agents connected to this account."
+            subtitle={
+              maxAgents > 0
+                ? `${activeAgentsCount} of ${maxAgents} seat${maxAgents === 1 ? "" : "s"} used`
+                : "Real-time list of agents connected to this account."
+            }
           />
 
           <WbCardBody>
+            <div className="mb-4">
+              <UsageBar label="Agent seats" used={activeAgentsCount} max={maxAgents} />
+            </div>
             {error ? (
               <p className="text-sm text-destructive">{error}</p>
             ) : agents === null ? (
