@@ -154,9 +154,6 @@ function AnalyticsPage() {
   const totalCampaigns =
     campaignAgg?.totalCampaigns ??
     Math.max(sub?.campaignsUsed ?? 0, profile?.totalCampaigns ?? 0, campaigns?.length ?? 0);
-  // Kept referenced to satisfy lint for future tooltips.
-  void campaignDelivered; void campaignRead;
-
   const totalTemplates = Math.max(sub?.templatesUsed ?? 0, templates?.length ?? 0);
   const totalContacts = Math.max(
     profile?.totalContacts ?? 0,
