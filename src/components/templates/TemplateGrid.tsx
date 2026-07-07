@@ -17,6 +17,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTemplates, type Template } from "@/hooks/useTemplates";
+import { useSubscription } from "@/hooks/useSubscription";
+import { UsageBar } from "@/components/plans/UsageBar";
 import { syncTemplatesFromMeta } from "@/lib/firebase/templates";
 import { useEffectiveUid, useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { WbEmpty } from "@/components/wb/WbEmpty";
@@ -34,6 +36,7 @@ import { useCan } from "@/lib/auth/permissions";
 
 export function TemplateGrid() {
   const { data, error } = useTemplates();
+  const { data: sub } = useSubscription();
   const uid = useEffectiveUid();
   const selfUid = useFirebaseUid();
   const can = useCan();
@@ -288,6 +291,29 @@ export function TemplateGrid() {
     >
       {/* LEFT — searchable template list */}
       <div className="space-y-4">
+        {/* Quota + status summary */}
+        <div className="grid gap-3 sm:grid-cols-4">
+          <UsageBar
+            label="Templates used"
+            used={Math.max(sub?.templatesUsed ?? 0, data?.length ?? 0)}
+            max={sub?.maxTemplates ?? 0}
+          />
+          <StatusPill
+            label="Approved"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "APPROVED").length ?? 0}
+            tone="emerald"
+          />
+          <StatusPill
+            label="Pending"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "PENDING").length ?? 0}
+            tone="amber"
+          />
+          <StatusPill
+            label="Rejected"
+            value={data?.filter((t) => (t.status ?? "").toUpperCase() === "REJECTED").length ?? 0}
+            tone="red"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1">
             <FontAwesomeIcon
@@ -530,6 +556,36 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-2 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function StatusPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "amber" | "red";
+}) {
+  const toneClasses =
+    tone === "emerald"
+      ? "bg-emerald-500/10 text-emerald-500"
+      : tone === "amber"
+        ? "bg-amber-500/10 text-amber-500"
+        : "bg-red-500/10 text-red-500";
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-1 flex items-center gap-2">
+        <span className={cn("h-2 w-2 rounded-full", toneClasses)} />
+        <p className="text-lg font-semibold tabular-nums text-foreground">
+          {value.toLocaleString()}
+        </p>
+      </div>
     </div>
   );
 }

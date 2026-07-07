@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
 import { WbButton } from "@/components/wb/WbButton";
+import { usePlans } from "@/hooks/usePlans";
 import {
   useUserById,
   useUserSubscription,
@@ -504,18 +505,35 @@ function SubscriptionCard({
                   ? `Renews ${format(new Date(sub.endDate), "PP")} · ${formatDistanceToNow(new Date(sub.endDate), { addSuffix: true })}`
                   : "No expiry date"}
             </p>
-            <div className="mt-3 space-y-2">
-              <UsageBar label="Messages" used={sub.messagesUsed} max={sub.maxMessages} />
-              <UsageBar label="AI messages" used={sub.aiMessagesUsed} max={sub.maxAiMessages} />
-              <UsageBar label="Contacts" used={sub.contactsUsed} max={sub.maxContacts} />
-              <UsageBar label="Campaigns" used={sub.campaignsUsed} max={sub.maxCampaigns} />
-              <UsageBar label="Bots" used={sub.botsUsed} max={sub.maxBots} />
-              <UsageBar label="Templates" used={sub.templatesUsed} max={sub.maxTemplates} />
-            </div>
+            <LivePlanUsage sub={sub} />
           </>
         )}
       </WbCardBody>
     </WbCard>
+  );
+}
+
+function LivePlanUsage({ sub }: { sub: UserSubscriptionRow }) {
+  // Prefer the live plan definition (admin edits `plans/*` any time) so the
+  // max* limits reflect the current plan, not the snapshotted values on
+  // the user's subscription doc which can lag.
+  const { data: plans } = usePlans({ includeInactive: true });
+  const activePlan = plans?.find((p) => p.id === sub.planId) ?? null;
+  const maxMessages = activePlan?.maxMessages ?? sub.maxMessages;
+  const maxAiMessages = activePlan?.maxAiMessages ?? sub.maxAiMessages;
+  const maxContacts = activePlan?.maxContacts ?? sub.maxContacts;
+  const maxCampaigns = activePlan?.maxCampaigns ?? sub.maxCampaigns;
+  const maxBots = activePlan?.maxBots ?? sub.maxBots;
+  const maxTemplates = activePlan?.maxTemplates ?? sub.maxTemplates;
+  return (
+    <div className="mt-3 space-y-2">
+      <UsageBar label="Messages" used={sub.messagesUsed} max={maxMessages} />
+      <UsageBar label="AI messages" used={sub.aiMessagesUsed} max={maxAiMessages} />
+      <UsageBar label="Contacts" used={sub.contactsUsed} max={maxContacts} />
+      <UsageBar label="Campaigns" used={sub.campaignsUsed} max={maxCampaigns} />
+      <UsageBar label="Bots" used={sub.botsUsed} max={maxBots} />
+      <UsageBar label="Templates" used={sub.templatesUsed} max={maxTemplates} />
+    </div>
   );
 }
 

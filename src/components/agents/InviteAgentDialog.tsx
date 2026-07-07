@@ -27,12 +27,16 @@ export function InviteAgentDialog({
   ownerUid,
   ownerEmail,
   ownerBusinessName,
+  activeAgentsCount,
+  maxAgents,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   ownerUid: string;
   ownerEmail: string | null;
   ownerBusinessName?: string | null;
+  activeAgentsCount?: number;
+  maxAgents?: number;
 }) {
   const [role, setRole] = useState<InviteRole>("agent");
   const [email, setEmail] = useState("");
@@ -133,6 +137,23 @@ export function InviteAgentDialog({
 
         {!link ? (
           <div className="space-y-4">
+            {typeof maxAgents === "number" && maxAgents > 0 && (
+              <div
+                className={`rounded-md border px-3 py-2 text-xs ${
+                  (activeAgentsCount ?? 0) >= maxAgents
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : "border-border bg-muted text-muted-foreground"
+                }`}
+              >
+                <span className="font-semibold text-foreground">
+                  {activeAgentsCount ?? 0} of {maxAgents}
+                </span>{" "}
+                agent seat{maxAgents === 1 ? "" : "s"} used
+                {(activeAgentsCount ?? 0) >= maxAgents
+                  ? " — upgrade your plan to invite more."
+                  : "."}
+              </div>
+            )}
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Role

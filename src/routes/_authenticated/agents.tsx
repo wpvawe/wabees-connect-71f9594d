@@ -39,6 +39,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAgents } from "@/hooks/useAgents";
+import { useSubscription } from "@/hooks/useSubscription";
+import { UsageBar } from "@/components/plans/UsageBar";
 import { useFirebaseUid, useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import { useOwnerInfo } from "@/hooks/useOwnerInfo";
 import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
@@ -67,6 +69,11 @@ function AgentsPage() {
   const session = useFirebaseSession();
   const dataOwner = session.status === "ready" ? session.dataOwner : null;
   const { data: agents, error } = useAgents();
+  const { data: sub } = useSubscription();
+  const maxAgents = sub?.maxAgents ?? 0;
+  const activeAgentsCount = (agents ?? []).filter(
+    (a) => a.status !== "revoked" && a.status !== "left",
+  ).length;
   const isOwner = !dataOwner && selfUid === ownerUid;
   const owner = useOwnerInfo();
 
@@ -467,10 +474,17 @@ function AgentsPage() {
         <WbCard>
           <WbCardHeader
             title="Agents"
-            subtitle="Real-time list of agents connected to this account."
+            subtitle={
+              maxAgents > 0
+                ? `${activeAgentsCount} of ${maxAgents} seat${maxAgents === 1 ? "" : "s"} used`
+                : "Real-time list of agents connected to this account."
+            }
           />
 
           <WbCardBody>
+            <div className="mb-4">
+              <UsageBar label="Agent seats" used={activeAgentsCount} max={maxAgents} />
+            </div>
             {error ? (
               <p className="text-sm text-destructive">{error}</p>
             ) : agents === null ? (
@@ -709,6 +723,8 @@ function AgentsPage() {
           ownerUid={selfUid}
           ownerEmail={currentEmail}
           ownerBusinessName={owner?.businessName ?? owner?.displayName ?? null}
+          activeAgentsCount={activeAgentsCount}
+          maxAgents={maxAgents}
         />
       )}
       <AlertDialog
