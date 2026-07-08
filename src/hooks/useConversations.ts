@@ -86,28 +86,6 @@ function mergeConversation(a: Conversation, b: Conversation): Conversation {
   };
 }
 
-function compactConversationWrite(c: Conversation): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    contactPhone: c.contactPhone,
-    contactName: c.contactName,
-    lastMessage: c.lastMessage,
-    lastMessageType: c.lastMessageType,
-    unreadCount: c.unreadCount,
-    isPinned: c.isPinned ?? false,
-    pinOrder: c.pinOrder ?? 0,
-    isBlocked: c.isBlocked ?? false,
-    tags: c.tags ?? [],
-  };
-  if (c.lastMessageAt) out.lastMessageAt = c.lastMessageAt;
-  if (c.profileImageUrl) out.profileImageUrl = c.profileImageUrl;
-  if (c.lastIncomingMessageAt) out.lastIncomingMessageAt = c.lastIncomingMessageAt;
-  if (c.activeChatterId) out.activeChatterId = c.activeChatterId;
-  if (c.activeChatterEmail) out.activeChatterEmail = c.activeChatterEmail;
-  if (c.assignedAgentId) out.assignedAgentId = c.assignedAgentId;
-  if (c.assignedAgentEmail) out.assignedAgentEmail = c.assignedAgentEmail;
-  return out;
-}
-
 function priorityRank(p: Conversation["priority"]): number {
   if (p === "urgent") return 3;
   if (p === "high") return 2;
@@ -137,8 +115,7 @@ export function useConversations(): {
 
   useEffect(() => {
     if (!uid) return;
-    const db = fbDbOrNull();
-    if (!db) return;
+    if (!fbDbOrNull()) return;
     const unsub = subscribeConversations(uid, pageLimit, (snap) => {
       if (snap.docs === null) {
         setError(snap.error);
