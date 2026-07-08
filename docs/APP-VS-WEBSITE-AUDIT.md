@@ -195,11 +195,11 @@ Honeypot ❌ (app doesn't need it — no public form), error-capture ⚠️, ava
 5. **Canned responses** — editor in Settings + `/` picker in chat composer.
 
 ### P1 — Team-ops parity
-6. **Availability toggle + working hours editor** (I) — visible in main shell + agent detail sheet.
-7. **Workload screen** (J) — per-agent load + avg firstResponseMs.
-8. **SLA settings + SLA badge on conversation rows** (K, C).
-9. **CSAT: settings + auto-on-resolve send + capture** (K, N).
-10. **Bulk action bar** in inbox (multi-select assign/tag/resolve/delete).
+6. **Availability toggle** (I) — ✅ Shipped (commit `b774359`). Chip in inbox app bar → `users/{owner}/agents/{uid}.availability`. Working-hours editor still pending.
+7. **Workload screen** (J) — ✅ Shipped. `/workload` route, per-agent active-chat counts + unassigned bucket. Reachable from Settings → "Team Workload". First-response averages deferred (needs analytics rollup).
+8. **SLA settings + badge** (K, C) — ✅ Shipped. `/settings/sla` writes `users/{owner}/settings/sla`; `SlaBadge` on every conversation tile; `SlaResponseStamper` writes `firstResponseAt`/`firstResponseMs` on the first outbound after an inbound (idempotent, session-cached).
+9. **CSAT settings** (K, N) — ✅ Shipped (settings surface). `/settings/csat` writes `users/{owner}/settings/csat`. Auto-send-on-resolve trigger + inbound-rating capture pending; needs the resolve flow and webhook glue mirrored from the website's `sendCsatSurvey` / `parseCsatReply`.
+10. **Bulk action bar** in inbox — ✅ Shipped (core actions). Long-press to select, tap to toggle; bar shows count + mark-read / assign-to-me / unassign. Tag/resolve/delete bulk still TODO.
 
 ### P2 — Polish & pro features
 11. **Starred drawer** in inbox.
