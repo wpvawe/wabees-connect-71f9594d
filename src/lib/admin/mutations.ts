@@ -17,7 +17,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { fbAuth } from "@/integrations/firebase/client";
+import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
