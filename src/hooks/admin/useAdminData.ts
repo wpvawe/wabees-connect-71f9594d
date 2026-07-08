@@ -506,12 +506,25 @@ export function usePlatformCounts(): PlatformCounts {
           fetchCached<number>("admin:users:pending", () => countOf(query(users, where("status", "==", "pending"))), TTL),
           fetchCached<number>("admin:users:suspended", () => countOf(query(users, where("status", "==", "suspended"))), TTL),
           fetchCached<number>("admin:users:connected", () => countOf(query(users, where("whatsappConnected", "==", true))), TTL),
-          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch(() => null),
+          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch((err) => {
+            // BUG-13 fix — the `agents` collection-group count was silently
+            // swallowing errors and reporting 0. Surface the real cause
+            // (permission-denied → rules; failed-precondition → missing
+            // index) so admin can diagnose without reading Firebase logs.
+            // eslint-disable-next-line no-console
+            console.error("[admin] agents collectionGroup count failed:",
+              (err as { code?: string })?.code ?? "unknown", (err as Error)?.message ?? err);
+            return null;
+          }),
           fetchCached<number>(
             "admin:users:msgSum",
             async () => Number((await getAggregateFromServer(users, { total: sum("totalMessages") })).data().total ?? 0),
             TTL,
-          ).catch(() => null),
+          ).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error("[admin] totalMessages sum failed:", (err as Error)?.message ?? err);
+            return null;
+          }),
         ]);
         if (cancelled) return;
         setCounts({
@@ -524,7 +537,10 @@ export function usePlatformCounts(): PlatformCounts {
           totalMessages: msgSum ?? 0,
           loading: false,
         });
-      } catch {
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[admin] usePlatformCounts failed:",
+          (err as { code?: string })?.code ?? "unknown", (err as Error)?.message ?? err);
         if (!cancelled) setCounts((c) => ({ ...c, loading: false }));
       }
     })();
