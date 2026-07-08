@@ -30,6 +30,7 @@ export type AuditAction =
   | "user.role"
   | "user.field"
   | "user.delete"
+  | "user.auth_delete"
   | "user.password_reset"
   | "subscription.activate"
   | "subscription.reject"
