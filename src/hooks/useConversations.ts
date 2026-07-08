@@ -92,8 +92,11 @@ function priorityRank(p: Conversation["priority"]): number {
   return 0;
 }
 
-const CONV_PAGE = 200;
-const CONV_STEP = 100;
+// Audit §1.1 — was 200. Any write inside the window re-bills the whole
+// snapshot; 50 covers what the inbox list renders on first paint. "Show
+// more" grows it via `loadMore` in CONV_STEP chunks.
+const CONV_PAGE = 50;
+const CONV_STEP = 50;
 
 export function useConversations(): {
   data: Conversation[] | null;
