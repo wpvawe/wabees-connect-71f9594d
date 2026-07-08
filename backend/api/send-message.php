@@ -333,4 +333,25 @@ if (
     @firestore_increment("users/$ownerUid", 'totalMessages', 1);
 }
 
+// BUG-02/24 — bump today's analytics rollup so the dashboard chart can
+// render from a bounded (30-doc) read instead of scanning the whole
+// messages subcollection. Runs on every successful outgoing send, not
+// just metered ones, so agent/native sends also show up in analytics.
+if (
+    $ownerUid !== ''
+    && $httpCode === 200
+    && function_exists('firestore_update_with_increment')
+) {
+    $date = gmdate('Y-m-d');
+    try {
+        @firestore_update_with_increment(
+            "users/$ownerUid/analytics_daily/$date",
+            ['date' => $date],
+            ['messages' => 1, 'outgoing' => 1]
+        );
+    } catch (\Throwable $e) {
+        // Analytics must never break the send response.
+    }
+}
+
 echo json_encode($data ?: ['error' => ['message' => 'No response from WhatsApp API']]);
