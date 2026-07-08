@@ -293,7 +293,7 @@ shipped are dropped; only real remaining gaps listed.
 | # | Website feature | App status | Where it should live | Priority |
 |---|---|---|---|---|
 | 1 | **Leads board** (`users/{owner}/bot_leads` — name/phone/score/status/notes CRUD) | ❌ no screen, no model, no repo | new `lib/screens/shared/leads/` + `lead_repository.dart` | **P0** |
-| 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ⚠️ settings screen shipped; classifier call still runs on website session only (needs PHP endpoint for phone-only classification) | `auto_triage_service.dart` + PHP `triage-message.php` | **P0** |
+| 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ✅ shipped — settings screen + Flutter listener + public server route `/api/public/triage-message` sharing the same classifier as the web server fn | app: `auto_triage_service.dart`; web: `src/lib/ai/triage.server.ts` + `src/routes/api/public/triage-message.ts` | **P0 ✅** |
 | 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ❌ absent in admin screens | new tab in `admin_plans_screen.dart` writing `admin/settings/subscription_messages` | **P1** |
 | 4 | **Embedded Signup** (Facebook Login for Business — one-tap WA number attach) | ❌ only manual token paste flow | Flutter FB SDK on `whatsapp_connect_screen` | **P2** |
 | 5 | **OTP auto-detect chip** in inbound bubbles (regex + copy) | ❌ no regex scan in `_MessageBubble` | small helper in `chat_screen.dart` bubble builder | **P2** |
@@ -319,5 +319,20 @@ Agent invite + join (P0#1), 24-h composer lock (P0#2), Canned responses editor +
   everywhere. The **classifier call** itself still runs from the website
   session; a phone-side listener needs a PHP endpoint on `api.wabees.live`
   (`triage-message.php` proxying DeepSeek) to be equivalent. Next slice.
+
+**Follow-up (Jul 2026 — P0 #2 closed):**
+
+- Extracted DeepSeek classifier into `src/lib/ai/triage.server.ts` (shared).
+- Existing `classifyMessage` server fn now delegates to the shared helper.
+- New public server route `src/routes/api/public/triage-message.ts` — POST,
+  same input shape, verifies Firebase idToken, returns identical JSON. No
+  PHP surface introduced — the Cloudflare Worker already runs on
+  `wabees-plus.wabees.workers.dev` with `DEEPSEEK_API_KEY` +
+  `FIREBASE_WEB_API_KEY`.
+- Flutter: `lib/data/services/auto_triage_service.dart` +
+  `lib/providers/settings/auto_triage_capture_provider.dart` booted from
+  `MainShell` (owner-only). 15-min per-phone cooldown, only text/button/
+  interactive inbound, writes `aiIntent/aiSentiment/aiSummary/tags/priority`
+  onto the conversation doc — never downgrades a human-set high/urgent.
 
 Confirm priority and I'll begin.
