@@ -176,7 +176,7 @@ export function UserDetailDrawer({
               {/* Current subscription */}
               <SubscriptionCard
                 sub={sub}
-                liveAgents={live.loaded ? live.agents : null}
+                liveAgents={live.loaded ? live.agents : (user.totalAgents ?? 0)}
                 loading={subLoading}
               />
 
