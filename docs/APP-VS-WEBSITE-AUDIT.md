@@ -150,7 +150,7 @@ Full builder/detail/analytics screens exist. Client-side executor via `campaign_
 | Business profile | ✅ | ✅ | |
 | Canned responses editor | ✅ | ❌ | Missing |
 | SLA settings (`firstResponseMinutes/resolutionMinutes`) | ✅ | ❌ | Missing |
-| CSAT settings | ✅ | ❌ | Missing |
+| CSAT settings | ✅ | ✅ | `/settings/csat` — same doc |
 | Auto-triage settings | ✅ | ❌ | Missing |
 | Developer API (apiKey view/regenerate) | ✅ | ⚠️ | `_apiKey` shown in settings — verify regenerate |
 | Subscription-messages editor (admin) | ✅ | ❌ | Not found |
@@ -166,7 +166,7 @@ Full builder/detail/analytics screens exist. Client-side executor via `campaign_
 | Notifications page filtered by role | ✅ | ✅ | `notifications_screen` |
 
 ### N. CSAT
-Send survey (interactive list), capture reply, comment follow-up — **❌ missing in app** (no `csat_surveys` code).
+**✅ Shipped end-to-end.** `CsatService` mirrors website `csat.ts` (send list survey, parseCsatReply, recordCsatRating, attachCsatComment, cooldown-aware). `CsatCaptureService` runs owner-only Firestore listener on incoming messages to close the loop (30-min comment window, 7d TTL for pending surveys). Auto-send on resolve triggered from chat screen with 24 h cooldown; writes to shared `users/{owner}/csat_surveys` — website admin dashboard sees the same records.
 
 ### O. Support Chat
 `support_chat_screen` present. **✅** — verify subscription-request auto-post.
@@ -198,7 +198,7 @@ Honeypot ❌ (app doesn't need it — no public form), error-capture ⚠️, ava
 6. **Availability toggle** (I) — ✅ Shipped (commit `b774359`). Chip in inbox app bar → `users/{owner}/agents/{uid}.availability`. Working-hours editor still pending.
 7. **Workload screen** (J) — ✅ Shipped. `/workload` route, per-agent active-chat counts + unassigned bucket. Reachable from Settings → "Team Workload". First-response averages deferred (needs analytics rollup).
 8. **SLA settings + badge** (K, C) — ✅ Shipped. `/settings/sla` writes `users/{owner}/settings/sla`; `SlaBadge` on every conversation tile; `SlaResponseStamper` writes `firstResponseAt`/`firstResponseMs` on the first outbound after an inbound (idempotent, session-cached).
-9. **CSAT settings** (K, N) — ✅ Shipped (settings surface). `/settings/csat` writes `users/{owner}/settings/csat`. Auto-send-on-resolve trigger + inbound-rating capture pending; needs the resolve flow and webhook glue mirrored from the website's `sendCsatSurvey` / `parseCsatReply`.
+9. **CSAT** (K, N) — ✅ Shipped end-to-end. `/settings/csat` writes `users/{owner}/settings/csat` (identical schema). `sendCsatSurvey`, `parseCsatReply`, `recordCsatRating`, `attachCsatComment` ported to `lib/data/services/csat_service.dart`. `CsatCaptureService` boots on owner sign-in via `csatCaptureProvider` in `MainShell`. Chat screen adds "Mark as resolved" / "Reopen" — writes `state`, appends system note via `ConversationExtrasService.setConversationState`, and auto-fires the survey when owner opted in (24 h cooldown).
 10. **Bulk action bar** in inbox — ✅ Shipped (core actions). Long-press to select, tap to toggle; bar shows count + mark-read / assign-to-me / unassign. Tag/resolve/delete bulk still TODO.
 
 ### P2 — Polish & pro features
