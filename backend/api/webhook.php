@@ -29,11 +29,13 @@ define(
 // one's AI reply — which was the #1 cause of "7-10s late receive".
 // Requires LiteSpeed/PHP-FPM (Hostinger already provides it) + ignore_user_abort.
 if (!defined('ENABLE_FAST_WEBHOOK_ACK')) {
-    // Default OFF: some Hostinger/LiteSpeed setups stop PHP work after an
-    // early flush. If we ACK before the Firestore commit, Meta sees success
-    // while the inbox row is never written, so messages appear sent by the
-    // customer but are not received in Wabees.
-    define('ENABLE_FAST_WEBHOOK_ACK', false);
+    // BUG-19 — Default ON. The old fast-ack fired BEFORE the Firestore
+    // commit, so a Hostinger/LiteSpeed abort could drop the inbox write.
+    // The ACK is now emitted AFTER firestore_commit() succeeds (see
+    // wabees_flush_ack_once() call inside handle_incoming_message), so bot
+    // pre-warm, AI reply and FCM run in the background but the inbox row
+    // is durable before Meta sees 200.
+    define('ENABLE_FAST_WEBHOOK_ACK', true);
 }
 
 // ============ GET = WEBHOOK VERIFICATION ============
@@ -414,6 +416,21 @@ function fast_respond()
     }
 }
 
+/**
+ * BUG-19 helper — flush the 200 OK to Meta exactly once per request, only
+ * after the caller has durably committed the inbound message. Safe to call
+ * from every handle_incoming_message() iteration; subsequent calls are
+ * no-ops.
+ */
+function wabees_flush_ack_once()
+{
+    static $flushed = false;
+    if ($flushed) return;
+    if (!(defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK)) return;
+    $flushed = true;
+    fast_respond();
+}
+
 // ============ POST = INCOMING DATA ============
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ⚠️ CRITICAL: Hostinger/LiteSpeed might kill the script if we respond too early.
@@ -428,9 +445,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // default: several shared-hosting setups stop PHP work after the response is
     // flushed, which makes Meta see HTTP 200 while the inbox write never runs.
     if (isset($input['object']) && $input['object'] === 'whatsapp_business_account') {
-        if (defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK) {
-            fast_respond();
-        }
+        // BUG-19 — do NOT fast-ack here. The ACK now fires from inside
+        // handle_incoming_message() after firestore_commit() succeeds, so
+        // the inbox row is durable before Meta sees 200. Status-only and
+        // call-event payloads (which have no messages[]) fall through to
+        // the loop below and finish before the request naturally ends.
     } else {
         exit;
     }
@@ -1818,6 +1837,10 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // dashboard chart can render from a bounded (30-doc) read instead of
     // scanning the whole messages subcollection.
     wabees_bump_analytics_daily($userId, 1, 0, 0);
+
+    // BUG-19 — inbox row is now durable. ACK Meta immediately so the next
+    // incoming message doesn't queue behind bot pre-warm / AI reply work.
+    wabees_flush_ack_once();
 
     // ============ PRE-WARM BOT CACHE (after inbox commit) ============
     $adminToken = get_firebase_admin_token();

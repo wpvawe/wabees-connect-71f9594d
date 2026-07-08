@@ -17,7 +17,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
-import { fbAuth } from "@/integrations/firebase/client";
+import { fbAuth, WABEES_API_BASE } from "@/integrations/firebase/client";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { bumpRefetch } from "@/lib/firebase/refetchBus";
 
@@ -30,6 +30,7 @@ export type AuditAction =
   | "user.role"
   | "user.field"
   | "user.delete"
+  | "user.auth_delete"
   | "user.password_reset"
   | "subscription.activate"
   | "subscription.reject"
@@ -136,8 +137,55 @@ export async function setUserRole(uid: string, role: string) {
     role,
     updatedAt: serverTimestamp(),
   });
+  // Mirror the role into Firebase Auth custom claims so Firestore rules and
+  // any backend can trust `request.auth.token.role` without a users/{uid}
+  // read. Non-fatal: the Firestore field is still the source of truth until
+  // the claim propagates on next ID token refresh.
+  try {
+    await callAdminEndpoint("set-user-claims.php", { uid, role });
+  } catch (err) {
+    console.warn("[admin] set-user-claims failed (Firestore role updated):", err);
+  }
   void logAudit("user.role", uid, { role });
   bumpRefetch("adminUsers");
+}
+
+/**
+ * SEC-03 — hard-delete the Firebase Auth account after `deleteUserData()`
+ * has wiped their Firestore data. Calls the admin-only `delete-user.php`
+ * endpoint (bearer = current admin's ID token; server verifies role).
+ *
+ * Kept separate from `deleteUserData` so admin UIs can still wipe data
+ * without removing the Auth record (e.g. tenant migration) — the drawer
+ * calls both in sequence for the "Delete user" action.
+ */
+export async function deleteUserAuth(uid: string) {
+  await callAdminEndpoint("delete-user.php", { uid });
+  void logAudit("user.auth_delete", uid, {});
+}
+
+async function callAdminEndpoint(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const user = fbAuth().currentUser;
+  if (!user) throw new Error("Not authenticated");
+  const token = await user.getIdToken();
+  const res = await fetch(`${WABEES_API_BASE}/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || (data && data.success === false)) {
+    throw new Error(
+      `[${path}] ${res.status} ${(data as { error?: string })?.error ?? "failed"}`,
+    );
+  }
+  return data;
 }
 
 // Restricted whitelist to prevent arbitrary field overwrites from the admin

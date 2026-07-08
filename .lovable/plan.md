@@ -157,11 +157,15 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
 
 ### ⏳ Pending PHP backend (Hostinger — sandbox can't reach ftp.wabees.live, user deploys)
 
-- BUG-19 fast webhook ACK — flag exists as `ENABLE_FAST_WEBHOOK_ACK` but default-OFF for safety (fast-ack currently runs BEFORE Firestore commit). Enabling it needs the code path reordered so Firestore write completes before `fastcgi_finish_request()`. Do this locally + test on staging bot before flipping the constant.
-- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows` — skipped for now: caching the whole subscription doc for 5 min risks over-serving past cap when `messagesUsed` is stale; needs a split (cache `max*`/`status` for 5 min, always read `*Used` live) that requires a bigger refactor of the helper.
-- SEC-01 relocate `whatsappAccessToken` from `users/{uid}` → `users/{uid}/whatsapp_config/current.accessToken`; update PHP token reader
-- SEC-03 admin `delete-user.php` endpoint (Firebase Admin `deleteUser`)
-- New `set-user-claims.php` endpoint for `adminSetRole` to update custom claims
+- BUG-19 fast webhook ACK — **DONE (default ON)**. Removed the pre-processing `fast_respond()`; added `wabees_flush_ack_once()` which fires ONLY after `firestore_commit()` succeeds inside `handle_incoming_message()`. Inbox row is durable before Meta sees 200, bot/AI reply continue in background. Test on staging bot after deploy.
+- SEC-03 admin `delete-user.php` endpoint — **DONE** (`backend/api/delete-user.php`). Bearer = admin ID token; verifies `users/{uid}.role == "admin"`; calls Identity Toolkit `accounts:delete`.
+- New `set-user-claims.php` endpoint — **DONE** (`backend/api/set-user-claims.php`). Merges into existing `customAttributes`, supports `role` + `dataOwner` (null clears). Frontend `setUserRole` now calls it after the Firestore role write.
+- Frontend: `deleteUserAuth(uid)` helper in `src/lib/admin/mutations.ts` — call it AFTER `deleteUserData(uid)` from the admin drawer to wipe the Firebase Auth record too.
+
+### ⏳ Still pending (explicit skip / follow-up)
+
+- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows` — **skipped**: caching the whole subscription doc for 5 min risks over-serving past cap when `messagesUsed` is stale; needs a split (cache `max*`/`status` for 5 min, always read `*Used` live) that requires a bigger refactor of the helper. Track separately.
+- SEC-01 relocate `whatsappAccessToken` from `users/{uid}` → `users/{uid}/whatsapp_config/current.accessToken` and update every PHP token reader — deferred: touches ~10 read paths across `webhook.php` + `send-message.php` + connect flows and needs a coordinated migration + client rewrite. Firestore rules already restrict `whatsapp_config/*` to owner-only, so the risk is limited to the legacy field.
 
 ### ⏳ Ops (user to run)
 
@@ -170,6 +174,8 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
    curl.exe -T backend/api/webhook.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/webhook.php"
    curl.exe -T backend/api/send-message.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/send-message.php"
    curl.exe -T backend/uploads/media/.htaccess "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/uploads/media/.htaccess"
+   curl.exe -T backend/api/delete-user.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/delete-user.php"
+   curl.exe -T backend/api/set-user-claims.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/set-user-claims.php"
    ```
 2. Deploy Firestore rules: RULES.md Python REST snippet (`firebase/firestore.rules`).
 3. Add `SetEnv WEBHOOK_VERIFY_TOKEN <token>` to `public_html/.htaccess` on Hostinger, then rotate the value in Meta Developer Console.
