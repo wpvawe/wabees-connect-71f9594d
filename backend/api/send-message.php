@@ -50,7 +50,6 @@ $METERED_TYPES = ['text', 'template', 'image', 'video', 'document', 'audio',
                   'sticker', 'interactive', 'location'];
 $authUid  = isset($input['auth_uid']) ? preg_replace('/[^A-Za-z0-9_-]/', '', (string)$input['auth_uid']) : '';
 $ownerUid = '';
-$clientReservedQuota = !empty($input['quota_reserved']);
 $shouldMeter = in_array($type, $METERED_TYPES, true) && $authUid !== '';
 
 if ($shouldMeter) {
@@ -76,11 +75,14 @@ if ($shouldMeter) {
         if (is_array($subFields)) {
             $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
             $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
-            // React sends reserve quota before calling PHP. Treat that one
-            // reserved slot as the current request, so the boundary send is
-            // allowed while any truly over-cap request is blocked.
-            $effectiveUsed = $clientReservedQuota ? max(0, $msgsUsed - 1) : $msgsUsed;
-            if ($maxMessages > 0 && $effectiveUsed >= $maxMessages) {
+            // Audit §2.3 — the client no longer client-reserves the
+            // messages quota (`reserveQuota(..., "messages", ...)` is a
+            // documented no-op post-BUG-09). The previous `max(0,
+            // $msgsUsed - 1)` compensation for `quota_reserved: true`
+            // was silently raising the real cap by +1 on every call.
+            // PHP is now the sole owner of the counter and compares
+            // the true `messagesUsed` against `maxMessages` directly.
+            if ($maxMessages > 0 && $msgsUsed >= $maxMessages) {
                 http_response_code(429);
                 echo json_encode(['error' => [
                     'message' => "Message quota exhausted ($msgsUsed/$maxMessages). Upgrade your plan to send more.",
