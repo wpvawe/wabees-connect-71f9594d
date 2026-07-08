@@ -496,6 +496,7 @@ export function usePlatformCounts(): PlatformCounts {
     agents: 0,
     totalMessages: 0,
     loading: true,
+    failed: {},
   });
   useEffect(() => {
     const db = fbDbOrNull();
@@ -504,39 +505,39 @@ export function usePlatformCounts(): PlatformCounts {
     (async () => {
       try {
         const users = collection(db, "users");
-        // Cache for 5 minutes — admin dashboard mounts should not re-fire
-        // 7 aggregation RPCs each time. Prevents 429 storms.
-        // Pre-extract to plain numbers so the sessionStorage backup in
-        // countCache survives a hard reload (raw AggregateQuerySnapshot has
-        // methods that JSON.stringify would drop).
         const TTL = 5 * 60_000;
         const countOf = async (q: Parameters<typeof getCountFromServer>[0]) =>
           (await getCountFromServer(q)).data().count;
-        const [total, active, pending, suspended, connected, agents, msgSum] = await Promise.all([
-          fetchCached<number>("admin:users:total", () => countOf(users), TTL),
-          fetchCached<number>("admin:users:active", () => countOf(query(users, where("status", "==", "active"))), TTL),
-          fetchCached<number>("admin:users:pending", () => countOf(query(users, where("status", "==", "pending"))), TTL),
-          fetchCached<number>("admin:users:suspended", () => countOf(query(users, where("status", "==", "suspended"))), TTL),
-          fetchCached<number>("admin:users:connected", () => countOf(query(users, where("whatsappConnected", "==", true))), TTL),
-          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch((err) => {
-            // BUG-13 fix — the `agents` collection-group count was silently
-            // swallowing errors and reporting 0. Surface the real cause
-            // (permission-denied → rules; failed-precondition → missing
-            // index) so admin can diagnose without reading Firebase logs.
+        // Audit §2.5 — track per-stat failure. Was: every failure fell
+        // through to `?? 0`, indistinguishable from "actually zero".
+        const failed: PlatformCounts["failed"] = {};
+        const safe = async (
+          key: keyof PlatformCounts["failed"],
+          fn: () => Promise<number | null>,
+        ): Promise<number | null> => {
+          try {
+            return await fn();
+          } catch (err) {
+            const code = (err as { code?: string })?.code ?? "unknown";
+            const msg = (err as Error)?.message ?? String(err);
             // eslint-disable-next-line no-console
-            console.error("[admin] agents collectionGroup count failed:",
-              (err as { code?: string })?.code ?? "unknown", (err as Error)?.message ?? err);
+            console.error(`[admin] ${key} count failed:`, code, msg);
+            failed[key] = code;
             return null;
-          }),
-          fetchCached<number>(
+          }
+        };
+        const [total, active, pending, suspended, connected, agents, msgSum] = await Promise.all([
+          safe("total", () => fetchCached<number>("admin:users:total", () => countOf(users), TTL)),
+          safe("active", () => fetchCached<number>("admin:users:active", () => countOf(query(users, where("status", "==", "active"))), TTL)),
+          safe("pending", () => fetchCached<number>("admin:users:pending", () => countOf(query(users, where("status", "==", "pending"))), TTL)),
+          safe("suspended", () => fetchCached<number>("admin:users:suspended", () => countOf(query(users, where("status", "==", "suspended"))), TTL)),
+          safe("connected", () => fetchCached<number>("admin:users:connected", () => countOf(query(users, where("whatsappConnected", "==", true))), TTL)),
+          safe("agents", () => fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL)),
+          safe("totalMessages", () => fetchCached<number>(
             "admin:users:msgSum",
             async () => Number((await getAggregateFromServer(users, { total: sum("totalMessages") })).data().total ?? 0),
             TTL,
-          ).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.error("[admin] totalMessages sum failed:", (err as Error)?.message ?? err);
-            return null;
-          }),
+          )),
         ]);
         if (cancelled) return;
         setCounts({
@@ -548,6 +549,7 @@ export function usePlatformCounts(): PlatformCounts {
           agents: agents ?? 0,
           totalMessages: msgSum ?? 0,
           loading: false,
+          failed,
         });
       } catch (err) {
         // eslint-disable-next-line no-console
