@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
 import {
   listOfStrings,
   normalizePhone,
-  phoneDocId,
   str,
   strOrNull,
   toIso,
