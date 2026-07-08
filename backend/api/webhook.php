@@ -125,7 +125,10 @@ if (function_exists('apcu_store') && !apcu_exists('wabees_cache_warmed')) {
                     $data['whatsappAccessToken'] = ['stringValue' => $entry['accessToken']];
                 if (!empty($entry['fcmToken']))
                     $data['fcmToken'] = ['stringValue' => $entry['fcmToken']];
-                apcu_store($apcuKey, ['id' => $entry['ownerId'], 'data' => $data], 300);
+                // BUG-23 — wa_map owner cache TTL bumped 300s → 1800s.
+                // Phone-number → owner mapping rarely changes; a 5-min TTL
+                // was hammering Firestore reads on every hot webhook path.
+                apcu_store($apcuKey, ['id' => $entry['ownerId'], 'data' => $data], 1800);
             }
         }
         if ($changed)
@@ -1653,16 +1656,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $isFirstMessage = true;
             webhook_log('BOT: First message — no existing conversation for ' . $from);
         } else {
-            // ⛔ BLOCK CHECK — if contact is blocked, drop message completely
-            // (no Firestore save, no FCM notification, no bot reply)
+            // BUG-21 — dedicated block check removed. The EARLY BLOCK CHECK
+            // at the top of handle_incoming_message() already runs
+            // unconditionally and short-circuits blocked contacts before
+            // any Firestore fetch happens here, so this second guard was
+            // dead code (and re-fetched the same doc a moment later).
             $convFields = $convCheckResp['data']['fields'] ?? [];
-            $isBlockedRaw = $convFields['isBlocked']['booleanValue'] ?? false;
-            if ($isBlockedRaw === true || $isBlockedRaw === 'true') {
-                webhook_log("BLOCKED: Dropping message from $from — contact is blocked by $userId");
-                if (!empty($lockFile))
-                    @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
-                return true;
-            }
 
             // Check if welcomeMessage was already sent for this conversation
             $welcomeSentRaw = $convCheckResp['data']['fields']['welcomeMessageSent']['booleanValue'] ?? false;
