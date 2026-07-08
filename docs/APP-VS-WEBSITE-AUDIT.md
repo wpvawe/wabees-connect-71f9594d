@@ -297,7 +297,7 @@ shipped are dropped; only real remaining gaps listed.
 | 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ✅ shipped — `admin_subscription_messages_screen.dart`, entry via Manage Plans app-bar | writes `settings/subscription_messages` (same doc as website) | **P1 done** |
 | 4 | **Embedded Signup** (Facebook Login for Business — one-tap WA number attach) | ❌ only manual token paste flow | Flutter FB SDK on `whatsapp_connect_screen` | **P2** |
 | 5 | **OTP auto-detect chip** in inbound bubbles (regex + copy) | ✅ shipped — `_OtpChip` in `chat_screen.dart`. Context regex (OTP/code/verify/pin/2fa …) with a short-message digit fallback; tap copies to clipboard + snackbar | inline in bubble, inbound-text only | **P2 done** |
-| 6 | **Media lightbox gallery** — swipe between images, pinch zoom, save-to-gallery | ⚠️ single-image `InteractiveViewer` only | new `media_gallery_viewer.dart` (photo_view + PageView) | **P2** |
+| 6 | **Media lightbox gallery** — swipe between images, pinch zoom, download | ✅ shipped — `MediaGalleryViewer` (PageView + InteractiveViewer) reads `chatMessagesProvider`, filters image messages chronologically, jumps to tapped image; counter + close + download; caption overlay | inline in `_MediaIndicator._buildImagePreview` | **P2 done** |
 | 7 | **Scheduled-messages dispatcher** | architectural — belongs on **server cron**, NOT in app | PHP cron on Hostinger hitting Firestore | **P3** (backend, not app) |
 | 8 | **Response-time backfill** (one-off analytics rollup) | script, not app UI | node script in wabees-plus repo | **P3** (out of app scope) |
 
