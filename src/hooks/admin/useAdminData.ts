@@ -478,6 +478,12 @@ export type PlatformCounts = {
   agents: number;
   totalMessages: number;
   loading: boolean;
+  /** Audit §2.5 — which stats failed to load so the UI can distinguish
+   *  "actually zero" from "aggregate call failed / quota-exhausted". */
+  failed: Partial<Record<
+    "total" | "active" | "pending" | "suspended" | "connected" | "agents" | "totalMessages",
+    string
+  >>;
 };
 
 export function usePlatformCounts(): PlatformCounts {
