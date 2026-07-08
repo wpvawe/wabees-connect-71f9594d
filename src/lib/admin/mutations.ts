@@ -568,10 +568,19 @@ export async function resetSubscriptionCounters(userId: string) {
   const subRef = doc(db, "users", userId, "subscription", "current");
   const snap = await getDoc(subRef);
   if (!snap.exists()) throw new Error("No subscription to reset");
+  // BUG-12 fix — reset EVERY *Used counter, not just a subset. Previously
+  // only messages/campaigns/aiMessages were zeroed, leaving contacts/bots/
+  // templates/agents at old values — which then blocked users from
+  // creating anything if the old counter was already at the plan cap.
   await updateDoc(subRef, {
     messagesUsed: 0,
+    contactsUsed: 0,
     campaignsUsed: 0,
+    botsUsed: 0,
+    templatesUsed: 0,
     aiMessagesUsed: 0,
+    agentsUsed: 0,
+    updatedAt: serverTimestamp(),
   });
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
