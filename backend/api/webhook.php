@@ -1838,6 +1838,10 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
     // scanning the whole messages subcollection.
     wabees_bump_analytics_daily($userId, 1, 0, 0);
 
+    // BUG-19 — inbox row is now durable. ACK Meta immediately so the next
+    // incoming message doesn't queue behind bot pre-warm / AI reply work.
+    wabees_flush_ack_once();
+
     // ============ PRE-WARM BOT CACHE (after inbox commit) ============
     $adminToken = get_firebase_admin_token();
     $authHeaders = get_firebase_auth_headers();
