@@ -446,6 +446,11 @@ export async function adminAssignPlan(userId: string, planId: string) {
   const newSub = buildSubFromPlan(planId, plan, current);
   await setDoc(subRef, newSub);
   await deleteDoc(doc(db, "pending_subscriptions", userId)).catch(() => undefined);
+  // BUG-03 fix — mirror the flag as in activatePendingSubscription.
+  await updateDoc(doc(db, "users", userId), {
+    hasSubscription: true,
+    updatedAt: serverTimestamp(),
+  }).catch(() => undefined);
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
     {
