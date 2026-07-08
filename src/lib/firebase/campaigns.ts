@@ -295,8 +295,16 @@ export async function runCampaign(
       const row = d.data() as { phone?: string; status?: string };
       if (row.status === "sent" && row.phone) alreadySent.add(row.phone);
     });
-  } catch {
-    // If logs read fails, fall through — worst case is a duplicate send.
+  } catch (err) {
+    // Audit §3.2 — was "fall through with empty set", which silently
+    // re-sent to everyone already delivered on a Firestore hiccup. Fail
+    // closed: mark campaign paused and surface the error so the user can
+    // retry once the read succeeds instead of double-billing recipients.
+    unsubStatus();
+    await updateDoc(campaignRef, { status: "paused" }).catch(() => {});
+    throw new Error(
+      `Could not verify already-sent list — campaign paused for safety. ${(err as Error).message}`,
+    );
   }
 
   let sent = 0;
@@ -313,10 +321,18 @@ export async function runCampaign(
     if (alreadySent.has(to)) continue;
     let res;
     let quotaReserved = false;
-    try {
-      await reserveQuota(uid, "messages", 1);
-      quotaReserved = true;
-      if (isTemplate) {
+    // Audit §3.3 — Meta 429 / transient-5xx aware retry with exponential
+    // backoff. Was previously counted as permanent failure on the first
+    // hit, which silently converted rate-limit throttling into failed
+    // message counts and burned quota with no recovery.
+    const MAX_ATTEMPTS = 3;
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        await reserveQuota(uid, "messages", 1);
+        quotaReserved = true;
+        if (isTemplate) {
         const values = vars.map((v) => resolveVar(v, opts, phone));
         const components: Array<Record<string, unknown>> = [];
         const hFmt = opts?.templateHeaderFormat;
@@ -343,7 +359,7 @@ export async function runCampaign(
           components,
           quota_reserved: true,
         });
-      } else {
+        } else {
         res = await sendTextMessage({
           phone_number_id: creds.phone_number_id,
           access_token: "",
@@ -351,11 +367,33 @@ export async function runCampaign(
           message: messageBody,
           quota_reserved: true,
         });
+        }
+      } catch (e) {
+        if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
+        quotaReserved = false;
+        res = { success: false, message: e instanceof Error ? e.message : "Network error", raw: {} };
       }
-    } catch (e) {
-      if (quotaReserved) await releaseQuota(uid, "messages", 1).catch(() => {});
-      quotaReserved = false;
-      res = { success: false, message: e instanceof Error ? e.message : "Network error", raw: {} };
+      // Retry on Meta rate-limit (429 / codes 130429, 131048, 131056) or
+      // transient 5xx. Everything else falls through as final.
+      const errMsg = (res?.message ?? "").toString();
+      const errRaw = (res?.raw ?? {}) as { error?: { code?: number; message?: string } };
+      const isRateLimited =
+        !res?.success && (
+          /\b429\b|rate[\s_-]?limit|too many requests/i.test(errMsg) ||
+          errRaw?.error?.code === 130429 ||
+          errRaw?.error?.code === 131048 ||
+          errRaw?.error?.code === 131056
+        );
+      const isTransient5xx =
+        !res?.success && /\b5\d\d\b|network error|timeout/i.test(errMsg);
+      if ((isRateLimited || isTransient5xx) && attempt < MAX_ATTEMPTS) {
+        // Exponential backoff: 2s, 5s, 10s (with jitter).
+        const base = isRateLimited ? 5000 : 2000;
+        const delay = base * Math.pow(2, attempt - 1) + Math.random() * 500;
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      break;
     }
     const ok = res.success;
     if (ok) sent++;

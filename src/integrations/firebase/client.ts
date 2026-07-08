@@ -5,7 +5,13 @@
  */
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
@@ -38,7 +44,25 @@ export function fbAuth(): Auth {
 }
 
 export function fbDb(): Firestore {
-  if (!_db) _db = getFirestore(ensureApp());
+  if (!_db) {
+    const app = ensureApp();
+    if (typeof window !== "undefined") {
+      // Persistent local cache: survives reloads and shares across tabs.
+      // Cuts cold-start Firestore reads massively — see audit §1.8.
+      try {
+        _db = initializeFirestore(app, {
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+          }),
+        });
+      } catch {
+        // initializeFirestore throws if already initialised (HMR); fall back.
+        _db = getFirestore(app);
+      }
+    } else {
+      _db = getFirestore(app);
+    }
+  }
   return _db;
 }
 

@@ -165,7 +165,13 @@ export function ContactsWorkspace() {
             return;
           }
           const res = await bulkImportContacts(uid, contacts);
-          toast.success(`Imported ${res.imported} contacts`);
+          if (res.skipped > 0) {
+            toast.success(
+              `Imported ${res.imported} contacts (${res.skipped} duplicate${res.skipped === 1 ? "" : "s"} skipped)`,
+            );
+          } else {
+            toast.success(`Imported ${res.imported} contacts`);
+          }
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Import failed");
         } finally {

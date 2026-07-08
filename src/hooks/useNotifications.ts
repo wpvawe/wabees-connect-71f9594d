@@ -41,7 +41,10 @@ function subscribeShared(uid: string, cb: Sub): () => void {
     const q = query(
       collection(db, `users/${uid}/notifications`),
       orderBy("createdAt", "desc"),
-      limit(100),
+      // Audit §1.3 — 100-doc live window re-billed 100 reads per new
+      // notification. 25 is what the UI actually renders in the dropdown;
+      // "load more" can grow via a one-shot getDocs later if needed.
+      limit(25),
     );
     const unsub = onSnapshot(
       q,
