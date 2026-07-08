@@ -1814,6 +1814,11 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         return false;
     }
 
+    // BUG-02/24 — inbound message counts against today's rollup so the
+    // dashboard chart can render from a bounded (30-doc) read instead of
+    // scanning the whole messages subcollection.
+    wabees_bump_analytics_daily($userId, 1, 0, 0);
+
     // ============ PRE-WARM BOT CACHE (after inbox commit) ============
     $adminToken = get_firebase_admin_token();
     $authHeaders = get_firebase_auth_headers();
