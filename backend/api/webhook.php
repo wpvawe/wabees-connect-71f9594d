@@ -80,7 +80,18 @@ function wabees_timestamp_expired(array $fields): bool
 
 function wabees_subscription_allows(string $userId, string $kind, int $additional = 1): bool
 {
-    $subResp = firestore_get("users/$userId/subscription/current");
+    // BUG-20 — per-request memoize of the subscription doc. A single webhook
+    // hit calls this up to 4 times (messages / contacts / aiMessages checks).
+    // Caching for the lifetime of this PHP request cuts 3 Firestore reads
+    // without any risk of over-serving, because any `wabees_increment_*`
+    // inside this same request also invalidates the memo (see below).
+    if (!isset($GLOBALS['_wabees_sub_cache'])) {
+        $GLOBALS['_wabees_sub_cache'] = [];
+    }
+    if (!isset($GLOBALS['_wabees_sub_cache'][$userId])) {
+        $GLOBALS['_wabees_sub_cache'][$userId] = firestore_get("users/$userId/subscription/current");
+    }
+    $subResp = $GLOBALS['_wabees_sub_cache'][$userId];
     if (($subResp['code'] ?? 404) !== 200) return false;
     $fields = $subResp['data']['fields'] ?? [];
     $status = strtolower((string)($fields['status']['stringValue'] ?? 'inactive'));
@@ -99,6 +110,12 @@ function wabees_increment_message_usage(string $userId, int $count = 1): void
     if (function_exists('firestore_increment')) {
         @firestore_increment("users/$userId/subscription/current", 'messagesUsed', $count);
         @firestore_increment("users/$userId", 'totalMessages', $count);
+    }
+    // BUG-20 — bust the per-request subscription memo so a follow-up
+    // wabees_subscription_allows() re-reads fresh usage numbers within the
+    // same PHP request (e.g. keyword bot triggers AI reply after commit).
+    if (isset($GLOBALS['_wabees_sub_cache'][$userId])) {
+        unset($GLOBALS['_wabees_sub_cache'][$userId]);
     }
     // BUG-02/24 — record outgoing messages against today's rollup so the
     // analytics chart can be built from a bounded read (30 docs) instead
