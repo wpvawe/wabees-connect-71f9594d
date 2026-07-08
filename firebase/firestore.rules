@@ -2,12 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Check if user is admin
-    // Uses get() to look up role — works because admin SDK bypasses rules,
-    // and client SDK caches the result per request.
+    // BUG-01 fix — every rule evaluation used to fire an extra
+    // `get()` on the caller's user doc (and up to 3 extra reads
+    // inside the agents subtree). We now read the role + dataOwner
+    // straight from the Firebase Auth custom-claim JWT (zero reads).
+    //
+    // Fallback: while custom claims are being back-filled for older
+    // sessions, we still tolerate the legacy `users/{uid}.role` /
+    // `agents/{uid}.status` lookups so signed-in users keep working
+    // during the migration window. Delete the fallback branches once
+    // every active session has a claim (24h after `set-user-claims.php`
+    // backfill completes).
+
     function isAdmin() {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return request.auth != null && (
+        request.auth.token.get('role', '') == 'admin'
+        // Legacy fallback — remove after custom-claim rollout.
+        || (
+          !('role' in request.auth.token)
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
     }
 
     // Helper: Check if user is owner of this userId
@@ -17,17 +32,26 @@ service cloud.firestore {
 
     // Helper: Check if user is an agent of this owner
     function isAgentOf(ownerId) {
-      return request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
-          .data.get('status', 'active') != 'revoked';
+      return request.auth != null && (
+        request.auth.token.get('dataOwner', '') == ownerId
+        // Legacy fallback — remove after custom-claim rollout.
+        || (
+          !('dataOwner' in request.auth.token)
+          && exists(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+          && get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+               .data.get('status', 'active') != 'revoked'
+        )
+      );
     }
 
     // Helper: Check if user is a supervisor-level agent of this owner
     // (can reassign, view all conversations, etc.). Missing role → 'agent'.
+    // Supervisor-role check stays as a doc read because it changes rarely
+    // and only guards a handful of endpoints — not worth another claim.
     function isSupervisorOf(ownerId) {
-      return isAgentOf(ownerId) &&
-        get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+      return isAgentOf(ownerId)
+        && exists(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(ownerId)/agents/$(request.auth.uid))
           .data.get('role', 'agent') == 'supervisor';
     }
 
