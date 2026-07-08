@@ -11,6 +11,7 @@ import {
   faBell,
   faClipboardList,
   faClock,
+  faStopwatch,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody, WbCardHeader } from "@/components/wb/WbCard";
@@ -20,6 +21,8 @@ import { useConfigDoc } from "@/hooks/admin/useAdminData";
 import { saveConfigDoc, broadcastNotification } from "@/lib/admin/mutations";
 import { useAuditLog } from "@/hooks/admin/useAuditLog";
 import { formatDistanceToNow } from "date-fns";
+import { useEffectiveUid } from "@/hooks/useFirebaseSession";
+import { backfillResponseTimes, type BackfillResult } from "@/lib/firebase/response-time-backfill";
 
 export function SystemSection() {
   return (
@@ -28,8 +31,57 @@ export function SystemSection() {
       <BroadcastCard />
       <AppVersionCard />
       <AiMasterCard />
+      <ResponseTimeBackfillCard />
       <AuditLogCard />
     </div>
+  );
+}
+
+function ResponseTimeBackfillCard() {
+  const uid = useEffectiveUid();
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<BackfillResult | null>(null);
+
+  async function run() {
+    if (!uid) {
+      toast.error("Not signed in");
+      return;
+    }
+    setRunning(true);
+    setResult(null);
+    try {
+      const r = await backfillResponseTimes(uid);
+      setResult(r);
+      toast.success(`Backfilled ${r.updated} conversation${r.updated === 1 ? "" : "s"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Backfill failed");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <WbCard>
+      <WbCardHeader
+        title="Response-time backfill"
+        subtitle="Compute firstResponseMs for up to 200 historical conversations so Workload SLA averages become meaningful"
+      />
+      <WbCardBody className="space-y-3">
+        <WbButton onClick={run} loading={running}>
+          <FontAwesomeIcon icon={faStopwatch} className="h-3 w-3" /> Run backfill
+        </WbButton>
+        {result && (
+          <p className="text-xs text-muted-foreground">
+            Scanned <b className="text-foreground">{result.scanned}</b>, updated{" "}
+            <b className="text-foreground">{result.updated}</b>, skipped{" "}
+            <b className="text-foreground">{result.skipped}</b>.
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          Safe to re-run — conversations that already have firstResponseMs are skipped.
+        </p>
+      </WbCardBody>
+    </WbCard>
   );
 }
 
