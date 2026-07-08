@@ -141,10 +141,6 @@ export function useConversations(): {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    // Auto-canonicalization write should fire once per phone per mount,
-    // not on every snapshot burst — otherwise we spam Firestore writes on
-    // initial load and every listener re-emit.
-    const canonicalized = new Set<string>();
     const unsub = subscribeConversations(uid, pageLimit, (snap) => {
       if (snap.docs === null) {
         setError(snap.error);
@@ -155,16 +151,10 @@ export function useConversations(): {
       setHasMore(rawDocs.length >= pageLimit);
         setLoadingMore(false);
         const grouped = new Map<string, Conversation>();
-        // Track which raw doc IDs belong to each canonical phone, so we can
-        // self-heal "+92..." vs "92..." duplicates created by older clients.
-        const idsByPhone = new Map<string, string[]>();
         for (const d of rawDocs) {
           const x = d.data;
           const phone = normalizePhone(d.id || str(x.contactPhone));
           if (!phone) continue;
-          const list = idsByPhone.get(phone) ?? [];
-          list.push(d.id);
-          idsByPhone.set(phone, list);
           const row: Conversation = {
             contactPhone: phone,
             contactName: str(x.contactName, phone),
@@ -211,29 +201,10 @@ export function useConversations(): {
           if (!existing) grouped.set(phone, row);
           else grouped.set(phone, mergeConversation(existing, row));
         }
-        // Best-effort canonicalization: keep/create the Flutter/PHP `+E.164`
-        // doc ID and delete older stray copies after merging their fields.
-        // Idempotent and safe to re-run.
-        for (const [phone, ids] of idsByPhone) {
-          const canonical = phoneDocId(phone);
-          const hasStray = ids.some((id) => id !== canonical);
-          if (!hasStray) continue;
-          if (canonicalized.has(phone)) continue;
-          canonicalized.add(phone);
-          const merged = grouped.get(phone);
-          if (!merged) continue;
-          void (async () => {
-            try {
-              await setDoc(
-                doc(db, `users/${uid}/conversations/${canonical}`),
-                compactConversationWrite(merged),
-                { merge: true },
-              );
-            } catch {
-              /* permissions or race — ignore, UI already deduped */
-            }
-          })();
-        }
+        // BUG-07 — automatic phoneDocId canonicalization write removed.
+        // Merging happens in-memory above so the UI already shows one row
+        // per canonical phone. Any stray legacy doc IDs must be healed by
+        // a one-time server-side migration, not on every mount.
         const rows = Array.from(grouped.values()).sort((a, b) => {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
           if ((a.pinOrder ?? 0) !== (b.pinOrder ?? 0)) return (b.pinOrder ?? 0) - (a.pinOrder ?? 0);
