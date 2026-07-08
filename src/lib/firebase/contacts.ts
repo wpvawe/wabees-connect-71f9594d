@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -83,20 +84,51 @@ export async function bulkImportContacts(
     group?: string;
     notes?: string;
   }>,
-): Promise<{ imported: number }> {
+): Promise<{ imported: number; skipped: number }> {
   if (rows.length === 0) return { imported: 0 };
-  await reserveQuota(uid, "contacts", rows.length);
   const db = fbDb();
+  // Audit §3.4 — was "blind auto-ID create with zero de-dup", which allowed
+  // the same CSV imported twice (or a CSV containing the same number twice)
+  // to create duplicate contact records and re-message the same person from
+  // later campaigns. Dedupe (a) within the incoming rows by normalized
+  // phone and (b) against the existing collection.
+  const seen = new Set<string>();
+  const deduped: typeof rows = [];
+  for (const r of rows) {
+    const p = normalizePhone(r.phone);
+    if (!p) continue;
+    if (seen.has(p)) continue;
+    seen.add(p);
+    deduped.push({ ...r, phone: p });
+  }
+  let existing = new Set<string>();
+  try {
+    const existingSnap = await getDocs(collection(db, "users", uid, "contacts"));
+    existingSnap.forEach((d) => {
+      const p = (d.data() as { phone?: string })?.phone;
+      if (typeof p === "string" && p) existing.add(normalizePhone(p));
+    });
+  } catch {
+    // If we can't read existing contacts, fall through — the in-CSV dedupe
+    // above still prevents self-duplicates within this import.
+    existing = new Set<string>();
+  }
+  const fresh = deduped.filter((r) => !existing.has(r.phone));
+  const skipped = rows.length - fresh.length;
+  if (fresh.length === 0) return { imported: 0, skipped };
+  await reserveQuota(uid, "contacts", fresh.length);
   let imported = 0;
   try {
-    for (let i = 0; i < rows.length; i += 400) {
-      const chunk = rows.slice(i, i + 400);
+    for (let i = 0; i < fresh.length; i += 400) {
+      const chunk = fresh.slice(i, i + 400);
       const batch = writeBatch(db);
       for (const r of chunk) {
-        const ref = doc(collection(db, "users", uid, "contacts"));
+        // Use the normalized phone as the doc ID so re-imports are
+        // structurally idempotent (setDoc merges instead of creating).
+        const ref = doc(db, "users", uid, "contacts", r.phone);
         batch.set(ref, {
           name: r.name,
-          phone: normalizePhone(r.phone),
+          phone: r.phone,
           email: r.email ?? null,
           company: r.company ?? null,
           notes: r.notes ?? null,
@@ -104,16 +136,16 @@ export async function bulkImportContacts(
           group: r.group ?? null,
           totalMessages: 0,
           createdAt: serverTimestamp(),
-        });
+        }, { merge: true });
       }
       await batch.commit();
       imported += chunk.length;
     }
   } catch (err) {
-    const uncreated = Math.max(0, rows.length - imported);
+    const uncreated = Math.max(0, fresh.length - imported);
     if (uncreated > 0) await releaseQuota(uid, "contacts", uncreated).catch(() => {});
     throw err;
   }
   if (imported > 0) bumpRefetch("contacts");
-  return { imported };
+  return { imported, skipped };
 }
