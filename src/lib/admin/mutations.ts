@@ -241,8 +241,12 @@ export async function broadcastNotification(args: {
   } else if (args.allUidsHint && args.allUidsHint.length > 0) {
     targets = args.allUidsHint;
   } else {
-    const usersSnap = await getDocs(collection(db, "users"));
-    targets = usersSnap.docs.map((d) => d.id);
+    // SEC-04 fix — never silently full-scan the users collection from
+    // the admin panel. Force callers to pass either an explicit uid list
+    // or the pre-loaded `useAllUsers()` snapshot as `allUidsHint`.
+    throw new Error(
+      "broadcastNotification: pass `uids` or `allUidsHint` (from useAllUsers). Full users scan is disabled.",
+    );
   }
   if (targets.length === 0) return 0;
   const payload = {
