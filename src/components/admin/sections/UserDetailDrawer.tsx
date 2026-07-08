@@ -13,6 +13,7 @@ import {
   faTriangleExclamation,
   faTrash,
   faKey,
+  faArrowsRotate,
 } from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { WbCard, WbCardBody } from "@/components/wb/WbCard";
@@ -131,36 +132,53 @@ export function UserDetailDrawer({
                 </WbCardBody>
               </WbCard>
 
-              {/* Stats — live counts from actual subcollections (not cached counters). */}
+              {/* Stats — denormalised counters on the root doc by default;
+                  "Recalculate" fires 5 aggregate reads (BUG-04). */}
               <div className="grid grid-cols-2 gap-2">
                 <StatTile
                   icon={faMessage}
                   label="Messages"
-                  value={live.loading ? user.totalMessages : live.messages}
+                  value={live.loaded ? live.messages : user.totalMessages}
                   loading={live.loading}
                 />
                 <StatTile
                   icon={faAddressBook}
                   label="Contacts"
-                  value={live.loading ? user.totalContacts : live.contacts}
+                  value={live.loaded ? live.contacts : user.totalContacts}
                   loading={live.loading}
                 />
                 <StatTile
                   icon={faRobot}
                   label="Bots"
-                  value={live.loading ? user.totalBots : live.bots}
+                  value={live.loaded ? live.bots : user.totalBots}
                   loading={live.loading}
                 />
                 <StatTile
                   icon={faBullhorn}
                   label="Campaigns"
-                  value={live.loading ? user.totalCampaigns : live.campaigns}
+                  value={live.loaded ? live.campaigns : user.totalCampaigns}
                   loading={live.loading}
                 />
               </div>
+              <button
+                type="button"
+                onClick={live.refresh}
+                disabled={live.loading}
+                className="inline-flex items-center gap-1.5 self-start rounded-full border border-border bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+              >
+                <FontAwesomeIcon
+                  icon={faArrowsRotate}
+                  className={cn("h-3 w-3", live.loading && "animate-spin")}
+                />
+                {live.loaded ? "Recalculate live counts" : "Show live counts"}
+              </button>
 
               {/* Current subscription */}
-              <SubscriptionCard sub={sub} liveAgents={live.agents} loading={subLoading} />
+              <SubscriptionCard
+                sub={sub}
+                liveAgents={live.loaded ? live.agents : null}
+                loading={subLoading}
+              />
 
               {/* Full plan management: assign, customise limits, extend expiry */}
               <PlanManagementCard uid={user.id} />
