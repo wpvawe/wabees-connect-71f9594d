@@ -1,0 +1,15 @@
+# BUG-22 — Hostinger media hardening. Media stays on Hostinger (cheap) but:
+#  1) never execute PHP from an uploads folder (attacker-uploaded polyglot files)
+#  2) never expose a browsable directory listing
+#  3) block server-side script types (in case Apache falls back to a handler)
+php_flag engine off
+Options -Indexes -ExecCGI
+<FilesMatch "\.(php|php3|php4|php5|php7|php8|phtml|pl|py|jsp|asp|sh|cgi)$">
+    Require all denied
+</FilesMatch>
+# Long cache — files here are addressed by crypto-random filenames, so they
+# are effectively immutable.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 30 days"
+</IfModule>
