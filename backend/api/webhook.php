@@ -29,11 +29,13 @@ define(
 // one's AI reply — which was the #1 cause of "7-10s late receive".
 // Requires LiteSpeed/PHP-FPM (Hostinger already provides it) + ignore_user_abort.
 if (!defined('ENABLE_FAST_WEBHOOK_ACK')) {
-    // Default OFF: some Hostinger/LiteSpeed setups stop PHP work after an
-    // early flush. If we ACK before the Firestore commit, Meta sees success
-    // while the inbox row is never written, so messages appear sent by the
-    // customer but are not received in Wabees.
-    define('ENABLE_FAST_WEBHOOK_ACK', false);
+    // BUG-19 — Default ON. The old fast-ack fired BEFORE the Firestore
+    // commit, so a Hostinger/LiteSpeed abort could drop the inbox write.
+    // The ACK is now emitted AFTER firestore_commit() succeeds (see
+    // wabees_flush_ack_once() call inside handle_incoming_message), so bot
+    // pre-warm, AI reply and FCM run in the background but the inbox row
+    // is durable before Meta sees 200.
+    define('ENABLE_FAST_WEBHOOK_ACK', true);
 }
 
 // ============ GET = WEBHOOK VERIFICATION ============
@@ -412,6 +414,21 @@ function fast_respond()
     if (function_exists('fastcgi_finish_request')) {
         fastcgi_finish_request();
     }
+}
+
+/**
+ * BUG-19 helper — flush the 200 OK to Meta exactly once per request, only
+ * after the caller has durably committed the inbound message. Safe to call
+ * from every handle_incoming_message() iteration; subsequent calls are
+ * no-ops.
+ */
+function wabees_flush_ack_once()
+{
+    static $flushed = false;
+    if ($flushed) return;
+    if (!(defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK)) return;
+    $flushed = true;
+    fast_respond();
 }
 
 // ============ POST = INCOMING DATA ============
