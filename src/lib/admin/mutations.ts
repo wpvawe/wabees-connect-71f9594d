@@ -340,6 +340,13 @@ export async function activatePendingSubscription(
   });
 
   // Best-effort side effects (outside tx — they don't need atomicity).
+  // BUG-03 fix — set the `hasSubscription` flag on the parent user doc so
+  // the admin overview's cheap `where hasSubscription == false` filter
+  // works without doing a 200-doc subscription fanout on every mount.
+  await updateDoc(doc(db, "users", userId), {
+    hasSubscription: true,
+    updatedAt: serverTimestamp(),
+  }).catch(() => undefined);
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
     {
