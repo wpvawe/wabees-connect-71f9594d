@@ -162,10 +162,10 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
 - New `set-user-claims.php` endpoint — **DONE** (`backend/api/set-user-claims.php`). Merges into existing `customAttributes`, supports `role` + `dataOwner` (null clears). Frontend `setUserRole` now calls it after the Firestore role write.
 - Frontend: `deleteUserAuth(uid)` helper in `src/lib/admin/mutations.ts` — call it AFTER `deleteUserData(uid)` from the admin drawer to wipe the Firebase Auth record too.
 
-### ⏳ Still pending (explicit skip / follow-up)
+### ⏳ Follow-up
 
-- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows` — **skipped**: caching the whole subscription doc for 5 min risks over-serving past cap when `messagesUsed` is stale; needs a split (cache `max*`/`status` for 5 min, always read `*Used` live) that requires a bigger refactor of the helper. Track separately.
-- SEC-01 relocate `whatsappAccessToken` from `users/{uid}` → `users/{uid}/whatsapp_config/current.accessToken` and update every PHP token reader — deferred: touches ~10 read paths across `webhook.php` + `send-message.php` + connect flows and needs a coordinated migration + client rewrite. Firestore rules already restrict `whatsapp_config/*` to owner-only, so the risk is limited to the legacy field.
+- BUG-20 subscription memo — **DONE (per-request)**. `wabees_subscription_allows` now caches the subscription doc in `$GLOBALS['_wabees_sub_cache']` for the lifetime of a single webhook request; `wabees_increment_message_usage` busts that memo. Cuts 3 Firestore reads per inbound message with zero over-serving risk (memo dies at end of request). A cross-request 5-min TTL is intentionally NOT added yet — that would require splitting `max*`/`status` (safe to cache) from `*Used` (must be live).
+- SEC-01 `get_user_access_token` — **DONE**: now reads `users/{uid}/whatsapp_config/config.accessToken` FIRST (owner-only per rules), falls back to legacy `users/{uid}.whatsappAccessToken` only if the config doc has no token. Connect flow (`whatsapp-connect-repair.php`) already dual-writes, so new connections work immediately. Legacy field can be nulled from user docs in a later migration pass without breaking reads.
 
 ### ⏳ Ops (user to run)
 
