@@ -322,8 +322,8 @@ function UsageStat({
 }) {
   const unlimited = !max || max <= 0;
   const pct = unlimited ? 0 : Math.min(100, Math.round((used / max) * 100));
-  const danger = pct >= 90;
-  const warn = pct >= 70 && pct < 90;
+  const danger = pct >= 100;
+  const warn = pct >= 75 && pct < 100;
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
       <div className="flex items-center justify-between">
