@@ -215,6 +215,7 @@ Honeypot ❌ (app doesn't need it — no public form), error-capture ⚠️, ava
 19. **Scheduled messages dispatcher** — should move to server cron (PHP + pg_cron equivalent or Firestore Cloud Fn); mobile app should NOT run a 30s poller. Backend work, not app.
 20. **Response-time backfill** — one-time script, not app UI.
 21. **Messaging Insights parity** — ✅ Shipped. Website's `/analytics` (sent/delivered/read/failed/incoming, daily bar, type pie, top contacts) is now the **Messaging** tab of the app's existing `/analytics` screen. Same shared cache (`users/{owner}/analytics_daily/{YYYY-MM-DD}`) with 5-minute today-write throttle. No duplicate screen — Billing (Meta Graph) + Messaging (Firestore rollup) live under one tabbed `/analytics`.
+22. **Conversation tags parity** — ✅ Shipped. App already had backend CRUD + inbox filter chips + inline "Manage Tags" long-press dialog. Delta closed: dedicated **Settings → Tags** editor (`tag_manager_screen.dart`) with rename + recolour + delete (website `updateTag` parity), plus **chat header → Manage tags** bottom sheet with catalogue checkboxes + shortcut to the editor. Shared `users/{owner}/tags/*` collection unchanged.
 
 ---
 
