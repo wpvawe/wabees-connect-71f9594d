@@ -98,6 +98,40 @@ function wabees_increment_message_usage(string $userId, int $count = 1): void
         @firestore_increment("users/$userId/subscription/current", 'messagesUsed', $count);
         @firestore_increment("users/$userId", 'totalMessages', $count);
     }
+    // BUG-02/24 — record outgoing messages against today's rollup so the
+    // analytics chart can be built from a bounded read (30 docs) instead
+    // of scanning the entire messages subcollection.
+    wabees_bump_analytics_daily($userId, 0, $count, 0);
+}
+
+/**
+ * BUG-02/BUG-24 — increment the caller's per-day rollup doc
+ * (`users/{uid}/analytics_daily/{YYYY-MM-DD}`). All arguments are deltas;
+ * pass 0 for the ones that don't apply. Never throws — analytics must
+ * NEVER break message delivery.
+ */
+function wabees_bump_analytics_daily(
+    string $userId,
+    int $incoming = 0,
+    int $outgoing = 0,
+    int $aiReplies = 0
+): void {
+    if (!function_exists('firestore_update_with_increment')) return;
+    if ($incoming === 0 && $outgoing === 0 && $aiReplies === 0) return;
+    $date = gmdate('Y-m-d');
+    $increments = ['messages' => $incoming + $outgoing];
+    if ($incoming !== 0)   $increments['incoming']   = $incoming;
+    if ($outgoing !== 0)   $increments['outgoing']   = $outgoing;
+    if ($aiReplies !== 0)  $increments['aiReplies']  = $aiReplies;
+    try {
+        @firestore_update_with_increment(
+            "users/$userId/analytics_daily/$date",
+            ['date' => $date],
+            $increments
+        );
+    } catch (\Throwable $e) {
+        // Never break the send/receive path for analytics.
+    }
 }
 
 // AI Bot configuration (API keys + defaults in separate secure config)
@@ -1779,6 +1813,11 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             @unlink($lockFile);
         return false;
     }
+
+    // BUG-02/24 — inbound message counts against today's rollup so the
+    // dashboard chart can render from a bounded (30-doc) read instead of
+    // scanning the whole messages subcollection.
+    wabees_bump_analytics_daily($userId, 1, 0, 0);
 
     // ============ PRE-WARM BOT CACHE (after inbox commit) ============
     $adminToken = get_firebase_admin_token();

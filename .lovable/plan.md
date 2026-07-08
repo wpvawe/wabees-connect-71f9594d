@@ -152,12 +152,13 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
 - BUG-21 `webhook.php` duplicate block check removed (early unconditional check retained)
 - BUG-23 `webhook.php` wa_map APCu owner-cache TTL 300s → 1800s
 - BUG-22 `backend/uploads/media/.htaccess` added (`php_flag engine off`, `Options -Indexes -ExecCGI`, blocks script extensions, 30-day cache)
+- BUG-02/24 `webhook.php` + `send-message.php` write `users/{uid}/analytics_daily/{YYYY-MM-DD}` on every incoming / outgoing message (fields: `date`, `messages`, `incoming`, `outgoing`, `aiReplies`)
+- Frontend `analyticsRollup.ts` `writeDayAggregates` now uses `{merge: true}` so PHP-maintained counters aren't clobbered by the client recompute
 
 ### ⏳ Pending PHP backend (Hostinger — sandbox can't reach ftp.wabees.live, user deploys)
 
 - BUG-19 fast webhook ACK — flag exists as `ENABLE_FAST_WEBHOOK_ACK` but default-OFF for safety (fast-ack currently runs BEFORE Firestore commit). Enabling it needs the code path reordered so Firestore write completes before `fastcgi_finish_request()`. Do this locally + test on staging bot before flipping the constant.
-- BUG-02 / BUG-24 analytics_daily rollup — add `firestore_update_with_increment("users/$uid/analytics_daily/{YYYY-MM-DD}", {...})` in `webhook.php::handle_incoming_message` + `send-message.php` success path; rewrite `analyticsRollup.ts` to read `analytics_daily` docs
-- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows`
+- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows` — skipped for now: caching the whole subscription doc for 5 min risks over-serving past cap when `messagesUsed` is stale; needs a split (cache `max*`/`status` for 5 min, always read `*Used` live) that requires a bigger refactor of the helper.
 - SEC-01 relocate `whatsappAccessToken` from `users/{uid}` → `users/{uid}/whatsapp_config/current.accessToken`; update PHP token reader
 - SEC-03 admin `delete-user.php` endpoint (Firebase Admin `deleteUser`)
 - New `set-user-claims.php` endpoint for `adminSetRole` to update custom claims
@@ -167,6 +168,7 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
 1. Deploy PHP + `.htaccess` to Hostinger. From your PowerShell (RULES.md line 267-276 pattern):
    ```powershell
    curl.exe -T backend/api/webhook.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/webhook.php"
+   curl.exe -T backend/api/send-message.php "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/api/send-message.php"
    curl.exe -T backend/uploads/media/.htaccess "ftp://u664356407.ftppwabeeslive:Ht%40143%2A%23%24@ftp.wabees.live/uploads/media/.htaccess"
    ```
 2. Deploy Firestore rules: RULES.md Python REST snippet (`firebase/firestore.rules`).

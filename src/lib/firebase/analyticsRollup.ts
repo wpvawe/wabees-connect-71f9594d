@@ -227,12 +227,22 @@ export async function writeDayAggregates(
     const batch = writeBatch(db);
     for (const day of items.slice(i, i + 400)) {
       const ref = doc(db, `users/${uid}/analytics_daily/${day.date}`);
-      batch.set(ref, {
-        ...day,
-        contacts: capContacts(day.contacts),
-        computedAt: Timestamp.now(),
-        source: ROLLUP_SOURCE,
-      });
+      // BUG-02/24 — merge:true so we don't clobber the `messages` /
+      // `incoming` / `outgoing` / `aiReplies` counters that PHP
+      // (`webhook.php` + `send-message.php`) writes on every event.
+      // Client-computed fields (`sent`/`delivered`/`read`/`failed`/
+      // `byType`/`contacts`) still take precedence for the shapes the
+      // backend does not maintain.
+      batch.set(
+        ref,
+        {
+          ...day,
+          contacts: capContacts(day.contacts),
+          computedAt: Timestamp.now(),
+          source: ROLLUP_SOURCE,
+        },
+        { merge: true },
+      );
     }
     await batch.commit();
   }
