@@ -40,6 +40,8 @@ export type AdminUser = {
   whatsappWabaId: string | null;
   isOnline: boolean;
   aiBotEnabled: boolean;
+  /** BUG-03 flag maintained by ensureWelcomeSubscription / admin plan actions. */
+  hasSubscription: boolean | null;
 };
 
 function toAdminUser(id: string, d: Record<string, unknown>): AdminUser {
@@ -62,6 +64,7 @@ function toAdminUser(id: string, d: Record<string, unknown>): AdminUser {
     whatsappWabaId: (d.whatsappWabaId as string | null) ?? null,
     isOnline: d.isOnline === true,
     aiBotEnabled: Boolean(d.aiBotEnabled),
+    hasSubscription: typeof d.hasSubscription === "boolean" ? d.hasSubscription : null,
   };
 }
 
