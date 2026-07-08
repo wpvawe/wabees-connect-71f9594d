@@ -85,7 +85,7 @@ export async function bulkImportContacts(
     notes?: string;
   }>,
 ): Promise<{ imported: number; skipped: number }> {
-  if (rows.length === 0) return { imported: 0 };
+  if (rows.length === 0) return { imported: 0, skipped: 0 };
   const db = fbDb();
   // Audit §3.4 — was "blind auto-ID create with zero de-dup", which allowed
   // the same CSV imported twice (or a CSV containing the same number twice)
