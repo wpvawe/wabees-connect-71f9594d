@@ -293,7 +293,7 @@ shipped are dropped; only real remaining gaps listed.
 | # | Website feature | App status | Where it should live | Priority |
 |---|---|---|---|---|
 | 1 | **Leads board** (`users/{owner}/bot_leads` — name/phone/score/status/notes CRUD) | ❌ no screen, no model, no repo | new `lib/screens/shared/leads/` + `lead_repository.dart` | **P0** |
-| 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ❌ not wired; AI bot service exists but no triage boot in `MainShell` | new `auto_triage_service.dart` + provider booted alongside `csatCaptureProvider` | **P0** |
+| 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ⚠️ settings screen shipped; classifier call still runs on website session only (needs PHP endpoint for phone-only classification) | `auto_triage_service.dart` + PHP `triage-message.php` | **P0** |
 | 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ❌ absent in admin screens | new tab in `admin_plans_screen.dart` writing `admin/settings/subscription_messages` | **P1** |
 | 4 | **Embedded Signup** (Facebook Login for Business — one-tap WA number attach) | ❌ only manual token paste flow | Flutter FB SDK on `whatsapp_connect_screen` | **P2** |
 | 5 | **OTP auto-detect chip** in inbound bubbles (regex + copy) | ❌ no regex scan in `_MessageBubble` | small helper in `chat_screen.dart` bubble builder | **P2** |
@@ -307,8 +307,17 @@ Agent invite + join (P0#1), 24-h composer lock (P0#2), Canned responses editor +
 
 ### Recommended next slice
 
-Ship **P0 #1 (Leads) + P0 #2 (Auto-triage)** together — both hit the same
-"owner-visible pipeline off inbound messages" surface and share the Firestore
-listener plumbing already used by `CsatCaptureService`. One push, two features.
+**Update (Jul 2026 — shipped):**
+
+- **P0 #1 Leads — ✅ complete.** New route `/leads`, entry from Settings.
+  Model + repo + Riverpod stream + screen + edit sheet. Reads/writes
+  `users/{owner}/bot_leads`, same schema as website `useLeads.ts`.
+  Owner-only guard mirrors website behavior.
+- **P0 #2 Auto-triage — ⚠️ partial.** Settings screen shipped at
+  `/settings/auto-triage` writing the same `users/{owner}/settings/autoTriage`
+  doc the website reads (`triage.ts`). Toggling on the phone flips it
+  everywhere. The **classifier call** itself still runs from the website
+  session; a phone-side listener needs a PHP endpoint on `api.wabees.live`
+  (`triage-message.php` proxying DeepSeek) to be equivalent. Next slice.
 
 Confirm priority and I'll begin.
