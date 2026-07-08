@@ -281,4 +281,34 @@ File-level verification done against `wpvawe/wabees-plus` (main). Results:
 
 Pick a P0 slice to start (my recommendation: **#1 Agent invite/join** — smallest, highest leverage, unlocks team usage on mobile) and I ship that end-to-end (models + repo + provider + screen + router + tests) via the wabees-plus repo. Then #2, #3… in order.
 
+---
+
+## Part 6 — Reverse audit (Jul 2026): website features still missing in app
+
+Verified against `wpvawe/wabees-plus@main` (178 dart files). Items previously
+shipped are dropped; only real remaining gaps listed.
+
+### Still missing (website → app)
+
+| # | Website feature | App status | Where it should live | Priority |
+|---|---|---|---|---|
+| 1 | **Leads board** (`users/{owner}/bot_leads` — name/phone/score/status/notes CRUD) | ❌ no screen, no model, no repo | new `lib/screens/shared/leads/` + `lead_repository.dart` | **P0** |
+| 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ❌ not wired; AI bot service exists but no triage boot in `MainShell` | new `auto_triage_service.dart` + provider booted alongside `csatCaptureProvider` | **P0** |
+| 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ❌ absent in admin screens | new tab in `admin_plans_screen.dart` writing `admin/settings/subscription_messages` | **P1** |
+| 4 | **Embedded Signup** (Facebook Login for Business — one-tap WA number attach) | ❌ only manual token paste flow | Flutter FB SDK on `whatsapp_connect_screen` | **P2** |
+| 5 | **OTP auto-detect chip** in inbound bubbles (regex + copy) | ❌ no regex scan in `_MessageBubble` | small helper in `chat_screen.dart` bubble builder | **P2** |
+| 6 | **Media lightbox gallery** — swipe between images, pinch zoom, save-to-gallery | ⚠️ single-image `InteractiveViewer` only | new `media_gallery_viewer.dart` (photo_view + PageView) | **P2** |
+| 7 | **Scheduled-messages dispatcher** | architectural — belongs on **server cron**, NOT in app | PHP cron on Hostinger hitting Firestore | **P3** (backend, not app) |
+| 8 | **Response-time backfill** (one-off analytics rollup) | script, not app UI | node script in wabees-plus repo | **P3** (out of app scope) |
+
+### Already closed since original audit (for the record)
+
+Agent invite + join (P0#1), 24-h composer lock (P0#2), Canned responses editor + `/` picker (P0#5), Availability toggle (P1#6), Workload screen (P1#7), SLA settings + badge (P1#8), CSAT end-to-end (P1#9), Bulk action bar (P1#10), Starred drawer (P2#11), Phone health card (P2#13), Tag catalog UI (P2#18), CSV/VCF import (P2#16), Conversation tags parity (P3#22), Messaging Insights parity (P3#21), Forwarded badge, Deleted-message placeholder, Campaign pause-on-disconnect, Agent presence heartbeat (45s + owner mirror).
+
+### Recommended next slice
+
+Ship **P0 #1 (Leads) + P0 #2 (Auto-triage)** together — both hit the same
+"owner-visible pipeline off inbound messages" surface and share the Firestore
+listener plumbing already used by `CsatCaptureService`. One push, two features.
+
 Confirm priority and I'll begin.
