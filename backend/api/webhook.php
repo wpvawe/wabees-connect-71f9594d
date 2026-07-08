@@ -1656,16 +1656,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
             $isFirstMessage = true;
             webhook_log('BOT: First message — no existing conversation for ' . $from);
         } else {
-            // ⛔ BLOCK CHECK — if contact is blocked, drop message completely
-            // (no Firestore save, no FCM notification, no bot reply)
+            // BUG-21 — dedicated block check removed. The EARLY BLOCK CHECK
+            // at the top of handle_incoming_message() already runs
+            // unconditionally and short-circuits blocked contacts before
+            // any Firestore fetch happens here, so this second guard was
+            // dead code (and re-fetched the same doc a moment later).
             $convFields = $convCheckResp['data']['fields'] ?? [];
-            $isBlockedRaw = $convFields['isBlocked']['booleanValue'] ?? false;
-            if ($isBlockedRaw === true || $isBlockedRaw === 'true') {
-                webhook_log("BLOCKED: Dropping message from $from — contact is blocked by $userId");
-                if (!empty($lockFile))
-                    @unlink($lockFile); // Release dedup lock so future messages (after unblock) work
-                return true;
-            }
 
             // Check if welcomeMessage was already sent for this conversation
             $welcomeSentRaw = $convCheckResp['data']['fields']['welcomeMessageSent']['booleanValue'] ?? false;
