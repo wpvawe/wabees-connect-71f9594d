@@ -261,6 +261,20 @@ export function ContactsWorkspace() {
           />
         </div>
       </div>
+      {/* MIN-04 — surface the 2000-doc client-side cap so heavy accounts
+          know their inbox/campaigns are operating on a truncated slice. */}
+      {authoritativeTotal >= 1800 && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-900 dark:text-amber-100">
+          <p className="font-medium">
+            You have {authoritativeTotal.toLocaleString()} contacts.
+          </p>
+          <p className="mt-0.5 text-[12px] opacity-80">
+            The contacts view is capped at 2,000 rows. Campaigns and search
+            currently operate on the first 2,000 only — export to CSV for the
+            full dataset, and please contact support if you need pagination.
+          </p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
