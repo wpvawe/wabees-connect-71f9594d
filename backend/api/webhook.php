@@ -13,8 +13,15 @@
  * - Interactive message parsing (buttons, list replies)
  */
 
-// ⚠️ CHANGE THIS to match the token you enter in Meta Developer Console
-define('VERIFY_TOKEN', 'wabees_webhook_verify_2024');
+// SEC-02 fix — accept the verify token from a server env var
+// (`SetEnv WEBHOOK_VERIFY_TOKEN ...` in `.htaccess` on Hostinger), and fall
+// back to the legacy hard-coded value only if the env var is missing so
+// existing deployments don't break during the rollout. Rotate the token in
+// Meta Developer Console + `.htaccess` in one go, then delete the fallback.
+define(
+    'VERIFY_TOKEN',
+    getenv('WEBHOOK_VERIFY_TOKEN') ?: 'wabees_webhook_verify_2024'
+);
 
 // Fast-ack Meta immediately using fastcgi_finish_request, then process the
 // message (Firestore write + FCM + bot + AI reply) in the background. This
