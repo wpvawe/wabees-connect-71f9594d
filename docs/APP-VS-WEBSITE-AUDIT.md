@@ -229,7 +229,36 @@ File-level verification done against `wpvawe/wabees-plus` (main). Results:
 - **Template edit + delete on Meta** — ✅ Present. `TemplateRepository.editOnMeta` and `deleteOnMeta` call `WhatsAppRepository.editTemplateOnMeta` / `deleteTemplateOnMeta`, with Meta "sample template" / "already-deleted" error handling and local Firestore mirror updates (`lib/data/repositories/template_repository.dart` L92, L123).
 - **Campaign pause-on-disconnect** — ❌ Missing. `lib/services/campaign_execution_service.dart` (580 lines) contains no reference to `isConnected` / `whatsappConnected` / a paused-on-disconnect cascade. If the tenant disconnects mid-campaign the client-side executor will keep trying. Should be added to P2.
 - **Presence heartbeat (`user_presence_service.dart`)** — ❌ Missing. There is no such file — `lib/services/` only ships `anti_ban_service.dart`, `campaign_execution_service.dart`, `campaign_scheduler_service.dart`, `cleanup_service.dart`. The Part 1.2 mention of `user_presence_service` and the ⚠️ in Row I ("verify interval + hide/beforeunload equivalent") were both wrong — the feature is not implemented at all.
-- **`chat_screen.dart` details** (reactions, typing indicator, deleted/forwarded, tags, state, priority) — still pending; file is 3 012 lines, warrants its own focused pass.
+- **`chat_screen.dart` deep-dive** — done. Findings on the 3 012-line file:
+  | # | Feature | Status | Evidence |
+  |---|---|---|---|
+  | 1 | Message reactions (quick-6) | ⚠️ partial | `chat_screen.dart:789–806, 959–1020` — 6 hardcoded emojis, no full emoji picker / `+` button |
+  | 2 | Typing indicator | ✅ | `chat_screen.dart:82–84, 322–338` — 350 ms debounce, 20 s throttle, `sendTypingIndicator(userId, messageId: wamid)` |
+  | 3 | Deleted-message rendering | ❌ | No `__DELETED__` sentinel branch, no `isDeleted` on `MessageModel` |
+  | 4 | Forwarded badge | ❌ | No `forwarded` field on `MessageModel`; no "Forwarded" chip in bubble |
+  | 5 | Conversation tags on header | ✅ | `chat_screen.dart:1380–1405, 1447–1448` — chip strip + "Manage tags" sheet |
+  | 6 | Conversation state (open/resolved) | ✅ | `chat_screen.dart:1439–1482` — dynamic `resolve`/`reopen` menu, `_toggleResolve()` |
+  | 7 | Conversation priority | ❌ | No `priority` field on `ConversationModel`; no picker |
+  | 8 | Reply / quote | ✅ | `chat_screen.dart:80, 814–818, 1940–1981` + `replyTo*` sent with every send |
+  | 9 | 24-h window enforcement | ⚠️ | Countdown + expired banner exist (`1289–1329, 1695–1755`) but composer is **not** hard-locked when window is closed |
+  | 10 | OTP auto-detect | ❌ | No regex scan on inbound bodies, no copy-chip |
+  | 11 | Starred messages | ✅ | `chat_screen.dart:868–883` + dedicated `starred_messages_screen.dart` |
+  | 12 | Bulk-select in chat | ❌ | No multi-select state or bulk bar |
+
+### Consolidated Flutter follow-ups (from Part 5 verification)
+
+**P2 — high value, well-scoped:**
+1. **Campaign pause-on-disconnect** in `campaign_execution_service.dart` — subscribe to `users/{owner}/whatsapp_config/config.isConnected` and mark in-flight campaigns `status: 'paused'` on disconnect.
+2. **Agent presence service** — new `lib/services/user_presence_service.dart` writing `users/{owner}/agents/{self}.isOnline` + `lastSeenAt` on a 45 s heartbeat; `isOnline: false` on app-lifecycle-paused / logout.
+3. **24-h window hard-lock** in chat composer — disable text field + attachments when `!withinWindow`, keep template picker enabled.
+4. **Deleted-message placeholder** — treat inbound `body === '__DELETED__'` as an italic muted "This message was deleted" bubble.
+5. **Forwarded badge** — add `forwarded: bool` on `MessageModel`, render "Forwarded" chip when true.
+
+**P3 — polish:**
+6. **Conversation priority** — add `priority: 'low'|'normal'|'high'` on `ConversationModel`, chat-header picker + inbox sort key.
+7. **OTP auto-detect** — regex `\b\d{4,8}\b` on inbound bubbles, tap-to-copy chip.
+8. **Full emoji picker** — add `emoji_picker_flutter` behind a `+` on the quick-6 reaction row.
+9. **Bulk-select in chat** — long-press to enter multi-select, bulk bar with delete-local / forward.
 
 ### Newly promoted P2 items (from these findings)
 - **Campaign pause-on-disconnect cascade** in `campaign_execution_service.dart` — listen to `users/{owner}/whatsapp_config/config.isConnected` and mark in-flight campaigns `status: 'paused'` with reason on disconnect (matches website behaviour).
