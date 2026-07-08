@@ -525,27 +525,50 @@ function get_user_access_token($userId)
         }
     }
 
-    // 2. Try user doc first
-    $url = "https://firestore.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID
-        . "/databases/(default)/documents/users/" . $userId;
-
+    // SEC-01 — Read `whatsapp_config/config.accessToken` FIRST (that
+    // subcollection is owner-only per Firestore rules), then fall back to
+    // the legacy `users/{uid}.whatsappAccessToken` field which was readable
+    // by anyone with `get()` on the user doc. Once every connect/disconnect
+    // path has migrated, the legacy branch below can be deleted.
     $ch = _firestore_curl();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, get_firebase_auth_headers());
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if (_firestore_should_retry_auth($httpCode, $response)) {
-        error_log("[WABEES] get_user_access_token auth retry user=$userId");
+    // Read fcmToken from user doc up-front (still needed for push).
+    $fcmToken = null;
+    $userUrl = "https://firestore.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID
+        . "/databases/(default)/documents/users/" . $userId;
+    curl_setopt($ch, CURLOPT_URL, $userUrl);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, get_firebase_auth_headers());
+    $userResp = curl_exec($ch);
+    $userCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($userCode, $userResp)) {
+        error_log("[WABEES] get_user_access_token user auth retry user=$userId");
         curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $userResp = curl_exec($ch);
+        $userCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    $userFields = [];
+    if ($userCode < 400 && $userCode > 0) {
+        $userDoc = json_decode($userResp, true);
+        $userFields = $userDoc['fields'] ?? [];
+        $fcmToken = $userFields['fcmToken']['stringValue'] ?? null;
     }
 
-    if ($httpCode < 400 && $httpCode > 0) {
-        $doc = json_decode($response, true);
-        $token = $doc['fields']['whatsappAccessToken']['stringValue'] ?? null;
-        $fcmToken = $doc['fields']['fcmToken']['stringValue'] ?? null;
+    // 1. Preferred source: users/{uid}/whatsapp_config/config.accessToken
+    $cfgUrl = "https://firestore.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID
+        . "/databases/(default)/documents/users/" . $userId . "/whatsapp_config/config";
+    curl_setopt($ch, CURLOPT_URL, $cfgUrl);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, get_firebase_auth_headers());
+    $cfgResp = curl_exec($ch);
+    $cfgCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($cfgCode, $cfgResp)) {
+        error_log("[WABEES] get_user_access_token cfg auth retry user=$userId");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $cfgResp = curl_exec($ch);
+        $cfgCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    if ($cfgCode < 400 && $cfgCode > 0) {
+        $cfgDoc = json_decode($cfgResp, true);
+        $token = $cfgDoc['fields']['accessToken']['stringValue'] ?? null;
         if ($token) {
             $result = ['accessToken' => $token, 'fcmToken' => $fcmToken, 'ts' => time()];
             if (function_exists('apcu_store')) apcu_store($apcuKey, $result, $fcmToken ? $tokenCacheTTL : $emptyFcmCacheTTL);
@@ -554,38 +577,16 @@ function get_user_access_token($userId)
         }
     }
 
-    // Fallback: check whatsapp_config subcollection
-    error_log("[WABEES] get_user_access_token: user doc has no token (HTTP=$httpCode), checking whatsapp_config");
-    $configUrl = "https://firestore.googleapis.com/v1/projects/" . FIREBASE_PROJECT_ID
-        . "/databases/(default)/documents/users/" . $userId . "/whatsapp_config";
-
-    curl_setopt($ch, CURLOPT_URL, $configUrl);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, get_firebase_auth_headers());
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if (_firestore_should_retry_auth($httpCode, $response)) {
-        error_log("[WABEES] get_user_access_token config auth retry user=$userId");
-        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    }
-
-    if ($httpCode >= 400 || $httpCode === 0) {
-        error_log("[WABEES] get_user_access_token: whatsapp_config query FAILED ($httpCode)");
-        return null;
-    }
-
-    $data = json_decode($response, true);
-    $docs = $data['documents'] ?? [];
-    foreach ($docs as $doc) {
-        $token = $doc['fields']['accessToken']['stringValue'] ?? null;
-        if ($token) {
-            $result = ['accessToken' => $token, 'fcmToken' => null, 'ts' => time()];
-            if (function_exists('apcu_store')) apcu_store($apcuKey, $result, $emptyFcmCacheTTL);
-            _save_token_to_file_cache($userId, $result);
-            return $result;
-        }
+    // 2. Legacy fallback: users/{uid}.whatsappAccessToken (to be removed
+    //    after a full migration pass writes every account into
+    //    whatsapp_config/config).
+    $legacyToken = $userFields['whatsappAccessToken']['stringValue'] ?? null;
+    if ($legacyToken) {
+        error_log("[WABEES] get_user_access_token: falling back to legacy user-doc token user=$userId");
+        $result = ['accessToken' => $legacyToken, 'fcmToken' => $fcmToken, 'ts' => time()];
+        if (function_exists('apcu_store')) apcu_store($apcuKey, $result, $fcmToken ? $tokenCacheTTL : $emptyFcmCacheTTL);
+        _save_token_to_file_cache($userId, $result);
+        return $result;
     }
 
     error_log("[WABEES] get_user_access_token: no token found anywhere for userId=$userId");
