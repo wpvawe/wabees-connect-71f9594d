@@ -221,13 +221,19 @@ Honeypot ❌ (app doesn't need it — no public form), error-capture ⚠️, ava
 
 ## Part 5 — Verification still pending
 
-Rows marked ⚠️ above need file-level verification before we can call them done or missing. Concrete next-turn checks:
-- `auth_repository.dart` — welcome subscription + oobCode reset
-- `contact_repository.dart` — CSV/VCF batch import
-- `template_repository.dart` — edit + delete Meta Graph fallbacks
-- `campaign_execution_service.dart` — pause-on-disconnect
-- `user_presence_service.dart` — heartbeat interval + hide/beforeunload equivalent
-- `chat_screen.dart` (3 012 lines) — reactions, typing indicator, deleted/forwarded, tags, state, priority
+File-level verification done against `wpvawe/wabees-plus` (main). Results:
+
+- **Welcome subscription** — ✅ Present. `AuthNotifier.register()` and the Google new-user branch both call `_planRepo.assignWelcomePlan(user.uid)` right after `_userRepo.createUser(userModel)` (`lib/providers/auth/auth_notifier.dart` L248, L334).
+- **Password reset** — ✅ Present (different design). App does NOT use the website's `oobCode` + `confirmPasswordReset` flow. Instead it runs a 3-step OTP flow via PHP: `POST /send-reset-code.php` → `POST /verify-reset-code.php` → falls back to `FirebaseAuth.sendPasswordResetEmail` (`lib/screens/auth/forgot_password_screen.dart`). Functionally equivalent, no gap to close.
+- **CSV / VCF contact import** — ✅ Present. `lib/core/utils/contact_import_export.dart` (228 lines) — no need to build a new one. Row D "CSV import likely missing" in Part 3 is stale.
+- **Template edit + delete on Meta** — ✅ Present. `TemplateRepository.editOnMeta` and `deleteOnMeta` call `WhatsAppRepository.editTemplateOnMeta` / `deleteTemplateOnMeta`, with Meta "sample template" / "already-deleted" error handling and local Firestore mirror updates (`lib/data/repositories/template_repository.dart` L92, L123).
+- **Campaign pause-on-disconnect** — ❌ Missing. `lib/services/campaign_execution_service.dart` (580 lines) contains no reference to `isConnected` / `whatsappConnected` / a paused-on-disconnect cascade. If the tenant disconnects mid-campaign the client-side executor will keep trying. Should be added to P2.
+- **Presence heartbeat (`user_presence_service.dart`)** — ❌ Missing. There is no such file — `lib/services/` only ships `anti_ban_service.dart`, `campaign_execution_service.dart`, `campaign_scheduler_service.dart`, `cleanup_service.dart`. The Part 1.2 mention of `user_presence_service` and the ⚠️ in Row I ("verify interval + hide/beforeunload equivalent") were both wrong — the feature is not implemented at all.
+- **`chat_screen.dart` details** (reactions, typing indicator, deleted/forwarded, tags, state, priority) — still pending; file is 3 012 lines, warrants its own focused pass.
+
+### Newly promoted P2 items (from these findings)
+- **Campaign pause-on-disconnect cascade** in `campaign_execution_service.dart` — listen to `users/{owner}/whatsapp_config/config.isConnected` and mark in-flight campaigns `status: 'paused'` with reason on disconnect (matches website behaviour).
+- **Agent presence service** — new `lib/services/user_presence_service.dart` writing `users/{owner}/agents/{self}.isOnline` + `lastSeenAt` on a 45 s heartbeat, and `isOnline: false` on app-lifecycle-paused / logout — required for Workload / SLA parity.
 
 ---
 
