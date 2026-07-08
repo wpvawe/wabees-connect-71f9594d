@@ -44,25 +44,28 @@ export async function resolveKnownContactName(
 }
 
 /**
- * Atomic quota reservation. Throws with a user-friendly message when the
- * plan cap is reached so the caller can surface it via `toast.error`.
+ * Preflight plan-active + limit check for outgoing messages.
+ *
+ * BUG-09/BUG-16 fix — previously we reserved a quota slot on the client
+ * AND PHP incremented on send, double-counting every message. Now the
+ * client only does a **read-only** preflight (`assertWithinPlanLimit`
+ * with kind="messages"). PHP `send-message.php` remains the single
+ * authority for the actual increment. If the plan is over its limit,
+ * PHP will reject the send and the UI shows that toast; this preflight
+ * gives faster feedback without paying for a Firestore write.
  */
 export async function reserveMessageQuota(uid: string): Promise<void> {
-  const { reserveQuota } = await import("@/lib/plans/limits");
-  await reserveQuota(uid, "messages", 1);
+  const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
+  await assertWithinPlanLimit(uid, "messages", 1);
 }
 
 /**
- * Refund a previously reserved slot. Swallows all errors — a failed
- * refund must never mask the original send outcome.
+ * No-op refund. PHP is authoritative for message counters (BUG-09), so
+ * there is nothing to refund on the client. Kept as a stable export so
+ * existing callers don't need to be touched in the same patch.
  */
-export async function refundMessageQuota(uid: string): Promise<void> {
-  try {
-    const { releaseQuota } = await import("@/lib/plans/limits");
-    await releaseQuota(uid, "messages", 1);
-  } catch {
-    /* swallow — refund is best-effort */
-  }
+export async function refundMessageQuota(_uid: string): Promise<void> {
+  return;
 }
 
 /**
