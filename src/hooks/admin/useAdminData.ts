@@ -695,20 +695,36 @@ export type UserLiveCounts = {
   campaigns: number;
   agents: number;
   loading: boolean;
+  loaded: boolean;
+  refresh: () => void;
 };
 
 export function useUserLiveCounts(uid: string | null): UserLiveCounts {
-  const [state, setState] = useState<UserLiveCounts>({
+  const [tick, setTick] = useState(0);
+  const [state, setState] = useState<Omit<UserLiveCounts, "refresh">>({
     messages: 0,
     contacts: 0,
     bots: 0,
     campaigns: 0,
     agents: 0,
-    loading: true,
+    loading: false,
+    loaded: false,
   });
   useEffect(() => {
-    if (!uid) {
-      setState({ messages: 0, contacts: 0, bots: 0, campaigns: 0, agents: 0, loading: false });
+    // BUG-04 — no auto-fire on mount. 5 `getCountFromServer` reads used to
+    // fire the moment an admin opened any user drawer; now the drawer
+    // clicks "Recalculate live counts" which bumps `tick` and triggers
+    // this effect. Counts still cache for 5 min after the first click.
+    if (!uid || tick === 0) {
+      setState({
+        messages: 0,
+        contacts: 0,
+        bots: 0,
+        campaigns: 0,
+        agents: 0,
+        loading: false,
+        loaded: false,
+      });
       return;
     }
     const db = fbDbOrNull();
@@ -735,6 +751,7 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
           campaigns: campaigns ?? 0,
           agents: agents ?? 0,
           loading: false,
+          loaded: true,
         });
       } catch {
         if (!cancelled) setState((s) => ({ ...s, loading: false }));
@@ -743,8 +760,8 @@ export function useUserLiveCounts(uid: string | null): UserLiveCounts {
     return () => {
       cancelled = true;
     };
-  }, [uid]);
-  return state;
+  }, [uid, tick]);
+  return { ...state, refresh: () => setTick((n) => n + 1) };
 }
 
 // ============ USERS WITHOUT A SUBSCRIPTION (admin remediation) ============
