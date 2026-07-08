@@ -380,23 +380,29 @@ function buildSubFromPlan(
     ? null
     : Timestamp.fromMillis(now.toMillis() + expiryDays * 86_400_000);
 
-  const carriedContacts = typeof current.contactsUsed === "number" ? current.contactsUsed : 0;
-  const carriedBots = typeof current.botsUsed === "number" ? current.botsUsed : 0;
-  const carriedTemplates = typeof current.templatesUsed === "number" ? current.templatesUsed : 0;
-  const carriedAgents = typeof current.agentsUsed === "number" ? current.agentsUsed : 0;
+  // BUG-11 fix — user decision: carry ALL counters across plan upgrades.
+  // Previously messagesUsed/campaignsUsed/aiMessagesUsed reset to 0 while
+  // contacts/bots/templates/agents carried, which was inconsistent.
+  const carriedContacts   = typeof current.contactsUsed   === "number" ? current.contactsUsed   : 0;
+  const carriedBots       = typeof current.botsUsed       === "number" ? current.botsUsed       : 0;
+  const carriedTemplates  = typeof current.templatesUsed  === "number" ? current.templatesUsed  : 0;
+  const carriedAgents     = typeof current.agentsUsed     === "number" ? current.agentsUsed     : 0;
+  const carriedMessages   = typeof current.messagesUsed   === "number" ? current.messagesUsed   : 0;
+  const carriedCampaigns  = typeof current.campaignsUsed  === "number" ? current.campaignsUsed  : 0;
+  const carriedAiMessages = typeof current.aiMessagesUsed === "number" ? current.aiMessagesUsed : 0;
 
   return {
     id: "current",
     planId,
     planName: (plan.name as string) ?? "",
     status: "active",
-    messagesUsed: 0,
+    messagesUsed: carriedMessages,
     contactsUsed: carriedContacts,
-    campaignsUsed: 0,
+    campaignsUsed: carriedCampaigns,
     botsUsed: carriedBots,
     templatesUsed: carriedTemplates,
     agentsUsed: carriedAgents,
-    aiMessagesUsed: 0,
+    aiMessagesUsed: carriedAiMessages,
     maxMessages: (plan.maxMessages as number) ?? 0,
     maxContacts: (plan.maxContacts as number) ?? 0,
     maxCampaigns: (plan.maxCampaigns as number) ?? 0,
