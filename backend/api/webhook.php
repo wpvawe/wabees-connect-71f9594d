@@ -445,9 +445,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // default: several shared-hosting setups stop PHP work after the response is
     // flushed, which makes Meta see HTTP 200 while the inbox write never runs.
     if (isset($input['object']) && $input['object'] === 'whatsapp_business_account') {
-        if (defined('ENABLE_FAST_WEBHOOK_ACK') && ENABLE_FAST_WEBHOOK_ACK) {
-            fast_respond();
-        }
+        // BUG-19 — do NOT fast-ack here. The ACK now fires from inside
+        // handle_incoming_message() after firestore_commit() succeeds, so
+        // the inbox row is durable before Meta sees 200. Status-only and
+        // call-event payloads (which have no messages[]) fall through to
+        // the loop below and finish before the request naturally ends.
     } else {
         exit;
     }
