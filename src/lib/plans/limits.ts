@@ -1,8 +1,6 @@
 import {
-  collection,
   doc,
   getDoc,
-  getCountFromServer,
   increment,
   runTransaction,
   updateDoc,
@@ -148,17 +146,17 @@ export async function assertWithinPlanLimit(
   const max = num(sub[cfg.maxField]);
   if (max <= 0) return; // unlimited
 
-  const liveUsed = cfg.collectionName
-    ? await getCountFromServer(collection(db, "users", uid, cfg.collectionName))
-        .then((snap) => snap.data().count)
-        .catch(() => null)
-    : null;
+  // BUG-15/BUG-24 fix — removed `getCountFromServer` here. It billed one
+  // aggregate read per preflight, and inside a transaction it was outright
+  // illegal (Firestore rejects aggregate reads in tx). We now trust the
+  // subscription's `*Used` counter — maintained by the mutation paths and
+  // PHP webhook — and fall back to the profile mirror if that's stale.
   const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
   const profileUsed =
     cfg.profileField && profSnap.exists()
       ? num((profSnap.data() as Record<string, unknown>)[cfg.profileField])
       : 0;
-  const used = typeof liveUsed === "number" ? liveUsed : Math.max(subUsed, profileUsed);
+  const used = Math.max(subUsed, profileUsed);
 
   if (used + count > max) {
     const remaining = Math.max(0, max - used);
@@ -175,27 +173,19 @@ export async function assertWithinPlanLimit(
 }
 
 /**
- * Bumps both `subscription.current.messagesUsed` and `users/{uid}.totalMessages`
- * by `n`. Every outbound WhatsApp send path — text, media, template,
- * interactive, forward, resend, CSAT, scheduled — MUST call this after a
- * successful Meta send so per-plan quotas stay accurate. Silently swallows
- * failures because Firestore permission hiccups shouldn't block the UI.
+ * BUG-09 fix — messages are counted by PHP (`send-message.php` +
+ * `webhook.php`) as the single source of truth. This helper is retained
+ * as a no-op so existing callers don't crash, but it no longer writes to
+ * Firestore. Kept exported for backward compatibility; remove callers as
+ * you touch them.
+ *
+ * @deprecated PHP is authoritative for message counters. Do not call.
  */
-export async function incrementMessagesUsed(uid: string, n = 1): Promise<void> {
-  if (!uid || n <= 0) return;
-  const db = fbDb();
-  await Promise.all([
-    updateDoc(doc(db, "users", uid), { totalMessages: increment(n) }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("incrementMessagesUsed: totalMessages update failed", err);
-    }),
-    updateDoc(doc(db, "users", uid, "subscription", "current"), {
-      messagesUsed: increment(n),
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("incrementMessagesUsed: subscription.messagesUsed update failed", err);
-    }),
-  ]);
+export async function incrementMessagesUsed(_uid: string, _n = 1): Promise<void> {
+  // Intentionally empty — PHP send-message.php + webhook.php increment
+  // `subscription/current.messagesUsed` and `users/{uid}.totalMessages`.
+  // Double-incrementing here would cause the "usage inflation" bug (BUG-09).
+  return;
 }
 
 /**
@@ -239,20 +229,17 @@ export async function incrementAiMessagesUsed(uid: string, n = 1): Promise<void>
  * check and slip past `maxMessages`. This closes the race window that
  * `assertWithinPlanLimit` + separate `incrementMessagesUsed` had.
  *
- * Usage pattern for a send path:
- *   const released = { done: false };
- *   await reserveQuota(uid, "messages", 1);   // throws if over cap / expired
- *   try {
- *     const res = await sendToMeta(...);
- *     if (!res.success) throw new Error(res.message);
- *   } catch (err) {
- *     if (!released.done) await releaseQuota(uid, "messages", 1);
- *     throw err;
- *   }
+ * NOTE (BUG-09/BUG-15/BUG-16 fix):
+ *   - kind === "messages": no-op. PHP `send-message.php` is the single
+ *     source of truth for message counters. Any client-side reservation
+ *     here would double-count.
+ *   - Aggregate reads (`getCountFromServer`) removed from the transaction
+ *     body — Firestore forbids them inside runTransaction. We compare
+ *     against `sub.usedField` instead.
  *
- * For kinds that have a `profileField` (messages/contacts/campaigns/bots),
- * we also update the mirrored counter on the users doc so admin dashboards
- * stay in sync with subscription.usedField.
+ * For contacts / bots / campaigns / templates / agents (all managed
+ * client-side), we still reserve+increment atomically so parallel
+ * creates can't blow past the plan cap.
  */
 export async function reserveQuota(
   uid: string,
@@ -260,6 +247,9 @@ export async function reserveQuota(
   n = 1,
 ): Promise<void> {
   if (!uid || n <= 0) return;
+  // BUG-09 — PHP owns message counters end-to-end. Client-side reserve
+  // would double-count and confuse users about their remaining quota.
+  if (kind === "messages") return;
   const cfg = CONFIG[kind];
   const db = fbDb();
   const subRef = doc(db, "users", uid, "subscription", "current");
@@ -295,13 +285,9 @@ export async function reserveQuota(
 
     const max = num(sub[cfg.maxField]);
     if (max > 0) {
-        const liveUsed = cfg.collectionName
-          ? await getCountFromServer(collection(db, "users", uid, cfg.collectionName))
-              .then((snap) => snap.data().count)
-              .catch(() => null)
-          : null;
-        const subUsed = cfg.usedField ? num(sub[cfg.usedField]) : 0;
-        const used = typeof liveUsed === "number" ? liveUsed : subUsed;
+      // BUG-15 fix — no aggregate reads inside a transaction. Trust the
+      // subscription counter, which every mutation path increments.
+      const used = cfg.usedField ? num(sub[cfg.usedField]) : 0;
       if (used + n > max) {
         const remaining = Math.max(0, max - used);
         const planName =
@@ -338,6 +324,8 @@ export async function releaseQuota(
   n = 1,
 ): Promise<void> {
   if (!uid || n <= 0) return;
+  // BUG-09 — mirror of reserveQuota's messages skip.
+  if (kind === "messages") return;
   const cfg = CONFIG[kind];
   const db = fbDb();
   const jobs: Promise<unknown>[] = [];
