@@ -67,6 +67,12 @@ export function AccountStatusGate({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     try {
+      // BUG-17/18 — clear module-level caches BEFORE Firebase drops the
+      // session so no live listener re-fires against the outgoing user.
+      const { clearDocBrokerRegistry } = await import("@/lib/firebase/docBroker");
+      const { clearDashboardPreviewCache } = await import("@/hooks/useDashboardPreview");
+      clearDocBrokerRegistry();
+      clearDashboardPreviewCache();
       await fbSignOut(fbAuth());
     } finally {
       void navigate({ to: "/auth" });
@@ -139,6 +145,10 @@ function WorkspaceDisconnectedScreen({ ownerEmail }: { ownerEmail: string }) {
   const navigate = useNavigate();
   const handleSignOut = async () => {
     try {
+      const { clearDocBrokerRegistry } = await import("@/lib/firebase/docBroker");
+      const { clearDashboardPreviewCache } = await import("@/hooks/useDashboardPreview");
+      clearDocBrokerRegistry();
+      clearDashboardPreviewCache();
       await fbSignOut(fbAuth());
     } finally {
       void navigate({ to: "/auth" });
