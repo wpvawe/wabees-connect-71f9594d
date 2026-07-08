@@ -123,4 +123,52 @@ Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact comma
 - **PHP backend**: ~5 files (`webhook.php`, `send-message.php`, `firebase-config.php`, 2 naye endpoints)
 - **Scripts**: 1 backfill script
 
-Approve karo to Phase 1 se shuru karta hun. Har phase ke baad checkpoint dunga.
+---
+
+## Status (checkpoint)
+
+### ✅ Done in this repo (auto-deploy via GitHub → CF Worker)
+
+**Frontend + Firestore rules:**
+- BUG-01 rules: `isAdmin`/`isAgentOf` use custom claims with `get()` fallback (`firebase/firestore.rules`)
+- BUG-03 admin overview: `hasSubscription` flag written by `ensureWelcomeSubscription`, `activatePendingSubscription`, `adminAssignPlan`; `useUsersWithoutSubscription` filters on the flag (no more 200-doc fanout)
+- BUG-04/05 admin caches: `usePlatformCounts` + `useUserLiveCounts` 5-min TTL; `useAllUsers` bumped 60s → 5min
+- BUG-06 `useLiveMessageCount` **removed**; dashboard + plans read `subscription.messagesUsed` / `profile.totalMessages` (PHP authoritative)
+- BUG-08 `useUsageCounts` returns billing counters + lifetime totals separately (no more `Math.max`)
+- BUG-09/15/16 client message counters: `reserveQuota("messages")` + `incrementMessagesUsed` are no-ops; `sendHelpers` preflight is read-only; PHP is single source of truth
+- BUG-10 `deleteContact` decrements `totalContacts`
+- BUG-11 `buildSubFromPlan` **carries over all counters** on plan upgrade (per user decision)
+- BUG-12 `resetSubscriptionCounters` zeroes every `*Used` counter + `bot_usage.usedThisMonth` + `currentPeriodStart`
+- BUG-13 `usePlatformCounts` catch logs full error
+- BUG-14 `useAgentPresence` skips owner self-heartbeat
+- BUG-17 `clearDocBrokerRegistry()` on signOut (settings + siderail)
+- BUG-18 `clearDashboardPreviewCache()` on signOut
+- BUG-25 `usePlans` server-side `where("isActive","==",true)` + `orderBy("sortOrder")`
+- SEC-04 `broadcastNotification` throws unless `uids` or `allUidsHint` passed
+- MIN-01 `useBots` 5-min staleness guard
+
+**Backend (edited in `backend/`, needs FTP deploy):**
+- SEC-02 `webhook.php` reads `WEBHOOK_VERIFY_TOKEN` from env with legacy fallback
+
+### ⏳ Pending PHP backend (Hostinger — sandbox can't reach ftp.wabees.live, user deploys)
+
+- BUG-19 fast webhook ACK — flag exists as `ENABLE_FAST_WEBHOOK_ACK` but default-OFF for safety (fast-ack currently runs BEFORE Firestore commit). Enabling it needs the code path reordered so Firestore write completes before `fastcgi_finish_request()`. Requires careful patch in `webhook.php` — recommend doing it locally + testing on a staging bot before flipping the constant.
+- BUG-02 / BUG-24 analytics_daily rollup — add `firestore_update_with_increment("users/$uid/analytics_daily/{YYYY-MM-DD}", {...})` in `webhook.php::handle_incoming_message` + `send-message.php` success path; rewrite `analyticsRollup.ts` to read `analytics_daily` docs
+- BUG-20 subscription-limits file cache (5-min TTL) in `wabees_subscription_allows`
+- BUG-21 dedupe block check in `handle_incoming_message`
+- BUG-22 hostinger media hardening: `uploads/media/.htaccess` (`php_flag engine off`, `Options -Indexes`) + size cap in `download_whatsapp_media`
+- BUG-23 `wa_map` cache TTL 300 → 1800 (needs per-entry expiry helper — helpers currently don't check TTL)
+- SEC-01 relocate `whatsappAccessToken` from `users/{uid}` → `users/{uid}/whatsapp_config/current.accessToken`; update PHP token reader
+- SEC-03 admin `delete-user.php` endpoint (Firebase Admin `deleteUser`)
+- New `set-user-claims.php` endpoint for `adminSetRole` to update custom claims
+
+### ⏳ Ops (user to run)
+
+1. Deploy PHP: from a machine with internet access to `ftp.wabees.live`, run RULES.md line 267-276 curl commands for every edited PHP file.
+2. Deploy Firestore rules: RULES.md Python REST snippet (`firebase/firestore.rules`).
+3. Add `SetEnv WEBHOOK_VERIFY_TOKEN <token>` to `public_html/.htaccess` on Hostinger, then rotate the value in Meta Developer Console.
+4. (Later) run one-off backfill: for every existing user, copy `role` + `dataOwner` fields into their Firebase Auth custom claims (script pending).
+
+### Note on FTP from Lovable sandbox
+
+`curl -T ftp://ftp.wabees.live/...` from this sandbox times out — outbound FTP is blocked. All PHP deploys must run from the user's local machine using the RULES.md commands.

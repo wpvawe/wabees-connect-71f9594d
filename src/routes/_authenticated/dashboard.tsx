@@ -30,11 +30,7 @@ import { useUsageCounts } from "@/hooks/useUsageCounts";
 import { usePlans } from "@/hooks/usePlans";
 import { useDashboardPreview } from "@/hooks/useDashboardPreview";
 import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
-import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
-import { useEffect, useMemo, useRef } from "react";
-import { doc, updateDoc } from "firebase/firestore";
-import { fbDbOrNull } from "@/integrations/firebase/client";
-import { useFirebaseUid } from "@/hooks/useFirebaseSession";
+import { useMemo } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +54,6 @@ function DashboardPage() {
   const { data: realCampaigns } = useOwnerCollectionCount("campaigns", "campaigns");
   const { data: realBots } = useOwnerCollectionCount("bots", "bots");
   const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
-  const { data: realMessages } = useLiveMessageCount();
   const { data: preview } = useDashboardPreview();
   const conversations = preview.conversations;
   const contacts = preview.contacts;
@@ -78,16 +73,13 @@ function DashboardPage() {
   const maxTemplates = activePlan?.maxTemplates ?? subscription?.maxTemplates ?? 0;
   const maxAgents = activePlan?.maxAgents ?? subscription?.maxAgents ?? 0;
 
-  // Quota counters prefer live aggregate/subscription counters. Profile totals
-  // are only last-resort legacy fallbacks because they are high-water marks.
-  // Prefer the real server-side count of `users/{uid}/messages` docs over
-  // the maintained `subscription.messagesUsed` / `profile.totalMessages`
-  // counters — those counters live on backend increments that can drift
-  // (missed webhook, historical messages) and were showing 0 while the
-  // user actually had messages. `useLiveMessageCount` is a single billed
-  // aggregate read cached for 5 min.
+  // BUG-06/BUG-09 — PHP webhook + send-message.php are the single authority
+  // for message counters. `subscription.messagesUsed` is the billing-period
+  // counter (reset on plan reset); `profile.totalMessages` is a lifetime
+  // high-water mark. We show the billing counter here (matches the plan
+  // quota shown next to it) and fall back to the lifetime mirror if the
+  // subscription doc is still hydrating.
   const messagesUsed =
-    realMessages ??
     subscription?.messagesUsed ??
     profile?.totalMessages ??
     usageCounts.messages ??
@@ -102,22 +94,9 @@ function DashboardPage() {
     realTemplates ?? subscription?.templatesUsed ?? 0;
   const agentsUsed = (agents ?? []).filter((a) => a.status !== "revoked" && a.status !== "left").length;
 
-  // One-shot self-heal: when the real message count disagrees with the
-  // stored subscription counter, silently sync so admin + other views
-  // stop lying. Owner-only (rules restrict this counter field).
-  const selfUid = useFirebaseUid();
-  const healedMsgsRef = useRef(false);
-  useEffect(() => {
-    if (healedMsgsRef.current) return;
-    if (!selfUid || !subscription || realMessages === null) return;
-    if ((subscription.messagesUsed ?? 0) === realMessages) return;
-    healedMsgsRef.current = true;
-    const db = fbDbOrNull();
-    if (!db) return;
-    void updateDoc(doc(db, "users", selfUid, "subscription", "current"), {
-      messagesUsed: realMessages,
-    }).catch(() => {});
-  }, [selfUid, subscription, realMessages]);
+  // BUG-09 — no client-side self-heal of messagesUsed. PHP owns the
+  // counter; overwriting it here races the webhook and undoes increments
+  // for messages still in flight.
 
   return (
     <>

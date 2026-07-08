@@ -23,7 +23,6 @@ import { useProfile } from "@/hooks/useProfile";
 import { fetchCached } from "@/lib/firebase/countCache";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
 import { useOwnerCollectionCount } from "@/hooks/useCollectionCount";
-import { useLiveMessageCount } from "@/hooks/useLiveMessageCount";
 import { useSubscriptionMessages } from "@/hooks/useSubscriptionMessages";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useAgents } from "@/hooks/useAgents";
@@ -58,7 +57,6 @@ function PlansPage() {
   const { data: realContacts } = useOwnerCollectionCount("contacts", "contacts");
   const { data: realBots } = useOwnerCollectionCount("bots", "bots");
   const { data: realTemplates } = useOwnerCollectionCount("templates", "templates");
-  const { data: realMessages } = useLiveMessageCount();
   const { data: agents } = useAgents();
   const [realCampaigns, setRealCampaigns] = useState<number | null>(null);
   useEffect(() => {
@@ -106,11 +104,11 @@ function PlansPage() {
   const maxAiMessages = activePlan?.maxAiMessages ?? sub?.maxAiMessages ?? 0;
   const maxAgents = activePlan?.maxAgents ?? sub?.maxAgents ?? 0;
 
-  // Use maintained counters/list lengths only. Avoid Firestore aggregation
-  // reads here because quota exhaustion blocks regular message fetching too.
-  // Same story as the dashboard — prefer the actual message doc count.
-  const usedMessages =
-    realMessages ?? sub?.messagesUsed ?? profile?.totalMessages ?? 0;
+  // BUG-06/BUG-09 — PHP is authoritative for message counters. Use the
+  // billing-period counter on `subscription/current` (matches the quota
+  // shown next to it) and fall back to the lifetime profile mirror while
+  // the subscription doc is still hydrating.
+  const usedMessages = sub?.messagesUsed ?? profile?.totalMessages ?? 0;
   // Prefer the actively-maintained counter (decremented on delete) over
   // `profile.totalContacts` (a high-water mark that isn't decremented).
   // Using Math.max would show a stale count after batch deletes.

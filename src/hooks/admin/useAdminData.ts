@@ -84,7 +84,10 @@ export function useAllUsers(): { data: AdminUser[] | null; error: string | null 
     let cancelled = false;
     const q = query(collection(db, "users"), orderBy("createdAt", "desc"), limit(200));
     const CACHE_KEY = "wb:adminUsers:v1";
-    const TTL_MS = 60_000;
+    // BUG-05 fix — bump admin-users list TTL from 60s to 5min. Admin
+    // users doesn't need sub-minute freshness (approve/suspend already
+    // busts the cache via bumpRefetch("adminUsers")).
+    const TTL_MS = 5 * 60_000;
     type CachedShape = { at: number; rows: AdminUser[] };
     function readCache(): CachedShape | null {
       if (typeof window === "undefined") return null;
