@@ -54,38 +54,13 @@ export function OverviewSection({
     <div className="space-y-6">
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
-        <StatCard icon={faUsers} label="Users" value={counts.total} color="text-indigo-500" />
-        <StatCard icon={faUserTie} label="Agents" value={counts.agents} color="text-fuchsia-500" />
-        <StatCard
-          icon={faCircleCheck}
-          label="Active"
-          value={counts.active}
-          color="text-emerald-500"
-        />
-        <StatCard
-          icon={faCircleNotch}
-          label="Pending"
-          value={counts.pending}
-          color="text-amber-500"
-        />
-        <StatCard
-          icon={faBan}
-          label="Suspended"
-          value={counts.suspended}
-          color="text-destructive"
-        />
-        <StatCard
-          icon={faWifi}
-          label="Connected"
-          value={counts.connected}
-          color="text-sky-500"
-        />
-        <StatCard
-          icon={faMessage}
-          label="Messages"
-          value={counts.totalMessages}
-          color="text-violet-500"
-        />
+        <StatCard icon={faUsers} label="Users" value={counts.total} color="text-indigo-500" failed={counts.failed.total} />
+        <StatCard icon={faUserTie} label="Agents" value={counts.agents} color="text-fuchsia-500" failed={counts.failed.agents} />
+        <StatCard icon={faCircleCheck} label="Active" value={counts.active} color="text-emerald-500" failed={counts.failed.active} />
+        <StatCard icon={faCircleNotch} label="Pending" value={counts.pending} color="text-amber-500" failed={counts.failed.pending} />
+        <StatCard icon={faBan} label="Suspended" value={counts.suspended} color="text-destructive" failed={counts.failed.suspended} />
+        <StatCard icon={faWifi} label="Connected" value={counts.connected} color="text-sky-500" failed={counts.failed.connected} />
+        <StatCard icon={faMessage} label="Messages" value={counts.totalMessages} color="text-violet-500" failed={counts.failed.totalMessages} />
       </div>
 
       {/* Quick actions */}
@@ -313,19 +288,35 @@ function StatCard({
   label,
   value,
   color,
+  failed,
 }: {
   icon: IconDefinition;
   label: string;
   value: number;
   color: string;
+  failed?: string;
 }) {
   return (
     <WbCard className="p-3">
       <FontAwesomeIcon icon={icon} className={cn("h-5 w-5", color)} />
-      <p className="mt-2 text-2xl font-black tabular-nums text-foreground">
-        {value.toLocaleString()}
-      </p>
-      <p className="text-xs text-muted-foreground">{label}</p>
+      {failed ? (
+        <>
+          <p
+            className="mt-2 text-sm font-semibold text-amber-500"
+            title={`Load failed: ${failed}`}
+          >
+            unavailable
+          </p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-2xl font-black tabular-nums text-foreground">
+            {value.toLocaleString()}
+          </p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+        </>
+      )}
     </WbCard>
   );
 }
