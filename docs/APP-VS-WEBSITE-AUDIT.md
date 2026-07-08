@@ -153,7 +153,7 @@ Full builder/detail/analytics screens exist. Client-side executor via `campaign_
 | CSAT settings | ✅ | ✅ | `/settings/csat` — same doc |
 | Auto-triage settings | ✅ | ❌ | Missing |
 | Developer API (apiKey view/regenerate) | ✅ | ⚠️ | `_apiKey` shown in settings — verify regenerate |
-| Subscription-messages editor (admin) | ✅ | ❌ | Not found |
+| Subscription-messages editor (admin) | ✅ | ✅ | `admin_subscription_messages_screen.dart` — shared `settings/subscription_messages` doc |
 
 ### L. Plans / Subscription
 `plans_screen` + `plan_repository` + request flow via admin — **✅ present**; verify atomic `pending_subscriptions` write + admin notification + support-chat post.
@@ -294,7 +294,7 @@ shipped are dropped; only real remaining gaps listed.
 |---|---|---|---|---|
 | 1 | **Leads board** (`users/{owner}/bot_leads` — name/phone/score/status/notes CRUD) | ❌ no screen, no model, no repo | new `lib/screens/shared/leads/` + `lead_repository.dart` | **P0** |
 | 2 | **Auto-triage listener** (owner-only AI intent/sentiment/priority/tags on inbound) | ✅ shipped — settings screen + Flutter listener + public server route `/api/public/triage-message` sharing the same classifier as the web server fn | app: `auto_triage_service.dart`; web: `src/lib/ai/triage.server.ts` + `src/routes/api/public/triage-message.ts` | **P0 ✅** |
-| 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ❌ absent in admin screens | new tab in `admin_plans_screen.dart` writing `admin/settings/subscription_messages` | **P1** |
+| 3 | **Subscription-messages admin editor** (edit templated plan-request replies) | ✅ shipped — `admin_subscription_messages_screen.dart`, entry via Manage Plans app-bar | writes `settings/subscription_messages` (same doc as website) | **P1 done** |
 | 4 | **Embedded Signup** (Facebook Login for Business — one-tap WA number attach) | ❌ only manual token paste flow | Flutter FB SDK on `whatsapp_connect_screen` | **P2** |
 | 5 | **OTP auto-detect chip** in inbound bubbles (regex + copy) | ❌ no regex scan in `_MessageBubble` | small helper in `chat_screen.dart` bubble builder | **P2** |
 | 6 | **Media lightbox gallery** — swipe between images, pinch zoom, save-to-gallery | ⚠️ single-image `InteractiveViewer` only | new `media_gallery_viewer.dart` (photo_view + PageView) | **P2** |
