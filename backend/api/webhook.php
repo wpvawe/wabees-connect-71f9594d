@@ -125,7 +125,10 @@ if (function_exists('apcu_store') && !apcu_exists('wabees_cache_warmed')) {
                     $data['whatsappAccessToken'] = ['stringValue' => $entry['accessToken']];
                 if (!empty($entry['fcmToken']))
                     $data['fcmToken'] = ['stringValue' => $entry['fcmToken']];
-                apcu_store($apcuKey, ['id' => $entry['ownerId'], 'data' => $data], 300);
+                // BUG-23 — wa_map owner cache TTL bumped 300s → 1800s.
+                // Phone-number → owner mapping rarely changes; a 5-min TTL
+                // was hammering Firestore reads on every hot webhook path.
+                apcu_store($apcuKey, ['id' => $entry['ownerId'], 'data' => $data], 1800);
             }
         }
         if ($changed)
