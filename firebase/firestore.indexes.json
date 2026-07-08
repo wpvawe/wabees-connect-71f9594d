@@ -172,6 +172,14 @@
         { "fieldPath": "direction", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "agents",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -179,6 +187,13 @@
       "collectionGroup": "__default__",
       "fieldPath": "*",
       "indexes": []
+    },
+    {
+      "collectionGroup": "agents",
+      "fieldPath": "__name__",
+      "indexes": [
+        { "queryScope": "COLLECTION_GROUP", "order": "ASCENDING" }
+      ]
     }
   ]
 }
