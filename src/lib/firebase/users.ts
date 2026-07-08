@@ -55,6 +55,10 @@ export async function ensureUserDoc(
     totalContacts: 0,
     totalBots: 0,
     totalCampaigns: 0,
+    // BUG-03 fix — flip to true as soon as ensureWelcomeSubscription
+    // succeeds. Admin's `useUsersWithoutSubscription` filters on this
+    // instead of doing a 200-doc subscription fanout on every mount.
+    hasSubscription: false,
     aiBotEnabled: false,
     isOnline: true,
     createdAt: serverTimestamp(),
@@ -67,7 +71,16 @@ async function ensureWelcomeSubscription(uid: string): Promise<void> {
   const db = fbDb();
   const subRef = doc(db, "users", uid, "subscription", "current");
   const existing = await getDoc(subRef);
-  if (existing.exists()) return;
+  if (existing.exists()) {
+    // Repair path — if the sub already exists but the flag isn't set on
+    // the parent user doc (older accounts), backfill it now.
+    await setDoc(
+      doc(db, "users", uid),
+      { hasSubscription: true, updatedAt: serverTimestamp() },
+      { merge: true },
+    ).catch(() => undefined);
+    return;
+  }
 
   const plans = await getDocs(
     query(collection(db, "plans"), where("isWelcomePlan", "==", true), limit(1)),
@@ -110,6 +123,14 @@ async function ensureWelcomeSubscription(uid: string): Promise<void> {
       monthlyLimit: num(plan?.maxAiMessages, 0),
       updatedAt: serverTimestamp(),
     },
+    { merge: true },
+  ).catch(() => undefined);
+  // BUG-03 — sub was just created, mark the flag on the parent doc so
+  // the admin panel's cheap filter (`where hasSubscription == false`)
+  // stays accurate.
+  await setDoc(
+    doc(db, "users", uid),
+    { hasSubscription: true, updatedAt: serverTimestamp() },
     { merge: true },
   ).catch(() => undefined);
 }

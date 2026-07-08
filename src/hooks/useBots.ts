@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -32,6 +32,9 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
   const uid = useEffectiveUid();
   const [data, setData] = useState<Bot[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // MIN-01 fix — refetching on every tab focus re-billed up to 200 bot
+  // docs per switch. Only refresh when the cache is >5 min old.
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -83,6 +86,7 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
             .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
       );
       setError(null);
+      lastLoadRef.current = Date.now();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -92,7 +96,14 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
     void load();
     const unsubBus = subscribeRefetch("bots", () => void load());
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      // MIN-01 — 5-minute staleness guard so tab-switch spam doesn't
+      // re-read all bot docs. Mutations still refresh via refetchBus.
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadRef.current > 5 * 60_000
+      ) {
+        void load();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {

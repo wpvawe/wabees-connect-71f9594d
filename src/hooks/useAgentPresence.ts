@@ -39,7 +39,15 @@ export function useAgentPresence(): void {
 
   useEffect(() => {
     if (!ready || !uid) return;
-    const ownerUid = dataOwner || uid;
+    // BUG-14 fix — owners no longer write a heartbeat to their own
+    // `users/{uid}/agents/{uid}` doc. Previously this bloated the
+    // admin `collectionGroup("agents")` count by 1 per owner and made
+    // the owner's own account show up in agent-picker dropdowns
+    // (already filtered in `useAgents`, but the count mismatch
+    // survived). We only heartbeat when the signed-in user is an
+    // actual agent of someone else's workspace.
+    if (!dataOwner || dataOwner === uid) return;
+    const ownerUid = dataOwner;
     const db = fbDbOrNull();
     if (!db) return;
 

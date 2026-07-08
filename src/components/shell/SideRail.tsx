@@ -103,6 +103,15 @@ export function SideRail() {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
   async function signOut() {
+    // BUG-17/BUG-18 — see settings.tsx signOut for rationale.
+    try {
+      const { clearDocBrokerRegistry } = await import("@/lib/firebase/docBroker");
+      const { clearDashboardPreviewCache } = await import("@/hooks/useDashboardPreview");
+      clearDocBrokerRegistry();
+      clearDashboardPreviewCache();
+    } catch {
+      /* best-effort */
+    }
     await fbSignOut(fbAuth());
     window.location.assign("/auth");
   }

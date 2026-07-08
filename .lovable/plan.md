@@ -1,48 +1,126 @@
-# Sprint 2 — `useAnalytics` daily rollup
+# Wabees Audit — Full Fix Plan (25 bugs)
 
-## Problem
+User decisions locked:
+- Sab bugs fix — kuch skip nahi
+- BUG-22 → media Hostinger pe hi rahegi (Firebase Storage NAHI); Hostinger side hardening
+- Plan upgrade → sab counters **carry over** (no reset)
+- Frontend + Firestore rules + indexes + PHP backend — sab is turn mein
+- PHP deploy Hostinger SSH/FTP se
+- Website deploy auto (GitHub → CF Worker), Lovable Publish USE NAHI karna
 
-`useAnalytics` runs `getDocs(users/{uid}/messages where createdAt >= start limit 5000)` on every range change. On active accounts this bills up to 5k reads per toggle, is capped (so totals become approximate), and gets slower as history grows.
+---
 
-## Constraint (from project memory)
+## Phase 1 — Frontend + Firestore Rules + Indexes (this repo)
 
-Firestore client SDK only — no Firebase Admin, no Cloud Functions, no server-side cron. Messages are written by both the React client and the PHP webhook (WhatsApp inbound), so we cannot rely on incremental counter writes at message-create time from the client alone.
+**A. Frontend hooks & libs**
 
-## Approach — lazy daily aggregates written from the client
+1. `useUsageCounts.ts` (BUG-08) — `Math.max` hataye, `messagesUsed`/`contactsUsed`/`campaignsUsed`/`botsUsed` billing counters aur `totalMessages`/... lifetime counters separately return karo.
+2. `src/lib/plans/limits.ts` (BUG-15, BUG-09, BUG-16) — `reserveQuota`/`releaseQuota`/`incrementMessagesUsed`/`incrementContactsUsed`/`incrementBotsUsed`/`incrementAiMessagesUsed` **remove** karo (PHP authority). `assertPlanActive` + `assertWithinPlanLimit` rakho (preflight-only, read-only, transaction ke bahar). `getCountFromServer` bhi hataye — `subscription.usedField` par bharoso.
+3. `src/lib/inbox/sendHelpers.ts` (BUG-09/16) — `reserveMessageQuota`/`refundMessageQuota` calls hataye. Sirf `assertPlanActive` preflight.
+4. Sab callers grep karke fix (Composer, campaigns, scheduled, CSAT, forward — jahan bhi `reserveQuota`/`incrementMessagesUsed` call hai).
+5. `useLiveMessageCount.ts` (BUG-06) — hook hataye, callers `profile.totalMessages` par shift.
+6. `useConversations.ts` (BUG-07) — automatic phone-ID rewrite/delete loop hataye.
+7. `useDashboardPreview.ts` (BUG-18) — `invalidateAllDashboardCache()` export.
+8. `docBroker.ts` (BUG-17) — `clearDocBrokerRegistry()` export.
+9. Auth logout (jahan `signOut` hota hai) — dono clear functions call karo.
+10. Admin hooks (`useAdminData.ts`):
+    - **BUG-13**: `usePlatformCounts` catch block me `console.error(e.code, e.message)` add karo taakay real error visible ho.
+    - **BUG-03**: `useUsersWithoutSubscription` `where("hasSubscription","==",false)` par shift; `ensureWelcomeSubscription` + `activatePendingSubscription` + `adminAssignPlan` me `hasSubscription: true` set karo.
+    - **BUG-04**: `useUserLiveCounts` auto se hatake manual "Refresh counts" button.
+    - **BUG-05**: cache TTL 60s → 5min.
+11. `useAgents.ts` + `useAgentPresence.ts` (BUG-14) — owner ka apna heartbeat doc skip.
+12. `useBots.ts` (MIN-01) — 5-min staleness guard.
+13. `useContacts.ts` (MIN-04) — 2k approach par warning banner + admin par docs.
+14. `usePlans.ts` (BUG-25) — server-side `where("isActive","==",true)` + `orderBy("sortOrder")`.
+15. `src/lib/admin/mutations.ts`:
+    - **BUG-10**: `deleteContact`/bulk-delete me `totalContacts` decrement.
+    - **BUG-11**: `buildSubFromPlan` — sab counters carry over (messagesUsed, campaignsUsed bhi carry).
+    - **BUG-12**: `resetSubscriptionCounters` — `bot_usage/current.usedThisMonth = 0` + `currentPeriodStart` bhi reset.
+    - **SEC-04**: `broadcastNotification` — no `allUidsHint` par throw.
 
-Keep the raw `messages` collection untouched. Add a new per-user aggregate collection:
+**B. Firestore rules** (`firebase/firestore.rules`, BUG-01)
 
-```text
-users/{uid}/analytics_daily/{YYYY-MM-DD}
-  sent, delivered, read, failed, pending, incoming, outgoing: number
-  byType: { text: n, image: n, ... }        // small map
-  topContacts: { "+9198…": { name, count } } // capped to top 50 for the day
-  uniqueContacts: number
-  computedAt: Timestamp
-  source: "client-rollup-v1"
-```
+- `isAdmin()` → `request.auth.token.role == 'admin'` (custom claim). Fallback rule: `|| get(...)` rakhta hun 1 release cycle takay claim missing users bhi kaam kare — deprecation comment.
+- `isAgentOf(ownerId)` → `request.auth.token.dataOwner == ownerId || request.auth.uid == ownerId || (existing exists+get fallback)`.
+- Deploy via RULES.md snippet (Firebase Rules REST API).
 
-Read flow (`useAnalytics(range)`):
+**C. Indexes** (`firebase/firestore.indexes.json`)
 
-1. Compute `[start,end]` day list for the requested range.
-2. `getDocs(analytics_daily where __name__ in [dayIds])` — 1 read per cached day (batched via `in` queries of 10).
-3. For missing days and for **today** (always stale), run one `getDocs(messages where createdAt in that day)` per day, compute the aggregate, `setDoc(analytics_daily/{day})`. Today's doc is rewritten each visit; past days are written once and reused forever.
-4. Merge day docs into the same `AnalyticsData` shape the UI already consumes — no chart/component changes.
+- `analytics_daily` collection-group index if needed.
+- Deploy via RULES.md REST API snippet.
 
-## Cost math
+**D. Custom claims backfill script** — one-off `scripts/backfill-claims.js` (Node, uses `FIREBASE_SERVICE_ACCOUNT_JSON`) — sab existing users ke `role` field ko custom claim me copy karta hai + `dataOwner` bhi. User baad me chalayega.
 
-- First visit for a 30-day range on an account with ~500 msgs/day: 30 × ~500 = 15k message reads, capped at 5000 today ≈ same cost as current, but writes 30 aggregate docs.
-- Every subsequent visit for that range: 30 aggregate reads + 1 recompute for today (~500 msg reads). ~30× cheaper.
-- Range switches between `7d`/`30d`/`month`/`lastMonth` reuse the same cached days.
+- Bonus: `mutations.ts` me `adminSetRole` ko update — role change ke saath admin SDK call karke claim bhi update kare. Chunki hamare pass admin SDK client-side nahi hai, hum ek PHP endpoint `/api/set-user-claims.php` add karenge jise sirf admin bearer se call kar sakte hain.
 
-## Files touched
+---
 
-- `src/lib/firebase/analyticsRollup.ts` — new. Pure helpers: `dayIdsForRange`, `fetchCachedDays`, `computeDayFromMessages`, `writeDayAggregate`, `mergeDaysIntoAnalyticsData`.
-- `src/hooks/useAnalytics.ts` — replace the single `getDocs(messages)` effect with the rollup flow above; keep the exported `AnalyticsData` shape and `reload()` API unchanged so `src/routes/_authenticated/analytics.tsx` needs no edits.
+## Phase 2 — PHP backend (Hostinger)
 
-Nothing else changes. No schema migration, no backend touch, no security-rule change (writes are under `users/{uid}/…`, already covered by existing per-user rules).
+Ye actual `backend/api/*.php` + `backend/config/*.php` files edit karke Hostinger SSH/FTP se deploy. **`docs/RULES.md` line 267-276 FTP paths (URL-encoded creds) use honge.** Yeh files is Lovable repo mein `backend/` folder me commit hongi (tak ki Flutter wpvawe repo se sync ho).
 
-## Out of scope
+1. **BUG-19 — Fast webhook ACK ON**: `define('ENABLE_FAST_WEBHOOK_ACK', true);` + `fastcgi_finish_request()` (already coded) enable.
+2. **BUG-02 / BUG-24 — Analytics daily aggregation**: `webhook.php` me `handle_incoming_message` aur `send-message.php` me success path pe `firestore_update_with_increment("users/$uid/analytics_daily/{YYYY-MM-DD}", {date, messages, incoming/outgoing, ai})`. Frontend `analyticsRollup.ts` ko rewrite — `users/{uid}/analytics_daily` docs read kare, `messages` collection scan nahi.
+3. **BUG-09 — Message increment single source**: PHP `wabees_increment_message_usage` sirf `messagesUsed` (subscription) + `totalMessages` (user) increment kare — jaise abhi hai. Frontend se saara duplicate increment already remove ho chuka Phase 1 me.
+4. **BUG-20 — APCu subscription cache**: `wabees_subscription_allows` me limits (max*) short TTL cache, `messagesUsed` live read. Hostinger APCu nahi hai (RULES.md 319) — file cache use karo (`cache/fs/sub_limits_{uid}.json`, 5 min TTL).
+5. **BUG-21 — Deduplicate block check**: `handle_incoming_message` ke start me single block check; outer wala remove.
+6. **BUG-22 — Media hardening (Hostinger)**: `download_whatsapp_media` — file cache TTL rakho, uploads folder me `.htaccess` (`php_flag engine off`, `Options -Indexes`), filename `crypto random` (already done, verify), size cap. **Media Hostinger pe hi rahegi**.
+7. **BUG-23 — wa_map cache extend**: doc cache 300s → 1800s. `ENABLE_WA_MAP_PREWARM` = true.
+8. **SEC-01 — WA access token relocation**: Nayi collection `users/{uid}/whatsapp_config/current.accessToken` (jo pehle se readable-by-owner-only hai) mein token move. `users/{uid}.whatsappAccessToken` field wipe. PHP `get_user_access_token` doosri jagah se pade. **Note**: yeh already partially done — rules line 64-76 me `whatsapp_config` restricted hai. Complete migration script + PHP path update.
+9. **SEC-02 — Verify token env**: `getenv('WEBHOOK_VERIFY_TOKEN') ?: 'change-me'`. User Hostinger `.htaccess`/php-ini me `SetEnv` karega.
+10. **Naya endpoint `set-user-claims.php`**: Firebase Admin SDK REST call se `role`, `dataOwner` custom claims set kare. Firebase bearer se admin verify. Frontend `adminSetRole` isse call kare.
+11. **SEC-03 — Auth account delete endpoint**: `delete-user.php` — admin only — Firebase Admin `deleteUser` call.
 
-- Precomputing on message write (would need PHP backend cooperation — separate sprint).
-- Backfilling historical aggregates in the background — happens naturally on first visit per range.
+Deploy: har PHP file `curl -T` se FTP path pe. RULES.md line 267-276 exact commands.
+
+---
+
+## Phase 3 — Deploy & validate
+
+1. Frontend: Lovable auto-push → GitHub → Cloudflare Worker auto-deploy.
+2. Firestore rules + indexes: RULES.md Python REST snippets.
+3. Custom claims backfill: user Node script chalayega (ya main Python REST me convert kar dun — Firebase Auth Admin ke liye direct REST hai).
+4. PHP files: FTP deploy.
+5. Verify:
+   - `/api/webhook.php` GET → verify response
+   - Dashboard `messagesUsed` = 0 (fresh plan), lifetime `totalMessages` alag dikh raha
+   - Analytics page reads `analytics_daily` (network tab me), 5000 message scan gone
+   - Admin panel me `totalAgents` sahi count (console pe error nahi)
+   - `usePlatformCounts` cache hit rate up
+
+---
+
+## Phase 4 — Testing checklist (user ko dena hai)
+
+- [ ] Fresh signup → welcome sub bane, `hasSubscription: true` field set
+- [ ] Inbox se 1 message send → `messagesUsed` +1, `totalMessages` +1, dono alag places pe visible
+- [ ] Plans page me current period 0 → send karke check
+- [ ] Analytics 7-day chart load < 1s, koi 5k read nahi (Firebase console usage tab)
+- [ ] Admin overview `Total Agents` non-zero (agar koi agent exist karta hai)
+- [ ] Contact delete → `totalContacts` –1
+- [ ] Plan upgrade karo → koi counter zero na ho
+- [ ] Logout karke doosre user se login → dashboard preview stale nahi
+- [ ] WhatsApp incoming message: 200 ACK < 500ms (Meta ka retry queue clear)
+- [ ] Admin delete user → Firebase Auth se bhi hat gaya
+- [ ] `firebase/firestore.rules` deploy: koi client permission-denied nahi
+
+---
+
+## Technical notes
+
+- **Custom claims migration**: `firebase-admin` REST endpoint `POST /v1/projects/{project}/accounts:update` supports `customAttributes` (JSON string). Existing service account role me already `firebase` scope hai (RULES.md).
+- **Analytics daily doc shape**: `{ date: "2026-07-08", messages: 15, incoming: 10, outgoing: 5, aiReplies: 3 }` — increment fields via Firestore REST `updateMask` + `?updateMask.fieldPaths=messages&currentDocument.exists=false` (create-or-update pattern already used elsewhere).
+- **Backward compat**: rules mein `get()` fallback ek release ke liye rakho taakay old-session users (jinke pas abhi claim nahi) bhi kaam karein. Migration ke 24h baad remove kar dena.
+- **Files > 200 lines rule (RULES.md 505)**: `limits.ts` shrink hoga (increment funcs hatane se); `useAdminData.ts` already bara hai, chhoo nahi rahay ke functional units.
+
+---
+
+## Estimated file changes
+
+- **Frontend**: ~18 files
+- **Firestore rules**: 1 file
+- **Firestore indexes**: 1 file (agar zaroorat hui)
+- **PHP backend**: ~5 files (`webhook.php`, `send-message.php`, `firebase-config.php`, 2 naye endpoints)
+- **Scripts**: 1 backfill script
+
+Approve karo to Phase 1 se shuru karta hun. Har phase ke baad checkpoint dunga.

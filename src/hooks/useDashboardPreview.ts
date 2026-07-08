@@ -135,6 +135,16 @@ function invalidate(uid: string): void {
   CACHE.delete(uid);
 }
 
+/**
+ * BUG-18 fix — wipe the module-level CACHE + INFLIGHT maps on logout so
+ * a new signed-in user on the same tab doesn't see the previous user's
+ * dashboard preview (5-min TTL previously bled across accounts).
+ */
+export function clearDashboardPreviewCache(): void {
+  CACHE.clear();
+  INFLIGHT.clear();
+}
+
 export function useDashboardPreview(): {
   data: DashboardPreview;
   loading: boolean;

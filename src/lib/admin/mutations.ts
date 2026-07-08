@@ -241,8 +241,12 @@ export async function broadcastNotification(args: {
   } else if (args.allUidsHint && args.allUidsHint.length > 0) {
     targets = args.allUidsHint;
   } else {
-    const usersSnap = await getDocs(collection(db, "users"));
-    targets = usersSnap.docs.map((d) => d.id);
+    // SEC-04 fix — never silently full-scan the users collection from
+    // the admin panel. Force callers to pass either an explicit uid list
+    // or the pre-loaded `useAllUsers()` snapshot as `allUidsHint`.
+    throw new Error(
+      "broadcastNotification: pass `uids` or `allUidsHint` (from useAllUsers). Full users scan is disabled.",
+    );
   }
   if (targets.length === 0) return 0;
   const payload = {
@@ -336,6 +340,13 @@ export async function activatePendingSubscription(
   });
 
   // Best-effort side effects (outside tx — they don't need atomicity).
+  // BUG-03 fix — set the `hasSubscription` flag on the parent user doc so
+  // the admin overview's cheap `where hasSubscription == false` filter
+  // works without doing a 200-doc subscription fanout on every mount.
+  await updateDoc(doc(db, "users", userId), {
+    hasSubscription: true,
+    updatedAt: serverTimestamp(),
+  }).catch(() => undefined);
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
     {
@@ -376,23 +387,29 @@ function buildSubFromPlan(
     ? null
     : Timestamp.fromMillis(now.toMillis() + expiryDays * 86_400_000);
 
-  const carriedContacts = typeof current.contactsUsed === "number" ? current.contactsUsed : 0;
-  const carriedBots = typeof current.botsUsed === "number" ? current.botsUsed : 0;
-  const carriedTemplates = typeof current.templatesUsed === "number" ? current.templatesUsed : 0;
-  const carriedAgents = typeof current.agentsUsed === "number" ? current.agentsUsed : 0;
+  // BUG-11 fix — user decision: carry ALL counters across plan upgrades.
+  // Previously messagesUsed/campaignsUsed/aiMessagesUsed reset to 0 while
+  // contacts/bots/templates/agents carried, which was inconsistent.
+  const carriedContacts   = typeof current.contactsUsed   === "number" ? current.contactsUsed   : 0;
+  const carriedBots       = typeof current.botsUsed       === "number" ? current.botsUsed       : 0;
+  const carriedTemplates  = typeof current.templatesUsed  === "number" ? current.templatesUsed  : 0;
+  const carriedAgents     = typeof current.agentsUsed     === "number" ? current.agentsUsed     : 0;
+  const carriedMessages   = typeof current.messagesUsed   === "number" ? current.messagesUsed   : 0;
+  const carriedCampaigns  = typeof current.campaignsUsed  === "number" ? current.campaignsUsed  : 0;
+  const carriedAiMessages = typeof current.aiMessagesUsed === "number" ? current.aiMessagesUsed : 0;
 
   return {
     id: "current",
     planId,
     planName: (plan.name as string) ?? "",
     status: "active",
-    messagesUsed: 0,
+    messagesUsed: carriedMessages,
     contactsUsed: carriedContacts,
-    campaignsUsed: 0,
+    campaignsUsed: carriedCampaigns,
     botsUsed: carriedBots,
     templatesUsed: carriedTemplates,
     agentsUsed: carriedAgents,
-    aiMessagesUsed: 0,
+    aiMessagesUsed: carriedAiMessages,
     maxMessages: (plan.maxMessages as number) ?? 0,
     maxContacts: (plan.maxContacts as number) ?? 0,
     maxCampaigns: (plan.maxCampaigns as number) ?? 0,
@@ -429,6 +446,11 @@ export async function adminAssignPlan(userId: string, planId: string) {
   const newSub = buildSubFromPlan(planId, plan, current);
   await setDoc(subRef, newSub);
   await deleteDoc(doc(db, "pending_subscriptions", userId)).catch(() => undefined);
+  // BUG-03 fix — mirror the flag as in activatePendingSubscription.
+  await updateDoc(doc(db, "users", userId), {
+    hasSubscription: true,
+    updatedAt: serverTimestamp(),
+  }).catch(() => undefined);
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),
     {
@@ -558,10 +580,19 @@ export async function resetSubscriptionCounters(userId: string) {
   const subRef = doc(db, "users", userId, "subscription", "current");
   const snap = await getDoc(subRef);
   if (!snap.exists()) throw new Error("No subscription to reset");
+  // BUG-12 fix — reset EVERY *Used counter, not just a subset. Previously
+  // only messages/campaigns/aiMessages were zeroed, leaving contacts/bots/
+  // templates/agents at old values — which then blocked users from
+  // creating anything if the old counter was already at the plan cap.
   await updateDoc(subRef, {
     messagesUsed: 0,
+    contactsUsed: 0,
     campaignsUsed: 0,
+    botsUsed: 0,
+    templatesUsed: 0,
     aiMessagesUsed: 0,
+    agentsUsed: 0,
+    updatedAt: serverTimestamp(),
   });
   await setDoc(
     doc(db, "users", userId, "bot_usage", "current"),

@@ -40,6 +40,8 @@ export type AdminUser = {
   whatsappWabaId: string | null;
   isOnline: boolean;
   aiBotEnabled: boolean;
+  /** BUG-03 flag maintained by ensureWelcomeSubscription / admin plan actions. */
+  hasSubscription: boolean | null;
 };
 
 function toAdminUser(id: string, d: Record<string, unknown>): AdminUser {
@@ -62,6 +64,7 @@ function toAdminUser(id: string, d: Record<string, unknown>): AdminUser {
     whatsappWabaId: (d.whatsappWabaId as string | null) ?? null,
     isOnline: d.isOnline === true,
     aiBotEnabled: Boolean(d.aiBotEnabled),
+    hasSubscription: typeof d.hasSubscription === "boolean" ? d.hasSubscription : null,
   };
 }
 
@@ -506,12 +509,25 @@ export function usePlatformCounts(): PlatformCounts {
           fetchCached<number>("admin:users:pending", () => countOf(query(users, where("status", "==", "pending"))), TTL),
           fetchCached<number>("admin:users:suspended", () => countOf(query(users, where("status", "==", "suspended"))), TTL),
           fetchCached<number>("admin:users:connected", () => countOf(query(users, where("whatsappConnected", "==", true))), TTL),
-          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch(() => null),
+          fetchCached<number>("admin:agents:group", () => countOf(collectionGroup(db, "agents")), TTL).catch((err) => {
+            // BUG-13 fix — the `agents` collection-group count was silently
+            // swallowing errors and reporting 0. Surface the real cause
+            // (permission-denied → rules; failed-precondition → missing
+            // index) so admin can diagnose without reading Firebase logs.
+            // eslint-disable-next-line no-console
+            console.error("[admin] agents collectionGroup count failed:",
+              (err as { code?: string })?.code ?? "unknown", (err as Error)?.message ?? err);
+            return null;
+          }),
           fetchCached<number>(
             "admin:users:msgSum",
             async () => Number((await getAggregateFromServer(users, { total: sum("totalMessages") })).data().total ?? 0),
             TTL,
-          ).catch(() => null),
+          ).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error("[admin] totalMessages sum failed:", (err as Error)?.message ?? err);
+            return null;
+          }),
         ]);
         if (cancelled) return;
         setCounts({
@@ -524,7 +540,10 @@ export function usePlatformCounts(): PlatformCounts {
           totalMessages: msgSum ?? 0,
           loading: false,
         });
-      } catch {
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[admin] usePlatformCounts failed:",
+          (err as { code?: string })?.code ?? "unknown", (err as Error)?.message ?? err);
         if (!cancelled) setCounts((c) => ({ ...c, loading: false }));
       }
     })();
@@ -751,48 +770,27 @@ export function useUsersWithoutSubscription(users: AdminUser[] | null): {
     [users],
   );
   useEffect(() => {
-    const db = fbDbOrNull();
-    if (!db || !users) return;
-    let cancelled = false;
+    if (!users) return;
+    // BUG-03 fix — was doing 200 subscription-doc reads per admin
+    // Overview mount (chunked 20-wide). Now reads the `hasSubscription`
+    // flag that ensureWelcomeSubscription / activatePendingSubscription
+    // / adminAssignPlan maintain on the parent user doc — ZERO extra
+    // reads, since users are already in the useAllUsers snapshot.
+    // `hasSubscription === false` → missing.
+    // `null` (older accounts, not yet migrated) → assume OK so legit
+    // users aren't flagged during the rollout window.
     setLoading(true);
-    (async () => {
-      const missing: UserMissingPlan[] = [];
-      // Batch in chunks of 20 so we don't fan out 200 parallel reads at once.
-      const CHUNK = 20;
-      for (let i = 0; i < users.length; i += CHUNK) {
-        if (cancelled) return;
-        const slice = users.slice(i, i + CHUNK);
-        const SUB_TTL = 15 * 60_000;
-        const results = await Promise.all(
-          slice.map((u) =>
-            fetchCached(
-              `admin:userSubExists:${u.id}`,
-              () => getDoc(doc(db, "users", u.id, "subscription", "current")).then((s) => s.exists()),
-              SUB_TTL,
-            )
-              .then((exists) => ({ u, exists }))
-              .catch(() => ({ u, exists: true })), // on error assume ok
-          ),
-        );
-        for (const { u, exists } of results) {
-          if (!exists) {
-            missing.push({
-              id: u.id,
-              businessName: u.businessName,
-              email: u.email,
-              phoneNumber: u.phoneNumber,
-              createdAt: u.createdAt,
-            });
-          }
-        }
-      }
-      if (cancelled) return;
-      setData(missing);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const missing: UserMissingPlan[] = users
+      .filter((u) => u.hasSubscription === false)
+      .map((u) => ({
+        id: u.id,
+        businessName: u.businessName,
+        email: u.email,
+        phoneNumber: u.phoneNumber,
+        createdAt: u.createdAt,
+      }));
+    setData(missing);
+    setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
   return { data, loading };

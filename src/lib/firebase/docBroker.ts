@@ -87,3 +87,21 @@ export function subscribeDoc(pathSegments: string[], cb: Listener): () => void {
     }
   };
 }
+
+/**
+ * BUG-17 fix — call on logout (or user switch) to tear down every doc
+ * listener the previous session opened. Without this the module-level
+ * REGISTRY happily hands out stale listeners (and previously-cached
+ * snapshots) to the new session on the same tab.
+ */
+export function clearDocBrokerRegistry(): void {
+  for (const reg of REGISTRY.values()) {
+    try {
+      reg.unsub();
+    } catch {
+      /* best-effort */
+    }
+    reg.listeners.clear();
+  }
+  REGISTRY.clear();
+}

@@ -63,6 +63,17 @@ function SettingsPage() {
   }
 
   async function signOut() {
+    // BUG-17/BUG-18 fix — clear cross-session caches on the way out so
+    // the next signed-in user on the same tab doesn't inherit stale
+    // listeners or dashboard previews.
+    try {
+      const { clearDocBrokerRegistry } = await import("@/lib/firebase/docBroker");
+      const { clearDashboardPreviewCache } = await import("@/hooks/useDashboardPreview");
+      clearDocBrokerRegistry();
+      clearDashboardPreviewCache();
+    } catch {
+      /* best-effort */
+    }
     await fbSignOut(fbAuth());
     window.location.assign("/auth");
   }

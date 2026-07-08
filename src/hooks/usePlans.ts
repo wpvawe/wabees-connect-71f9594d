@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { toIso } from "@/lib/firebase/normalizers";
 import { subscribeRefetch } from "@/lib/firebase/refetchBus";
@@ -178,14 +178,36 @@ export function usePlans(
       }
     }
     try {
-      const snap = await getDocs(collection(db, "plans"));
+      // BUG-25 fix — was doing a full unordered scan and filtering client
+      // side. Now let Firestore do the filter + sort so we only pay for
+      // the docs we'll actually render. `includeInactive`/`publicOnly`
+      // may need to short-circuit to the raw collection since we don't
+      // have combined indexes for every permutation.
+      let q: Parameters<typeof getDocs>[0] = collection(db, "plans");
+      if (publicOnly && !includeInactive) {
+        // Uses the `showOnPublic ASC + sortOrder ASC` index already in
+        // firestore.indexes.json (line 87-94).
+        q = query(
+          collection(db, "plans"),
+          where("showOnPublic", "==", true),
+          orderBy("sortOrder", "asc"),
+        );
+      } else if (!includeInactive) {
+        // Uses the `isActive ASC + sortOrder ASC` index (line 73-86).
+        q = query(
+          collection(db, "plans"),
+          where("isActive", "==", true),
+          orderBy("sortOrder", "asc"),
+        );
+      }
+      const snap = await getDocs(q);
       const raw = snap.docs.map((d) => ({ id: d.id, x: d.data() as Record<string, unknown> }));
       writePlansCache(raw);
       applyRows(raw);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [applyRows]);
+  }, [applyRows, includeInactive, publicOnly]);
 
   useEffect(() => {
     void load();
