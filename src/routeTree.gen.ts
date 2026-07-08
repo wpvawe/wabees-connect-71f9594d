@@ -36,6 +36,7 @@ import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates.index'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
+import { Route as ApiPublicTriageMessageRouteImport } from './routes/api/public/triage-message'
 import { Route as AuthenticatedTemplatesNewRouteImport } from './routes/_authenticated/templates.new'
 import { Route as AuthenticatedInboxPhoneRouteImport } from './routes/_authenticated/inbox.$phone'
 import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authenticated/campaigns.new'
@@ -180,6 +181,11 @@ const AuthenticatedCampaignsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedCampaignsRoute,
   } as any)
+const ApiPublicTriageMessageRoute = ApiPublicTriageMessageRouteImport.update({
+  id: '/api/public/triage-message',
+  path: '/api/public/triage-message',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedTemplatesNewRoute =
   AuthenticatedTemplatesNewRouteImport.update({
     id: '/new',
@@ -239,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
   '/templates/new': typeof AuthenticatedTemplatesNewRoute
+  '/api/public/triage-message': typeof ApiPublicTriageMessageRoute
   '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
@@ -269,6 +276,7 @@ export interface FileRoutesByTo {
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
   '/templates/new': typeof AuthenticatedTemplatesNewRoute
+  '/api/public/triage-message': typeof ApiPublicTriageMessageRoute
   '/campaigns': typeof AuthenticatedCampaignsIndexRoute
   '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
@@ -304,6 +312,7 @@ export interface FileRoutesById {
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/inbox/$phone': typeof AuthenticatedInboxPhoneRoute
   '/_authenticated/templates/new': typeof AuthenticatedTemplatesNewRoute
+  '/api/public/triage-message': typeof ApiPublicTriageMessageRoute
   '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/templates/$id/edit': typeof AuthenticatedTemplatesIdEditRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/campaigns/new'
     | '/inbox/$phone'
     | '/templates/new'
+    | '/api/public/triage-message'
     | '/campaigns/'
     | '/templates/'
     | '/templates/$id/edit'
@@ -369,6 +379,7 @@ export interface FileRouteTypes {
     | '/campaigns/new'
     | '/inbox/$phone'
     | '/templates/new'
+    | '/api/public/triage-message'
     | '/campaigns'
     | '/templates'
     | '/templates/$id/edit'
@@ -403,6 +414,7 @@ export interface FileRouteTypes {
     | '/_authenticated/campaigns/new'
     | '/_authenticated/inbox/$phone'
     | '/_authenticated/templates/new'
+    | '/api/public/triage-message'
     | '/_authenticated/campaigns/'
     | '/_authenticated/templates/'
     | '/_authenticated/templates/$id/edit'
@@ -413,6 +425,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   JoinCodeRoute: typeof JoinCodeRoute
+  ApiPublicTriageMessageRoute: typeof ApiPublicTriageMessageRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -606,6 +619,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCampaignsIndexRouteImport
       parentRoute: typeof AuthenticatedCampaignsRoute
     }
+    '/api/public/triage-message': {
+      id: '/api/public/triage-message'
+      path: '/api/public/triage-message'
+      fullPath: '/api/public/triage-message'
+      preLoaderRoute: typeof ApiPublicTriageMessageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/templates/new': {
       id: '/_authenticated/templates/new'
       path: '/new'
@@ -755,6 +775,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   JoinCodeRoute: JoinCodeRoute,
+  ApiPublicTriageMessageRoute: ApiPublicTriageMessageRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
