@@ -75,6 +75,10 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
         && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
         && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
+        && (
+          get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.get('expiresAt', null) == null
+          || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.expiresAt > request.time
+        )
         && request.resource.data.status == 'active'
         && request.resource.data.joinedVia == 'invite'
         && (
@@ -570,6 +574,7 @@ service cloud.firestore {
         (
           resource.data.status == 'pending'
           && request.resource.data.status == 'accepted'
+          && (resource.data.get('expiresAt', null) == null || resource.data.expiresAt > request.time)
           && request.resource.data.ownerId == resource.data.ownerId
           && request.resource.data.role == resource.data.role
           && request.resource.data.inviteId == resource.data.inviteId
