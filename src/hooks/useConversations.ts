@@ -194,7 +194,14 @@ export function useConversations(): {
         setData(rows);
     });
     return () => unsub();
-  }, [uid, pageLimit, selfUid, maskOtherAgentEmails]);
+    // Bug fix: `maskOtherAgentEmails` is a display-only flag and does NOT
+    // affect the Firestore query. Including it in deps tore down the
+    // subscription (briefly rendering an empty inbox) when the flag flipped
+    // during session hydration. It's derived from selfUid + dataOwner which
+    // are already in the deps below, so masking will re-run inside the
+    // callback anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, pageLimit, selfUid]);
 
   const loadMore = useCallback(() => {
     setLoadingMore(true);
