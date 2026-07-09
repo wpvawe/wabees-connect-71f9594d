@@ -72,8 +72,7 @@ export async function resolveConversationDocIds(uid: string, phone: string): Pro
   );
   const found = snaps.filter((c): c is string => c !== null);
   const canonical = phoneDocId(phone);
-  if (!found.includes(canonical)) found.push(canonical);
-  return found;
+  return found.length > 0 ? found : [canonical];
 }
 
 async function setConversationVariants(
@@ -148,7 +147,8 @@ export async function deleteConversation(uid: string, phone: string): Promise<vo
   const db = fbDb();
   let hardDeleted = false;
   // Delete every candidate conversation doc (normalized + raw variants).
-  for (const c of phoneQueryCandidates(phone)) {
+  const ids = await resolveConversationDocIds(uid, phone);
+  for (const c of ids) {
     try {
       await deleteDoc(doc(db, `users/${uid}/conversations/${c}`));
       hardDeleted = true;
