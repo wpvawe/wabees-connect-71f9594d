@@ -243,6 +243,12 @@ function Thread({ phone }: { phone: string }) {
       (m) => m.direction === "incoming" && m.status !== "read" && !m.readAt,
     );
     if (unread.length === 0) return;
+    // Bug fix: `data` is a new array ref on every snapshot (delivery ticks,
+    // reactions). Without a cancel flag, rapid updates spawn N concurrent
+    // async IIFEs each doing batch writes + Meta mark-read calls, burning
+    // Firestore quota and API rate-limit. Cancel the in-flight run when a
+    // fresh update arrives.
+    let cancelled = false;
     void (async () => {
       try {
         const candidates = phoneQueryCandidates(phone);
@@ -250,6 +256,7 @@ function Thread({ phone }: { phone: string }) {
         // backlogs don't silently throw and leave messages forever-unread.
         const CHUNK = 450;
         for (let i = 0; i < unread.length; i += CHUNK) {
+          if (cancelled) return;
           const batch = writeBatch(fbDb());
           for (const m of unread.slice(i, i + CHUNK)) {
             batch.set(
@@ -260,8 +267,10 @@ function Thread({ phone }: { phone: string }) {
           }
           await batch.commit();
         }
+        if (cancelled) return;
         // Also keep conversation counter at 0.
         for (const candidate of candidates) {
+          if (cancelled) return;
           await setDoc(
             doc(fbDb(), `users/${uid}/conversations/${candidate}`),
             { unreadCount: 0 },
@@ -277,6 +286,7 @@ function Thread({ phone }: { phone: string }) {
         if (selfUid) {
           try {
             const creds = await loadWaConnection(selfUid);
+            if (cancelled) return;
             if (creds) {
               // Newest unread with a wamid (unread is sorted ascending by
               // createdAt in useMessages, so scan from the end).
@@ -303,6 +313,9 @@ function Thread({ phone }: { phone: string }) {
         /* ignore */
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [uid, selfUid, phone, data]);
 
   const onReact = useCallback(
