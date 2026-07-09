@@ -37,6 +37,10 @@ export function useCsatSurveys(max = 200): {
   const [data, setData] = useState<CsatSurvey[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastLoadRef = useRef(0);
+  // High-sev fix: cancel guard so an in-flight getDocs() that resolves
+  // after unmount doesn't call setState on a dead component (React warns
+  // + wastes work when the dashboard is unmounted mid-fetch).
+  const mountedRef = useRef(true);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -50,6 +54,7 @@ export function useCsatSurveys(max = 200): {
           limit(max),
         ),
       );
+      if (!mountedRef.current) return;
       const rows: CsatSurvey[] = snap.docs.map((d) => {
         const x = d.data() as Record<string, unknown>;
         const status = (() => {
@@ -80,14 +85,17 @@ export function useCsatSurveys(max = 200): {
             error: typeof x.error === "string" ? x.error : null,
           };
       });
+      if (!mountedRef.current) return;
       setData(rows);
       lastLoadRef.current = Date.now();
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : "load failed");
     }
   }, [uid, max]);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
     const unsub = subscribeRefetch("csatSurveys", () => {
       void load();
@@ -99,6 +107,7 @@ export function useCsatSurveys(max = 200): {
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
+      mountedRef.current = false;
       unsub();
       document.removeEventListener("visibilitychange", onVis);
     };
