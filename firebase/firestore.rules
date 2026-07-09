@@ -83,6 +83,32 @@ service cloud.firestore {
       ]);
     }
 
+    function agentMessageCreateKeys() {
+      return [
+        'contactPhone', 'contactName',
+        'type', 'direction', 'status', 'body',
+        'mediaUrl', 'mediaId', 'mimeType', 'caption', 'fileName', 'fileSize', 'isVoice',
+        'templateName', 'templateLanguage', 'headerText', 'footerText', 'quickReplies', 'ctaButton',
+        'whatsappMessageId', 'errorReason', 'createdAt', 'updatedAt',
+        'replyToId', 'replyToBody', 'replyToWamid', 'replyToType',
+        'reactionEmoji', 'reactionMsgId', 'reactionAt',
+        'latitude', 'longitude', 'location',
+        'contacts', 'buttonReplyId', 'buttonReplyText', 'interactiveType', 'ctaUrl', 'otpCode',
+        'orderItems', 'orderTotal', 'orderCurrency', 'orderCatalogId', 'orderNote', 'flowResponse',
+        'botName', 'sentVia', 'forwarded'
+      ];
+    }
+
+    function agentMessageUpdateKeys() {
+      return [
+        'status', 'errorReason', 'whatsappMessageId',
+        'readAt', 'deliveredAt', 'updatedAt',
+        'reactionEmoji', 'reactionMsgId', 'reactionAt',
+        'starred', 'starredAt',
+        'body', 'mediaUrl', 'mediaId', 'caption', 'fileName', 'deletedAt'
+      ];
+    }
+
     function selfAssignOnly(keys) {
       return !keys.hasAny(['assignedAgentId', 'assignedAgentEmail', 'assignedAt', 'assignedByUid', 'assignedByEmail'])
         || (
@@ -197,12 +223,10 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create: if isOwner(userId) || isAdmin()
-          || (isSupervisorOf(userId) && request.resource.data.keys().hasOnly(supervisorConversationKeys()))
-          || (isAgentOf(userId) && regularAgentCanCreateConversation());
+          || (isAgentOf(userId) && request.resource.data.keys().hasOnly(agentMessageCreateKeys()));
         allow update: if isOwner(userId) || isAdmin()
-          || (isSupervisorOf(userId)
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(supervisorConversationKeys()))
-          || (isAgentOf(userId) && regularAgentCanUpdateConversation());
+          || (isAgentOf(userId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentMessageUpdateKeys()));
         allow delete: if isOwner(userId) || isAdmin();
       }
 
