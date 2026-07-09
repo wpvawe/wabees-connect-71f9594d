@@ -136,6 +136,9 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   }, [role]);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [incomingFallbacks, setIncomingFallbacks] = useState<Record<string, string | null>>({});
+  // Bug fix: tracks phones we've already issued a fallback fetch for so the
+  // effect below doesn't self-retrigger via its own setIncomingFallbacks.
+  const fetchedFallbacksRef = useRef<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
