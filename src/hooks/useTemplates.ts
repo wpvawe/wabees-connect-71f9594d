@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -73,6 +73,8 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
   const uid = useEffectiveUid();
   const [data, setData] = useState<Template[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bug fix: guard async setState after unmount / uid change.
+  const cancelledRef = useRef<boolean>(false);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -80,6 +82,7 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
     if (!db) return;
     try {
       const docs = await fetchTemplatesCoalesced(db, uid);
+      if (cancelledRef.current) return;
       const rows: Template[] = docs
         .map((d) => {
             const x = d.data;
@@ -122,17 +125,22 @@ export function useTemplates(): { data: Template[] | null; error: string | null 
       setData(rows);
       setError(null);
     } catch (err) {
+      if (cancelledRef.current) return;
       setError((err as Error).message);
     }
   }, [uid]);
 
   useEffect(() => {
+    cancelledRef.current = false;
     void load();
     const unsub = subscribeRefetch("templates", () => {
       if (uid) invalidateTemplates(uid);
       void load();
     });
-    return () => unsub();
+    return () => {
+      cancelledRef.current = true;
+      unsub();
+    };
   }, [load, uid]);
 
   return { data, error };
