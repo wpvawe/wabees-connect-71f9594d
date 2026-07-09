@@ -209,7 +209,6 @@ export function TemplateGrid() {
         template_name: selected.name,
         language_code: selected.languageCode || "en_US",
         components,
-        quota_reserved: true,
       });
       if (!res.success) {
         if (uid && quotaReserved) {

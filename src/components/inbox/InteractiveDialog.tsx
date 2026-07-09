@@ -284,7 +284,6 @@ function LocationForm(p: {
         name: name || undefined,
         address: addr || undefined,
         context_message_id: p.contextMessageId,
-        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
       if (!res.success) {
@@ -387,7 +386,6 @@ function ButtonsForm(p: {
         footer_text: footer || undefined,
         buttons: filled,
         context_message_id: p.contextMessageId,
-        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
       if (!res.success) {
@@ -515,7 +513,6 @@ function CtaForm(p: {
         header_text: header || undefined,
         footer_text: footer || undefined,
         context_message_id: p.contextMessageId,
-        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
       if (!res.success) {
@@ -625,7 +622,6 @@ function ListForm(p: {
           },
         ],
         context_message_id: p.contextMessageId,
-        quota_reserved: true,
       });
       const wamid = extractId(res.raw);
       if (!res.success) {

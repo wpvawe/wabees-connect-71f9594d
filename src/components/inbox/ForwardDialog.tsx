@@ -142,14 +142,12 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
                     : {}),
                 ...(body && mediaKind !== "audio" && mediaKind !== "sticker" ? { caption: body } : {}),
                 ...(mediaKind === "document" && message.fileName ? { filename: message.fileName } : {}),
-                quota_reserved: true,
               })
             : await sendTextMessage({
                 phone_number_id: creds.phone_number_id,
                 access_token: "",
                 to,
                 message: body,
-                quota_reserved: true,
               });
           if (!res.success) {
             await updateDoc(msgRef, {

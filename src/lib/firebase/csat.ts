@@ -164,7 +164,6 @@ export async function sendCsatSurvey(args: {
     button_text: "Rate 1–5",
     footer_text: settings.footer || DEFAULT_CSAT.footer,
     sections: [{ title: "Your rating", rows }],
-    quota_reserved: true,
   }).catch((e: unknown) => ({
     success: false,
     message: e instanceof Error ? e.message : "send failed",
@@ -253,7 +252,6 @@ export async function recordCsatRating(args: {
     access_token: "",
     to: whatsappRecipientId(phone),
     message: commentPrompt || DEFAULT_CSAT.commentPrompt,
-    quota_reserved: true,
   })
     .then(async (r) => {
       if (r?.success) {

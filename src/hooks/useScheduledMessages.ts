@@ -168,7 +168,6 @@ export function useScheduledDispatcher() {
                 access_token: "",
                 to: whatsappRecipientId(phone),
                 message: body,
-                quota_reserved: true,
               });
               const wamid = extractWamid(res.raw);
               if (!res.success) {
