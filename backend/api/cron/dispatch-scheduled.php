@@ -130,9 +130,10 @@ foreach ($dueDocs as $doc) {
 
     // Mirror what the website dispatcher wrote: a message doc + conversation summary.
     $msgId = 'sch_' . bin2hex(random_bytes(8));
+    $contactName = _scheduled_contact_name($uid, $phone);
     firestore_set("users/$uid/messages/$msgId", [
         'contactPhone' => $phone,
-        'contactName' => $phone,
+        'contactName' => $contactName,
         'type' => 'text',
         'direction' => 'outgoing',
         'status' => 'sent',
@@ -144,6 +145,7 @@ foreach ($dueDocs as $doc) {
 
     firestore_set("users/$uid/conversations/$phone", [
         'contactPhone' => $phone,
+        'contactName' => $contactName,
         'lastMessage' => $body,
         'lastMessageType' => 'text',
         'lastMessageAt' => firestore_timestamp(),
@@ -447,6 +449,18 @@ function _send_whatsapp_text(string $phoneNumberId, string $token, string $to, s
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     return [$code, json_decode($resp, true) ?: []];
+}
+
+function _scheduled_contact_name(string $uid, string $phone): string {
+    $conv = firestore_get("users/$uid/conversations/$phone");
+    $convName = $conv['data']['fields']['contactName']['stringValue'] ?? '';
+    if (is_string($convName) && trim($convName) !== '' && trim($convName) !== $phone) {
+        return trim($convName);
+    }
+    $contact = firestore_get("users/$uid/contacts/$phone");
+    $contactName = $contact['data']['fields']['name']['stringValue'] ?? '';
+    if (is_string($contactName) && trim($contactName) !== '') return trim($contactName);
+    return $phone;
 }
 
 function _mark_failed(string $uid, string $schedId, string $reason): void {
