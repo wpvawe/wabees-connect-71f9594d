@@ -22,7 +22,6 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/join/$code")({
-  ssr: false,
   head: () => ({
     meta: [
       { title: "Join a workspace — Wabees" },

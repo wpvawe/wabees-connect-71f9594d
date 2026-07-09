@@ -3,7 +3,6 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 import { ForgotForm } from "@/components/auth/ForgotForm";
 
 export const Route = createFileRoute("/auth/forgot")({
-  ssr: false,
   head: () => ({
     meta: [{ title: "Forgot password — Wabees" }, { name: "robots", content: "noindex" }],
   }),
