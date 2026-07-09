@@ -11,6 +11,8 @@ import {
   Timestamp,
   updateDoc,
   writeBatch,
+  runTransaction,
+  type FieldValue,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
@@ -69,7 +71,7 @@ export type CampaignCreatePayload = {
   readCount: number;
   failedCount: number;
   scheduledAt: null;
-  createdAt: Timestamp;
+  createdAt: Timestamp | FieldValue;
   startedAt: null;
   completedAt: null;
 };
@@ -103,7 +105,9 @@ export function buildCampaignCreatePayload(input: CreateCampaignInput): Campaign
     readCount: 0,
     failedCount: 0,
     scheduledAt: null,
-    createdAt: Timestamp.now(),
+    // Bug fix: was client `Timestamp.now()` which sorted incorrectly for
+    // clock-skewed devices (DST slew) and disagreed with server-written docs.
+    createdAt: serverTimestamp(),
     startedAt: null,
     completedAt: null,
   };
@@ -158,7 +162,22 @@ export async function createCampaign(
 }
 
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
-  await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
+  // Bug fix: previously deleting a running campaign broke the active send
+  // loop's onSnapshot fallback (`currentStatus` defaulted to "running") and
+  // the next `updateDoc(campaignRef, { sentCount: increment })` threw on
+  // the missing doc. Refuse to delete while running/paused; require explicit
+  // cancel first.
+  const ref = doc(fbDb(), "users", uid, "campaigns", id);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const status = (snap.data()?.status as string | undefined) ?? "draft";
+    if (status === "running" || status === "paused") {
+      throw new Error(
+        "Cancel the campaign before deleting it. (Currently " + status + ".)",
+      );
+    }
+  }
+  await deleteDoc(ref);
   await releaseQuota(uid, "campaigns", 1).catch(() => {});
   bumpRefetch("campaigns");
 }
