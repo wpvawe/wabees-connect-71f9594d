@@ -16,7 +16,6 @@ function waitForFirebaseUser(): Promise<User | null> {
 }
 
 export const Route = createFileRoute("/auth")({
-  ssr: false,
   component: AuthLayoutRoute,
 });
 

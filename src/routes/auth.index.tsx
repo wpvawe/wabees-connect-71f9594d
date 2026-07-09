@@ -3,7 +3,6 @@ import { AuthTabs } from "@/components/auth/AuthTabs";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/auth/")({
-  ssr: false,
   head: () => ({
     meta: [
       { title: "Sign in — Wabees" },
