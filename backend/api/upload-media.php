@@ -277,6 +277,7 @@ if ($mediaHttpCode !== 200 || empty($mediaId)) {
             }
         }
     }
+    if (is_file($targetPath)) @unlink($targetPath);
     http_response_code($mediaHttpCode ?: 500);
     echo json_encode([
         'success' => false,

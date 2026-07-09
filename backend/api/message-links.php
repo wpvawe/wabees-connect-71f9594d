@@ -157,7 +157,7 @@ function createMessageLink($phoneNumberId, $accessToken, $prefilledMessage)
 // ============ DELETE MESSAGE LINK ============
 function deleteMessageLink($phoneNumberId, $accessToken, $linkId)
 {
-    $url = "https://graph.facebook.com/v21.0/{$phoneNumberId}/message_qrdls?code={$linkId}";
+    $url = "https://graph.facebook.com/v21.0/{$phoneNumberId}/message_qrdls?code=" . rawurlencode($linkId);
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);

@@ -23,11 +23,28 @@ if (!empty($auth['error'])) {
 
 $accessToken = trim((string)($input['access_token'] ?? ''));
 $wabaId = trim((string)($input['business_account_id'] ?? ($input['waba_id'] ?? '')));
+$phoneNumberId = preg_replace('/[^0-9]/', '', (string)($input['phone_number_id'] ?? ''));
 if ($wabaId === '' && !empty($auth['owner_uid'])) {
     $ownerUid = preg_replace('/[^A-Za-z0-9_-]/', '', (string)$auth['owner_uid']);
     $cfg = firestore_get('users/' . rawurlencode($ownerUid) . '/whatsapp_config/config');
     $cf = (($cfg['code'] ?? 404) === 200) ? ($cfg['data']['fields'] ?? []) : [];
     $wabaId = trim((string)($cf['businessAccountId']['stringValue'] ?? ($cf['wabaId']['stringValue'] ?? '')));
+}
+if ($wabaId === '' && $phoneNumberId !== '' && $accessToken !== '') {
+    $gv = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v21.0';
+    $lookup = curl_init("https://graph.facebook.com/$gv/$phoneNumberId?fields=" . rawurlencode('whatsapp_business_account'));
+    curl_setopt_array($lookup, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 12,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $accessToken],
+    ]);
+    $lookupResp = curl_exec($lookup);
+    curl_close($lookup);
+    $lookupJson = json_decode($lookupResp ?: '', true);
+    if (is_array($lookupJson)) {
+        $wabaId = trim((string)($lookupJson['whatsapp_business_account']['id'] ?? ''));
+    }
 }
 if ($accessToken === '' || $wabaId === '') {
     http_response_code(400);
