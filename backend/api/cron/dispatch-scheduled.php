@@ -118,6 +118,12 @@ foreach ($dueDocs as $doc) {
         continue;
     }
 
+    $quota = _check_message_quota($uid);
+    if (!$quota['ok']) {
+        _mark_failed($uid, $schedId, $quota['message']);
+        continue;
+    }
+
     // Send via Meta Graph.
     [$httpCode, $respJson] = _send_whatsapp_text($phoneNumberId, $accessToken, $phone, $body);
     $wamid = $respJson['messages'][0]['id'] ?? null;
@@ -159,6 +165,7 @@ foreach ($dueDocs as $doc) {
     ], ['status', 'sentMessageId', 'sentWamid', 'updatedAt']);
 
     firestore_increment("users/$uid", 'totalMessages', 1);
+    firestore_increment("users/$uid/subscription/current", 'messagesUsed', 1);
 
     // Re-queue next occurrence for recurring schedules.
     $recurrence = _fs_string($fields['recurrence'] ?? null, 'none');
@@ -323,6 +330,27 @@ function _claim_scheduled_message(string $uid, string $schedId, array $data, ?st
     }
     curl_close($ch);
     return ['code' => $httpCode, 'data' => json_decode((string)$response, true)];
+}
+
+function _check_message_quota(string $uid): array {
+    $subResp = firestore_get("users/$uid/subscription/current");
+    if (($subResp['code'] ?? 0) !== 200) {
+        return ['ok' => false, 'message' => 'Quota service unavailable'];
+    }
+    $fields = $subResp['data']['fields'] ?? [];
+    $status = _fs_string($fields['status'] ?? null, 'inactive');
+    $endRaw = _fs_timestamp($fields['endDate'] ?? null) ?: _fs_string($fields['endDate'] ?? null, '');
+    $expiryType = _fs_string($fields['expiryType'] ?? null, 'monthly');
+    $isExpired = $expiryType !== 'lifetime' && $endRaw !== '' && strtotime($endRaw) !== false && strtotime($endRaw) < time();
+    if ($status !== 'active' || $isExpired) {
+        return ['ok' => false, 'message' => 'Subscription expired or inactive'];
+    }
+    $maxMessages = _fs_int($fields['maxMessages'] ?? null, 0);
+    $messagesUsed = _fs_int($fields['messagesUsed'] ?? null, 0);
+    if ($maxMessages > 0 && $messagesUsed >= $maxMessages) {
+        return ['ok' => false, 'message' => "Message quota exhausted ($messagesUsed/$maxMessages)"];
+    }
+    return ['ok' => true, 'message' => ''];
 }
 
 function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
