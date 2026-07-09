@@ -61,6 +61,26 @@ service cloud.firestore {
       ];
     }
 
+    function agentInviteJoinKeys() {
+      return ['email', 'role', 'status', 'joinedAt', 'joinedVia', 'inviteCode', 'skills'];
+    }
+
+    function validInviteJoin(userId, agentId) {
+      return request.auth != null
+        && request.auth.uid == agentId
+        && request.resource.data.inviteCode is string
+        && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
+        && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
+        && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
+        && request.resource.data.status == 'active'
+        && request.resource.data.joinedVia == 'invite'
+        && request.resource.data.keys().hasOnly(agentInviteJoinKeys())
+        && (
+          get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
+          || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
+        );
+    }
+
     function regularAgentConversationKeys() {
       return [
         'contactPhone', 'contactName', 'updatedAt',
@@ -192,30 +212,19 @@ service cloud.firestore {
         // ownerId == this workspace owner. This closes the C-2 escalation
         // where any signed-in user could create an agent doc under any
         // owner just because request.auth.uid == agentId.
-        allow create: if request.auth != null
-          && request.auth.uid == agentId
-          && request.resource.data.inviteCode is string
-          && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
-          && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
-          && (
-            // Either the invite is still pending (matching a same-batch
-            // CAS from pending→accepted; the invite-update rule enforces
-            // that only one such batch wins) OR the mirror already shows
-            // acceptedBy == self (single-write path).
-            get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
-            || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
-          );
+        allow create: if validInviteJoin(userId, agentId);
         // Agent may update only its OWN operational fields (presence,
         // availability, FCM token, or voluntary leave). It cannot edit role,
         // workingHours, skills, activeLoad, or status back to active.
-        allow update: if request.auth != null
-          && request.auth.uid == agentId
-          && resource.data.get('status', 'active') != 'revoked'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentSelfUpdateKeys())
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-            || request.resource.data.status == 'left'
-          );
+        allow update: if validInviteJoin(userId, agentId)
+          || (request.auth != null
+            && request.auth.uid == agentId
+            && resource.data.get('status', 'active') != 'revoked'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentSelfUpdateKeys())
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+              || request.resource.data.status == 'left'
+            ));
       }
 
       // ============ Messages ============
