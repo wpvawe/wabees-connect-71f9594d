@@ -457,13 +457,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw = file_get_contents('php://input');
     $appSecret = getenv('META_APP_SECRET') ?: '';
     $sigHeader = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
-    if ($appSecret !== '') {
-        $expected = 'sha256=' . hash_hmac('sha256', $raw, $appSecret);
-        if (!$sigHeader || !hash_equals($expected, $sigHeader)) {
-            http_response_code(403);
-            echo 'Invalid signature';
-            exit;
-        }
+    // SECURITY: Signature verification is MANDATORY. If META_APP_SECRET is
+    // not configured, reject all inbound webhooks — an unverified webhook
+    // would allow anyone to inject fake WhatsApp events (fake incoming
+    // messages, status updates, bot triggers) which then get written to
+    // Firestore, delivered via FCM, and can burn AI credits.
+    if ($appSecret === '') {
+        http_response_code(500);
+        echo 'Webhook signature secret not configured';
+        exit;
+    }
+    $expected = 'sha256=' . hash_hmac('sha256', $raw, $appSecret);
+    if (!$sigHeader || !hash_equals($expected, $sigHeader)) {
+        http_response_code(403);
+        echo 'Invalid signature';
+        exit;
     }
     $input = json_decode($raw, true);
 

@@ -20,6 +20,11 @@ if (!empty($auth['error'])) {
     echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => 'Unauthorized']]);
+    exit;
+}
 
 $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($input['phone_number_id'] ?? ''));
 $accessToken = trim((string)($input['access_token'] ?? ''));

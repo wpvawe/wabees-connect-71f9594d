@@ -49,6 +49,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
+
+// SECURITY: require a valid Firebase bearer token — this endpoint invokes
+// mail() and would otherwise be an open relay usable by any web caller.
+require_once __DIR__ . '/../config/firebase-auth.php';
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+$bearerOk = false;
+if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
+    $err = null;
+    $bearerOk = (bool) verify_firebase_id_token(trim($m[1]), $err);
+}
+if (!$bearerOk) {
+    http_response_code(401);
+    echo json_encode(['error' => ['message' => 'Unauthorized']]);
+    exit;
+}
+
 $to      = trim((string) ($input['to'] ?? ''));
 $subject = trim((string) ($input['subject'] ?? ''));
 $html    = (string) ($input['html'] ?? '');

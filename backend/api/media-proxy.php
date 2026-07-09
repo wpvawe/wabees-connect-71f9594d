@@ -40,28 +40,33 @@ function proxy_media_belongs_to_user($uid, $mediaId): bool {
 
 require_once __DIR__ . '/../config/firebase-auth.php';
 require_once __DIR__ . '/../config/wa-bearer-auth.php';
-$uid = $requestedUid;
 $authHeader = wabees_auth_header();
 $idToken = trim((string)($_GET['id_token'] ?? ''));
 if (!$idToken && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) $idToken = trim($m[1]);
-if ($idToken !== '') {
-    $err = null;
-    $callerUid = verify_firebase_id_token($idToken, $err);
-    if (!$callerUid) {
-        http_response_code(401);
-        echo 'Unauthorized';
-        exit;
-    }
-    $uid = $callerUid;
-    $callerResp = firestore_get('users/' . rawurlencode($callerUid));
-    $callerFields = (($callerResp['code'] ?? 404) === 200) ? ($callerResp['data']['fields'] ?? []) : [];
-    $dataOwner = trim((string)($callerFields['dataOwner']['stringValue'] ?? ''));
-    if ($dataOwner !== '' && $dataOwner !== $callerUid) $uid = $dataOwner;
-    if ($requestedUid !== $callerUid && $requestedUid !== $uid) {
-        http_response_code(403);
-        echo 'Forbidden';
-        exit;
-    }
+// SECURITY: A Firebase id_token is REQUIRED. Without it we would trust the
+// attacker-controlled ?uid= parameter and any caller who guessed a victim's
+// uid + media id could download that user's WhatsApp media.
+if ($idToken === '') {
+    http_response_code(401);
+    echo 'Unauthorized';
+    exit;
+}
+$err = null;
+$callerUid = verify_firebase_id_token($idToken, $err);
+if (!$callerUid) {
+    http_response_code(401);
+    echo 'Unauthorized';
+    exit;
+}
+$uid = $callerUid;
+$callerResp = firestore_get('users/' . rawurlencode($callerUid));
+$callerFields = (($callerResp['code'] ?? 404) === 200) ? ($callerResp['data']['fields'] ?? []) : [];
+$dataOwner = trim((string)($callerFields['dataOwner']['stringValue'] ?? ''));
+if ($dataOwner !== '' && $dataOwner !== $callerUid) $uid = $dataOwner;
+if ($requestedUid !== $callerUid && $requestedUid !== $uid) {
+    http_response_code(403);
+    echo 'Forbidden';
+    exit;
 }
 if (!proxy_media_belongs_to_user($uid, $mediaId)) {
     http_response_code(403);

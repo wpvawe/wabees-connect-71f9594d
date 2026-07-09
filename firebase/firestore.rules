@@ -70,7 +70,14 @@ service cloud.firestore {
 
     function userSelfUpdateForbiddenKeys() {
       return [
-        'role', 'status'
+        // SECURITY: these fields must never be self-writable by the account
+        // owner — `role`/`status` gate admin access; `plan` and `dataOwner`
+        // gate paid capabilities and cross-account data routing;
+        // `whatsappAccessToken`/`apiKey`/`stripeCustomerId` are credentials
+        // owned by the backend; `email` is used for invite matching and
+        // password recovery.
+        'role', 'status', 'plan', 'dataOwner',
+        'whatsappAccessToken', 'apiKey', 'stripeCustomerId', 'email'
       ];
     }
 
@@ -214,6 +221,20 @@ service cloud.firestore {
         && request.resource.data.get('templatesUsed', 0) >= 0
         && request.resource.data.get('aiMessagesUsed', 0) >= 0
         && request.resource.data.get('agentsUsed', 0) >= 0;
+    }
+
+    // SECURITY: prevent quota bypass — usage counters must be monotonically
+    // non-decreasing on owner writes. Without this an owner could POST
+    // `messagesUsed: 0` at any moment to reset their counter and dodge plan
+    // limits. Admin resets still go through the isAdmin() branch.
+    function usedCountersAreMonotonic() {
+      return request.resource.data.get('messagesUsed', 0) >= resource.data.get('messagesUsed', 0)
+        && request.resource.data.get('contactsUsed', 0) >= resource.data.get('contactsUsed', 0)
+        && request.resource.data.get('campaignsUsed', 0) >= resource.data.get('campaignsUsed', 0)
+        && request.resource.data.get('botsUsed', 0) >= resource.data.get('botsUsed', 0)
+        && request.resource.data.get('templatesUsed', 0) >= resource.data.get('templatesUsed', 0)
+        && request.resource.data.get('aiMessagesUsed', 0) >= resource.data.get('aiMessagesUsed', 0)
+        && request.resource.data.get('agentsUsed', 0) >= resource.data.get('agentsUsed', 0);
     }
 
     function validWelcomeSubscriptionCreate() {
@@ -405,7 +426,8 @@ service cloud.firestore {
                    .hasOnly(['messagesUsed','contactsUsed','campaignsUsed',
                              'botsUsed','templatesUsed','aiMessagesUsed',
                               'agentsUsed','updatedAt'])
-              && usedCountersAreNonNegative());
+              && usedCountersAreNonNegative()
+              && usedCountersAreMonotonic());
         allow delete: if isAdmin();
       }
 

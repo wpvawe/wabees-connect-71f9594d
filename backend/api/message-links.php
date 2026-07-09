@@ -23,15 +23,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true);
-$auth = [];
 require_once __DIR__ . '/../config/wa-bearer-auth.php';
-if (is_array($input)) {
-    $auth = wabees_apply_bearer_auth($input);
-    if (!empty($auth['error'])) {
-        http_response_code((int)($auth['status'] ?? 401));
-        echo json_encode(['error' => ['message' => $auth['error']]]);
-        exit;
-    }
+if (!is_array($input)) {
+    http_response_code(400);
+    echo json_encode(['error' => ['message' => 'Invalid JSON']]);
+    exit;
+}
+$auth = wabees_apply_bearer_auth($input);
+if (!empty($auth['error'])) {
+    http_response_code((int)($auth['status'] ?? 401));
+    echo json_encode(['error' => ['message' => $auth['error']]]);
+    exit;
+}
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['error' => ['message' => 'Unauthorized']]);
+    exit;
 }
 $action = $input['action'] ?? '';
 $phoneNumberId = $input['phone_number_id'] ?? '';

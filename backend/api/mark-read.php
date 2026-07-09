@@ -20,6 +20,13 @@ if (!empty($auth['error'])) {
     echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
+// SECURITY: require Firebase auth. Without this check a caller could bypass
+// auth by supplying raw phone_number_id + access_token in the body.
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => 'Unauthorized']]);
+    exit;
+}
 
 $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($input['phone_number_id'] ?? ''));
 $accessToken = trim((string)($input['access_token'] ?? ''));

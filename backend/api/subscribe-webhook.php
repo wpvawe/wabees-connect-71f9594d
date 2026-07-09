@@ -20,6 +20,11 @@ if (!empty($auth['error'])) {
     echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => 'Unauthorized']]);
+    exit;
+}
 
 $accessToken = trim((string)($input['access_token'] ?? ''));
 $wabaId = trim((string)($input['business_account_id'] ?? ($input['waba_id'] ?? '')));

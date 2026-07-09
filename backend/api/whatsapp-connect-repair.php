@@ -108,7 +108,10 @@ function wa_copy_data_island($sourceUid, $targetUid) {
     $collections = [
         'conversations', 'messages', 'contacts', 'templates', 'bots', 'campaigns',
         'scheduled_messages', 'tags', 'canned', 'settings', 'csat_surveys',
-        'bot_leads', 'bot_config', 'bot_usage', 'subscription'
+        'bot_leads', 'bot_config', 'bot_usage'
+        // SECURITY: never copy 'subscription' between accounts — this would
+        // transfer a paid plan (maxMessages, status: active, endDate) from the
+        // previous owner to a brand-new user, granting unearned entitlements.
     ];
     $copied = [];
     foreach ($collections as $collection) {
