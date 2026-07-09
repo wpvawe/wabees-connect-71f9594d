@@ -34,10 +34,15 @@ $rateDir = __DIR__ . '/../logs/api-rate';
 if (!is_dir($rateDir)) @mkdir($rateDir, 0755, true);
 $rateFile = $rateDir . '/' . sha1($apiKey) . '.json';
 $now = time();
-$state = @json_decode(@file_get_contents($rateFile), true) ?: ['t' => $now, 'n' => 0];
+$fp = @fopen($rateFile, 'c+');
+if (!$fp) { http_response_code(503); echo json_encode(['error' => 'Rate limiter unavailable']); exit; }
+flock($fp, LOCK_EX);
+$rawState = stream_get_contents($fp);
+$state = @json_decode($rawState ?: '', true) ?: ['t' => $now, 'n' => 0];
 if ($now - ($state['t'] ?? 0) >= 60) { $state = ['t' => $now, 'n' => 0]; }
 $state['n'] = ($state['n'] ?? 0) + 1;
-@file_put_contents($rateFile, json_encode($state), LOCK_EX);
+rewind($fp); ftruncate($fp, 0); fwrite($fp, json_encode($state)); fflush($fp);
+flock($fp, LOCK_UN); fclose($fp);
 if ($state['n'] > 60) {
     http_response_code(429);
     echo json_encode(['error' => 'Rate limit exceeded (60 requests/minute)']);
@@ -95,8 +100,8 @@ curl_close($ch);
 
 if ($credCode !== 200) { http_response_code(400); echo json_encode(['error' => 'WhatsApp not connected']); exit; }
 $fields      = (json_decode($credResp, true)['fields'] ?? []);
-$accessToken = $fields['access_token']['stringValue'] ?? '';
-$wabaId      = $fields['waba_id']['stringValue'] ?? '';
+$accessToken = $fields['accessToken']['stringValue'] ?? '';
+$wabaId      = $fields['wabaId']['stringValue'] ?? ($fields['businessAccountId']['stringValue'] ?? '');
 if (!$accessToken || !$wabaId) { http_response_code(400); echo json_encode(['error' => 'WhatsApp credentials missing (waba_id/token)']); exit; }
 
 // --- fetch templates from Meta ---------------------------------------------
