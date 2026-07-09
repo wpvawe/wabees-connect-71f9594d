@@ -93,7 +93,13 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
   }, [uid]);
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    const safeLoad = async () => {
+      const before = uid;
+      await load();
+      if (cancelled || before !== uid) return;
+    };
+    void safeLoad();
     const unsubBus = subscribeRefetch("bots", () => void load());
     const onVis = () => {
       // MIN-01 — 5-minute staleness guard so tab-switch spam doesn't
@@ -107,6 +113,7 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
+      cancelled = true;
       unsubBus();
       document.removeEventListener("visibilitychange", onVis);
     };
