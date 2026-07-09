@@ -62,7 +62,10 @@ service cloud.firestore {
     }
 
     function agentInviteJoinKeys() {
-      return ['email', 'role', 'status', 'joinedAt', 'joinedVia', 'inviteCode', 'skills'];
+      return [
+        'email', 'role', 'status', 'joinedAt', 'joinedVia', 'inviteCode', 'skills',
+        'leftAt', 'leftReason', 'revokedAt', 'revokedByUid', 'revokedByEmail'
+      ];
     }
 
     function validInviteJoinPayload(userId, agentId) {
