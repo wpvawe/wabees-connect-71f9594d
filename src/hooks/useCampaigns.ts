@@ -144,6 +144,10 @@ export function useCampaign(id: string | undefined): {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Reset when uid/id changes so a previous campaign never briefly renders
+    // in the detail page while the new snapshot is in flight.
+    setData(undefined);
+    setError(null);
     if (!uid || !id) {
       setData(undefined);
       return;
