@@ -29,12 +29,14 @@ export type WabeesApiResult<T = unknown> = {
  */
 const BEARER_AUTH_ENDPOINTS = new Set<string>([
   "send-message.php",
+  "mark-read.php",
   "get-templates.php",
   "create-template.php",
   "edit-template.php",
   "delete-template.php",
   "business-profile.php",
   "verify-token.php",
+  "whatsapp-smart-connect.php",
   "phone-health.php",
   "send-interactive.php",
   "delete-message.php",
@@ -93,18 +95,20 @@ async function postJson<T = unknown>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   let outboundBody: Record<string, unknown> = body;
 
-  if (BEARER_AUTH_ENDPOINTS.has(endpoint) && !CREDENTIAL_REQUIRED_ENDPOINTS.has(endpoint)) {
+  if (BEARER_AUTH_ENDPOINTS.has(endpoint)) {
     const user = fbAuth().currentUser;
     if (user) {
       if (outboundBody.auth_uid === undefined) outboundBody = { ...outboundBody, auth_uid: user.uid };
       try {
         const idToken = await user.getIdToken();
         headers.Authorization = `Bearer ${idToken}`;
-        // Strip server-resolved credentials from the wire once bearer is set.
-        // PHP re-populates them from Firestore via the verified caller's dataOwner.
-        const scrubbed: Record<string, unknown> = { ...outboundBody };
-        for (const key of SERVER_RESOLVED_FIELDS) delete scrubbed[key];
-        outboundBody = scrubbed;
+        if (!CREDENTIAL_REQUIRED_ENDPOINTS.has(endpoint)) {
+          // Strip server-resolved credentials from the wire once bearer is set.
+          // PHP re-populates them from Firestore via the verified caller's dataOwner.
+          const scrubbed: Record<string, unknown> = { ...outboundBody };
+          for (const key of SERVER_RESOLVED_FIELDS) delete scrubbed[key];
+          outboundBody = scrubbed;
+        }
       } catch {
         /* token fetch failure — PHP falls back to body creds */
       }
@@ -238,7 +242,8 @@ export async function disconnectWhatsAppOnServer(args: {
  * Endpoint: backend/api/whatsapp-exchange-code.php (App Secret stays on the
  * Hostinger PHP server — never shipped to the browser).
  */
-export function exchangeWhatsAppCode(args: { code: string }) {
+export async function exchangeWhatsAppCode(args: { code: string }) {
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
   return postJson<{
     access_token: string;
     phone_number_id: string;
@@ -246,7 +251,7 @@ export function exchangeWhatsAppCode(args: { code: string }) {
     business_name?: string | null;
     display_phone?: string | null;
     quality_rating?: string | null;
-  }>("whatsapp-exchange-code.php", args);
+  }>("whatsapp-exchange-code.php", { ...args, id_token: idToken });
 }
 
 export type WabaPhoneOption = {
