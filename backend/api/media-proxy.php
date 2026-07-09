@@ -8,14 +8,9 @@
 
 require_once __DIR__ . '/../config/firebase-config.php';
 
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Range');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
+require __DIR__ . '/_origin.php';
+wabees_cors(['GET', 'OPTIONS'], ['Range']);
+wabees_require_origin();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
@@ -24,14 +19,37 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $mediaId = trim($_GET['id'] ?? $_GET['media_id'] ?? '');
-$uid = trim($_GET['uid'] ?? $_GET['userId'] ?? '');
+$requestedUid = trim($_GET['uid'] ?? $_GET['userId'] ?? '');
 $forceDownload = isset($_GET['download']) && $_GET['download'] !== '0';
 $requestedName = trim($_GET['filename'] ?? '');
 $requestedMime = trim($_GET['mime'] ?? '');
 
-if ($mediaId === '' || $uid === '') {
+if ($mediaId === '' || $requestedUid === '') {
     http_response_code(400);
     echo 'Missing media id or uid';
+    exit;
+}
+
+require_once __DIR__ . '/../config/firebase-auth.php';
+require_once __DIR__ . '/../config/wa-bearer-auth.php';
+$authHeader = wabees_auth_header();
+$idToken = trim((string)($_GET['id_token'] ?? ''));
+if (!$idToken && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) $idToken = trim($m[1]);
+$err = null;
+$callerUid = verify_firebase_id_token($idToken, $err);
+if (!$callerUid) {
+    http_response_code(401);
+    echo 'Unauthorized';
+    exit;
+}
+$uid = $callerUid;
+$callerResp = firestore_get('users/' . rawurlencode($callerUid));
+$callerFields = (($callerResp['code'] ?? 404) === 200) ? ($callerResp['data']['fields'] ?? []) : [];
+$dataOwner = trim((string)($callerFields['dataOwner']['stringValue'] ?? ''));
+if ($dataOwner !== '' && $dataOwner !== $callerUid) $uid = $dataOwner;
+if ($requestedUid !== $callerUid && $requestedUid !== $uid) {
+    http_response_code(403);
+    echo 'Forbidden';
     exit;
 }
 

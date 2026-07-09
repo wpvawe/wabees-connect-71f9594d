@@ -645,10 +645,6 @@ function convert_single_value($value)
     } elseif (is_float($value)) {
         return ['doubleValue' => $value];
     } elseif (is_string($value)) {
-        // Auto-detect ISO 8601 date strings and store as timestampValue
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/', $value)) {
-            return ['timestampValue' => $value];
-        }
         return ['stringValue' => $value];
     } elseif (is_array($value)) {
         // Allow callers to pass raw Firestore REST value objects, e.g.

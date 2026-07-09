@@ -41,7 +41,7 @@ function wabees_load_owner_credentials(string $ownerUid): array {
 
     $connectedTop = wabees_firestore_bool($userFields, 'whatsappConnected');
     $connectedCfg = wabees_firestore_bool($cfgFields, 'isConnected');
-    if ($connectedTop === false && $connectedCfg === false) {
+    if ($connectedTop === false || $connectedCfg === false) {
         return ['error' => 'WhatsApp is disconnected for this workspace', 'status' => 409];
     }
 
