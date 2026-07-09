@@ -10,6 +10,7 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
@@ -181,7 +182,17 @@ export async function cancelCampaign(uid: string, id: string): Promise<void> {
 }
 
 export async function restartCampaign(uid: string, id: string): Promise<void> {
-  await updateDoc(doc(fbDb(), "users", uid, "campaigns", id), {
+  const db = fbDb();
+  const campaignRef = doc(db, "users", uid, "campaigns", id);
+  const logsSnap = await getDocs(collection(campaignRef, "logs"));
+  if (!logsSnap.empty) {
+    for (let i = 0; i < logsSnap.docs.length; i += 450) {
+      const batch = writeBatch(db);
+      for (const row of logsSnap.docs.slice(i, i + 450)) batch.delete(row.ref);
+      await batch.commit();
+    }
+  }
+  await updateDoc(campaignRef, {
     status: "draft",
     sentCount: 0,
     failedCount: 0,
