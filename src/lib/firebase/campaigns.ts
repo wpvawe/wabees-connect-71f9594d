@@ -288,7 +288,22 @@ export async function runCampaign(
   if (!creds) throw new Error("Connect WhatsApp first");
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
-  await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });
+  // Bug fix: atomic test-and-set on status so two tabs (or a rapid
+  // double-click that slipped past the CampaignDetail `running` guard)
+  // cannot both begin sending. Only draft/paused/failed campaigns can
+  // transition to running; anything else throws.
+  await runTransaction(db, async (tx) => {
+    const fresh = await tx.get(campaignRef);
+    if (!fresh.exists()) throw new Error("Campaign not found");
+    const status = (fresh.data()?.status as string | undefined) ?? "draft";
+    if (status === "running") {
+      throw new Error("Campaign is already running in another tab.");
+    }
+    if (status === "completed") {
+      throw new Error("Campaign already completed. Restart it to send again.");
+    }
+    tx.update(campaignRef, { status: "running", startedAt: serverTimestamp() });
+  });
 
   const isTemplate = opts?.messageType === "template" && opts?.templateName;
   const vars = opts?.templateVariables ?? [];
