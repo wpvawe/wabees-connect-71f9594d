@@ -88,6 +88,7 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
         await reserveQuota(uid, "messages", list.length);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
+        setSending(false);
         return;
       }
       const db = fbDb();
