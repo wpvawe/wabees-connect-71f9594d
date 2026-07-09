@@ -311,7 +311,7 @@ export function Composer({
             access_token: "",
             to: whatsappRecipientId(phone),
             template_name: t.name,
-            language_code: t.languageCode,
+            language_code: t.languageCode || "en_US",
           }),
       });
       toastPipelineOutcome(outcome, "Could not send template");
