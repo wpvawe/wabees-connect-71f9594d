@@ -83,9 +83,9 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
         toast.error("Connect WhatsApp first");
         return;
       }
-      const { releaseQuota, reserveQuota } = await import("@/lib/plans/limits");
+      const { assertWithinPlanLimit } = await import("@/lib/plans/limits");
       try {
-        await reserveQuota(uid, "messages", list.length);
+        await assertWithinPlanLimit(uid, "messages", list.length);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Message limit reached");
         setSending(false);
@@ -164,7 +164,6 @@ export function ForwardDialog({ message, onClose }: { message: Message; onClose:
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const bad = results.length - ok;
-      await releaseQuota(uid, "messages", list.length).catch(() => {});
       if (ok) toast.success(`Forwarded to ${ok} chat${ok > 1 ? "s" : ""}`);
       if (bad) toast.error(`${bad} forward${bad > 1 ? "s" : ""} failed`);
       onClose();

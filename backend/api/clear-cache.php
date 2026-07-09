@@ -7,22 +7,21 @@
  * messages are not being received.
  *
  * POST /api/clear-cache.php
- * Body: { "phone_number_id": "...", "secret": "wabees_cache_clear_2024" }
- *
- * GET /api/clear-cache.php?phone_number_id=...&secret=wabees_cache_clear_2024
+ * Body: { "phone_number_id": "..." }
+ * Auth: Authorization: Bearer <Firebase id token>
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, GET');
+require __DIR__ . '/_origin.php';
+wabees_cors(['POST', 'OPTIONS']);
+wabees_require_origin();
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'error' => 'POST required']);
     exit;
 }
-
-define('CACHE_CLEAR_SECRET', 'wabees_cache_clear_2024');
 
 // Get params from POST body or GET
 $input = [];
@@ -31,24 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode($raw, true) ?: [];
 }
 
-$phoneNumberId = $input['phone_number_id'] ?? ($_GET['phone_number_id'] ?? '');
-$secret = $input['secret'] ?? ($_GET['secret'] ?? '');
-$clearAll = isset($input['clear_all']) || isset($_GET['clear_all']);
+$phoneNumberId = $input['phone_number_id'] ?? '';
+$clearAll = isset($input['clear_all']);
 
-// Auth check. Browser calls use Firebase bearer auth; operational scripts may
-// still use the legacy static secret.
+require_once __DIR__ . '/../config/firebase-auth.php';
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 $bearerOk = false;
-if ($secret !== CACHE_CLEAR_SECRET) {
-    require_once __DIR__ . '/../config/firebase-auth.php';
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-    if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
-        $err = null;
-        $bearerOk = (bool) verify_firebase_id_token(trim($m[1]), $err);
-    }
+if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
+    $err = null;
+    $bearerOk = (bool) verify_firebase_id_token(trim($m[1]), $err);
 }
-if ($secret !== CACHE_CLEAR_SECRET && !$bearerOk) {
+if (!$bearerOk) {
     http_response_code(403);
-    echo json_encode(['success' => false, 'error' => 'Invalid secret']);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 

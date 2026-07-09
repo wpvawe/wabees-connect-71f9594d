@@ -26,6 +26,11 @@ if (!empty($auth['error'])) {
     echo json_encode(['error' => ['message' => $auth['error']]]);
     exit;
 }
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['error' => ['message' => 'Authorization bearer token is required']]);
+    exit;
+}
 
 $required = ['phone_number_id', 'access_token', 'to', 'type'];
 foreach ($required as $field) {

@@ -172,6 +172,15 @@ curl_close($ch);
 if ($subCode === 200) {
     $subDoc = json_decode($subResp, true) ?: [];
     $subFields = $subDoc['fields'] ?? [];
+    $subStatus = (string)($subFields['status']['stringValue'] ?? 'inactive');
+    $expiryType = (string)($subFields['expiryType']['stringValue'] ?? 'monthly');
+    $endRaw = $subFields['endDate']['timestampValue'] ?? ($subFields['endDate']['stringValue'] ?? '');
+    $isExpired = $expiryType !== 'lifetime' && $endRaw !== '' && strtotime((string)$endRaw) !== false && strtotime((string)$endRaw) < time();
+    if ($subStatus !== 'active' || $isExpired) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Subscription expired or inactive. Please renew your plan.', 'code' => 'subscription_inactive']);
+        exit;
+    }
     $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
     $msgsUsed    = (int)($subFields['messagesUsed']['integerValue'] ?? 0);
     if ($maxMessages > 0 && $msgsUsed >= $maxMessages) {

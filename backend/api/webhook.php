@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         http_response_code(403);
         echo json_encode([
             'error' => 'Verification failed',
-            'hint' => 'Make sure Verify Token in Meta matches: ' . VERIFY_TOKEN,
+            'hint' => 'Check your Meta webhook configuration.',
             'received_mode' => $mode,
             'token_match' => ($token === VERIFY_TOKEN) ? 'yes' : 'no',
         ]);
@@ -455,6 +455,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     set_time_limit(120);
 
     $raw = file_get_contents('php://input');
+    $appSecret = getenv('META_APP_SECRET') ?: '';
+    $sigHeader = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+    if ($appSecret !== '') {
+        $expected = 'sha256=' . hash_hmac('sha256', $raw, $appSecret);
+        if (!$sigHeader || !hash_equals($expected, $sigHeader)) {
+            http_response_code(403);
+            echo 'Invalid signature';
+            exit;
+        }
+    }
     $input = json_decode($raw, true);
 
     // Validate Meta payload first. Do NOT fast-ack on Hostinger/LiteSpeed by

@@ -6,7 +6,6 @@
  */
 import { WABEES_API_BASE } from "@/integrations/firebase/client";
 import { fbAuth } from "@/integrations/firebase/client";
-import { META_GRAPH_BASE_URL } from "@/lib/constants/meta";
 
 export type WabeesApiResult<T = unknown> = {
   success: boolean;
@@ -29,12 +28,14 @@ export type WabeesApiResult<T = unknown> = {
  */
 const BEARER_AUTH_ENDPOINTS = new Set<string>([
   "send-message.php",
+  "mark-read.php",
   "get-templates.php",
   "create-template.php",
   "edit-template.php",
   "delete-template.php",
   "business-profile.php",
   "verify-token.php",
+  "whatsapp-smart-connect.php",
   "phone-health.php",
   "send-interactive.php",
   "delete-message.php",
@@ -45,6 +46,7 @@ const BEARER_AUTH_ENDPOINTS = new Set<string>([
 
 const CREDENTIAL_REQUIRED_ENDPOINTS = new Set<string>([
   "verify-token.php",
+  "whatsapp-smart-connect.php",
   "subscribe-webhook.php",
 ]);
 
@@ -93,18 +95,21 @@ async function postJson<T = unknown>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   let outboundBody: Record<string, unknown> = body;
 
-  if (BEARER_AUTH_ENDPOINTS.has(endpoint) && !CREDENTIAL_REQUIRED_ENDPOINTS.has(endpoint)) {
+  if (BEARER_AUTH_ENDPOINTS.has(endpoint)) {
     const user = fbAuth().currentUser;
     if (user) {
-      if (outboundBody.auth_uid === undefined) outboundBody = { ...outboundBody, auth_uid: user.uid };
+      if (outboundBody.auth_uid === undefined)
+        outboundBody = { ...outboundBody, auth_uid: user.uid };
       try {
         const idToken = await user.getIdToken();
         headers.Authorization = `Bearer ${idToken}`;
-        // Strip server-resolved credentials from the wire once bearer is set.
-        // PHP re-populates them from Firestore via the verified caller's dataOwner.
-        const scrubbed: Record<string, unknown> = { ...outboundBody };
-        for (const key of SERVER_RESOLVED_FIELDS) delete scrubbed[key];
-        outboundBody = scrubbed;
+        if (!CREDENTIAL_REQUIRED_ENDPOINTS.has(endpoint)) {
+          // Strip server-resolved credentials from the wire once bearer is set.
+          // PHP re-populates them from Firestore via the verified caller's dataOwner.
+          const scrubbed: Record<string, unknown> = { ...outboundBody };
+          for (const key of SERVER_RESOLVED_FIELDS) delete scrubbed[key];
+          outboundBody = scrubbed;
+        }
       } catch {
         /* token fetch failure — PHP falls back to body creds */
       }
@@ -238,7 +243,8 @@ export async function disconnectWhatsAppOnServer(args: {
  * Endpoint: backend/api/whatsapp-exchange-code.php (App Secret stays on the
  * Hostinger PHP server — never shipped to the browser).
  */
-export function exchangeWhatsAppCode(args: { code: string }) {
+export async function exchangeWhatsAppCode(args: { code: string }) {
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
   return postJson<{
     access_token: string;
     phone_number_id: string;
@@ -246,7 +252,7 @@ export function exchangeWhatsAppCode(args: { code: string }) {
     business_name?: string | null;
     display_phone?: string | null;
     quality_rating?: string | null;
-  }>("whatsapp-exchange-code.php", args);
+  }>("whatsapp-exchange-code.php", { ...args, id_token: idToken });
 }
 
 export type WabaPhoneOption = {
@@ -455,8 +461,8 @@ export function fetchMetaTemplates(args: { business_account_id: string; access_t
  * call needs no server changes. Access token stays scoped to the current
  * owner (already trusted in the browser for every other WhatsApp call).
  *
- * Also tries the PHP proxy first when available; falls back to Meta Graph
- * on 404 so newer backends can add auditing without breaking older ones.
+ * Always routes through PHP; the browser must never call Meta Graph directly
+ * with a workspace access token.
  */
 export async function deleteMetaTemplate(args: {
   business_account_id: string;
@@ -464,37 +470,7 @@ export async function deleteMetaTemplate(args: {
   name: string;
   hsm_id?: string | null;
 }): Promise<WabeesApiResult> {
-  // 1) PHP proxy (preferred — logs / rate-limits centrally). If it 404s
-  // (endpoint not deployed on this host), fall through to Meta Graph.
-  try {
-    const proxied = await postJson("delete-template.php", args);
-    const raw = proxied.raw ?? {};
-    const errorObj = raw.error && typeof raw.error === "object" ? (raw.error as { code?: number; message?: string }) : null;
-    const looksMissing =
-      typeof raw.php_error === "string" ||
-      (typeof raw.message === "string" && /not found|endpoint/i.test(raw.message));
-    if (!looksMissing && (proxied.success || errorObj?.code !== 404)) {
-      return proxied;
-    }
-  } catch {
-    /* fall through to direct Graph call */
-  }
-
-  // 2) Direct Meta Graph (version from central constant) — matches Flutter app.
-  const q = new URLSearchParams({
-    name: args.name,
-    access_token: args.access_token,
-  });
-  if (args.hsm_id) q.set("hsm_id", args.hsm_id);
-  const url = `${META_GRAPH_BASE_URL}/${encodeURIComponent(args.business_account_id)}/message_templates?${q.toString()}`;
-  const res = await fetch(url, { method: "DELETE" });
-  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const err = raw.error && typeof raw.error === "object" ? (raw.error as { message?: string; code?: number }) : null;
-  return {
-    success: res.ok && !err,
-    message: err?.message ?? (raw.success === true ? "Deleted" : undefined),
-    raw,
-  };
+  return postJson("delete-template.php", args);
 }
 
 /**
@@ -518,17 +494,14 @@ export function createMetaTemplate(args: {
   components: Array<Record<string, unknown>>;
   allow_category_change?: boolean;
 }) {
-  return postJson<{ id?: string; status?: string; category?: string }>(
-    "create-template.php",
-    args,
-  );
+  return postJson<{ id?: string; status?: string; category?: string }>("create-template.php", args);
 }
 
 /**
  * Edit an existing WhatsApp message template. Meta permits changing only
  * `category` and `components` — name/language are immutable. Prefers the
- * PHP proxy for auditability; falls back to a direct Meta Graph POST on
- * older backends that don't ship `/edit-template.php`.
+ * PHP proxy for auditability; direct Meta Graph calls from the browser are
+ * intentionally blocked.
  */
 export async function editMetaTemplate(args: {
   business_account_id: string;
@@ -537,45 +510,7 @@ export async function editMetaTemplate(args: {
   category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
   components?: Array<Record<string, unknown>>;
 }): Promise<WabeesApiResult> {
-  try {
-    const proxied = await postJson("edit-template.php", args);
-    const raw = proxied.raw ?? {};
-    const errorObj =
-      raw.error && typeof raw.error === "object"
-        ? (raw.error as { code?: number; message?: string })
-        : null;
-    const looksMissing =
-      typeof raw.php_error === "string" ||
-      (typeof raw.message === "string" && /not found|endpoint/i.test(raw.message));
-    if (!looksMissing && (proxied.success || errorObj?.code !== 404)) {
-      return proxied;
-    }
-  } catch {
-    /* fall through to direct Graph call */
-  }
-
-  const body: Record<string, unknown> = {};
-  if (args.category) body.category = args.category;
-  if (args.components) body.components = args.components;
-  const url = `${META_GRAPH_BASE_URL}/${encodeURIComponent(args.hsm_id)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.access_token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const err =
-    raw.error && typeof raw.error === "object"
-      ? (raw.error as { message?: string; code?: number })
-      : null;
-  return {
-    success: res.ok && !err,
-    message: err?.message ?? (raw.success === true ? "Updated" : undefined),
-    raw,
-  };
+  return postJson("edit-template.php", args);
 }
 
 export type MessageLink = {

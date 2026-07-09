@@ -199,9 +199,10 @@ function parseMessageDoc(
 }
 
 function mergeReactions(rows: Message[]): Message[] {
+  const merged = [...rows];
   const byWamid = new Map<string, Message>();
   const byId = new Map<string, Message>();
-  for (const m of rows) {
+  for (const m of merged) {
     byId.set(m.id, m);
     if (m.whatsappMessageId) byWamid.set(m.whatsappMessageId, m);
   }
@@ -214,16 +215,23 @@ function mergeReactions(rows: Message[]): Message[] {
           const orphanAt = m.createdAt ?? "";
           const parentAt = parent.reactionAt ?? "";
           if (!parent.reactionEmoji || orphanAt > parentAt) {
-            parent.reactionEmoji = m.reactionEmoji ?? parent.reactionEmoji;
-            parent.reactionMsgId = m.reactionMsgId;
-            parent.reactionAt = orphanAt || parent.reactionAt;
+            const updated = {
+              ...parent,
+              reactionEmoji: m.reactionEmoji ?? parent.reactionEmoji,
+              reactionMsgId: m.reactionMsgId,
+              reactionAt: orphanAt || parent.reactionAt,
+            };
+            const idx = merged.findIndex((row) => row.id === parent.id);
+            if (idx !== -1) merged[idx] = updated;
+            byId.set(updated.id, updated);
+            if (updated.whatsappMessageId) byWamid.set(updated.whatsappMessageId, updated);
           }
           break;
         }
       }
     }
   }
-  return rows.filter((m) => !(m.type === "reaction" && !m.mediaUrl));
+  return merged.filter((m) => !(m.type === "reaction" && !m.mediaUrl));
 }
 
 export function useMessages(phone: string | undefined): {

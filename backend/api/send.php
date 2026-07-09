@@ -46,9 +46,6 @@ if (preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
     // ---- JWT verify (HS256) ----
     $jwt = trim($m[1]);
     $secret = getenv('PHP_BACKEND_JWT_SECRET');
-    if (!$secret && is_file(__DIR__ . '/../config/jwt-secret.php')) {
-        $secret = require __DIR__ . '/../config/jwt-secret.php';
-    }
     if (!$secret) {
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'JWT secret not configured on server']);
@@ -67,6 +64,12 @@ if (preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
         if ($pad) $s .= str_repeat('=', 4 - $pad);
         return base64_decode($s);
     };
+    $header = json_decode($b64url_decode($h64), true);
+    if (!is_array($header) || ($header['alg'] ?? '') !== 'HS256') {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Invalid JWT alg']);
+        exit;
+    }
     $expectedSig = hash_hmac('sha256', "$h64.$p64", $secret, true);
     $actualSig = $b64url_decode($s64);
     if (!hash_equals($expectedSig, $actualSig)) {
@@ -80,9 +83,14 @@ if (preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
         echo json_encode(['success' => false, 'error' => 'Invalid JWT payload']);
         exit;
     }
-    if (!empty($payload['exp']) && $payload['exp'] < time()) {
+    if (empty($payload['exp']) || $payload['exp'] < time()) {
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'JWT expired']);
+        exit;
+    }
+    if (!empty($payload['iat']) && $payload['iat'] > time() + 300) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'JWT issued in future']);
         exit;
     }
     $uid = $payload['uid'] ?? ($payload['sub'] ?? '');

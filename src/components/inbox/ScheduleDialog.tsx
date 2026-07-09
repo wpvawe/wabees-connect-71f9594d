@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -35,12 +35,12 @@ export function ScheduleDialog({
   const uid = useEffectiveUid();
   const { data } = useScheduledMessages(phone);
   const [body, setBody] = useState("");
-  const defaultWhen = useMemo(() => {
+  const freshDefaultWhen = () => {
     const d = new Date(Date.now() + 15 * 60 * 1000);
     d.setSeconds(0, 0);
     return toLocalDatetimeInput(d);
-  }, []);
-  const [when, setWhen] = useState(defaultWhen);
+  };
+  const [when, setWhen] = useState(freshDefaultWhen);
   const [recurrence, setRecurrence] = useState<ScheduledRecurrence>("none");
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function ScheduleDialog({
     setEditingId(null);
     setBody("");
     setRecurrence("none");
-    setWhen(defaultWhen);
+    setWhen(freshDefaultWhen());
   }
 
   async function cancelRow(id: string) {

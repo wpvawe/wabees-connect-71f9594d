@@ -9,16 +9,13 @@
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+require __DIR__ . '/_origin.php';
+wabees_cors(['POST', 'OPTIONS']);
+wabees_require_origin();
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+if (file_exists(__DIR__ . '/../config/site-config.php')) {
+    require_once __DIR__ . '/../config/site-config.php';
 }
-
-require_once __DIR__ . '/../config/site-config.php';
 require_once __DIR__ . '/../config/wa-bearer-auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -280,6 +277,7 @@ if ($mediaHttpCode !== 200 || empty($mediaId)) {
             }
         }
     }
+    if (is_file($targetPath)) @unlink($targetPath);
     http_response_code($mediaHttpCode ?: 500);
     echo json_encode([
         'success' => false,
