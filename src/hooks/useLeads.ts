@@ -29,6 +29,9 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
   const [data, setData] = useState<Lead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastLoadRef = useRef(0);
+  // Race guard — see useBots. Prevents previous account's leads from
+  // flashing into the UI when the effective uid changes mid-fetch.
+  const genRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid || !selfUid) return;
@@ -38,10 +41,12 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
     }
     const db = fbDbOrNull();
     if (!db) return;
+    const gen = genRef.current;
     try {
       const snap = await getDocs(
         query(collection(db, `users/${uid}/bot_leads`), limit(1000)),
       );
+      if (gen !== genRef.current) return;
       const rows: Lead[] = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
           const score = str(x.score, "cold");
@@ -66,11 +71,14 @@ export function useLeads(): { data: Lead[] | null; error: string | null } {
       setError(null);
       lastLoadRef.current = Date.now();
     } catch (e) {
+      if (gen !== genRef.current) return;
       setError((e as Error).message);
     }
   }, [uid, selfUid]);
 
   useEffect(() => {
+    genRef.current += 1;
+    setData(null);
     void load();
     const unsub = subscribeRefetch("leads", () => void load());
     const onVis = () => {

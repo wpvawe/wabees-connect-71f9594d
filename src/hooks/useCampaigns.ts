@@ -43,11 +43,15 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
   // Track last successful load so visibility-change doesn't refetch on
   // every tab switch. Refetches only when data is >5 min stale.
   const lastLoadRef = useRef(0);
+  // Race guard — see useBots. Ignores setState from stale in-flight loads
+  // after uid changes.
+  const genRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    const gen = genRef.current;
     try {
       const snap = await getDocs(
         query(
@@ -106,15 +110,19 @@ export function useCampaigns(): { data: Campaign[] | null; error: string | null 
             const bv = b.createdAt ?? "\uffff";
             return bv.localeCompare(av);
           });
+      if (gen !== genRef.current) return;
       setData(rows);
       setError(null);
       lastLoadRef.current = Date.now();
     } catch (err) {
+      if (gen !== genRef.current) return;
       setError((err as Error).message);
     }
   }, [uid]);
 
   useEffect(() => {
+    genRef.current += 1;
+    setData(null);
     void load();
     const unsub = subscribeRefetch("campaigns", () => void load());
     const onVis = () => {
@@ -144,6 +152,10 @@ export function useCampaign(id: string | undefined): {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Reset when uid/id changes so a previous campaign never briefly renders
+    // in the detail page while the new snapshot is in flight.
+    setData(undefined);
+    setError(null);
     if (!uid || !id) {
       setData(undefined);
       return;

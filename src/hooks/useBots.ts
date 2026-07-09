@@ -35,11 +35,16 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
   // MIN-01 fix — refetching on every tab focus re-billed up to 200 bot
   // docs per switch. Only refresh when the cache is >5 min old.
   const lastLoadRef = useRef(0);
+  // Race guard — bump each time uid changes; ignore setState from any
+  // in-flight load whose gen no longer matches (prevents previous account's
+  // rows from flashing into the new account's UI).
+  const genRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!uid) return;
     const db = fbDbOrNull();
     if (!db) return;
+    const gen = genRef.current;
     try {
       const snap = await getDocs(
         query(
@@ -48,6 +53,7 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
           limit(200),
         ),
       );
+      if (gen !== genRef.current) return;
       setData(
           snap.docs
             .map((d) => {
@@ -88,11 +94,14 @@ export function useBots(): { data: Bot[] | null; error: string | null } {
       setError(null);
       lastLoadRef.current = Date.now();
     } catch (err) {
+      if (gen !== genRef.current) return;
       setError((err as Error).message);
     }
   }, [uid]);
 
   useEffect(() => {
+    genRef.current += 1;
+    setData(null);
     void load();
     const unsubBus = subscribeRefetch("bots", () => void load());
     const onVis = () => {

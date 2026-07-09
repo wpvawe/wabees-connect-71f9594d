@@ -24,7 +24,11 @@ export function useSupportChat(): {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid) {
+      setData(null);
+      setError(null);
+      return;
+    }
     const db = fbDbOrNull();
     if (!db) return;
     // Support threads can accumulate hundreds of messages over months.
@@ -54,7 +58,12 @@ export function useSupportChat(): {
       },
       (err) => setError(err.message),
     );
-    return () => unsub();
+    return () => {
+      unsub();
+      // Clear on uid change so previous user's support thread never bleeds
+      // into the next signed-in account on the same tab.
+      setData(null);
+    };
   }, [uid]);
 
   return { data, error, uid };
