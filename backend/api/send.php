@@ -21,7 +21,7 @@ require __DIR__ . '/_origin.php';
 // origin allowlist. Server-to-server callers (Flutter app, external
 // integrations) authenticate via X-Api-Key and do not rely on CORS at all;
 // browser callers must come from an allowed origin.
-wabees_cors(['POST', 'OPTIONS']);
+wabees_cors(['POST', 'OPTIONS'], ['X-Api-Key']);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
