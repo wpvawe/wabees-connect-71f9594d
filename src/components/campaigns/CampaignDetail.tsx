@@ -38,11 +38,21 @@ export function CampaignDetail({ id }: { id: string }) {
   const [acting, setActing] = useState(false);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
-  if (data === undefined || data === null) {
+  if (data === undefined) {
     return (
       <div className="flex items-center justify-center py-10 text-muted-foreground">
         <FontAwesomeIcon icon={faCircleNotch} className="mr-2 h-4 w-4 animate-spin" />
         Loading…
+      </div>
+    );
+  }
+  if (data === null) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center text-muted-foreground">
+        <p className="text-sm">Campaign not found.</p>
+        <WbButton variant="secondary" size="sm" onClick={() => navigate({ to: "/campaigns" })}>
+          Back to campaigns
+        </WbButton>
       </div>
     );
   }
