@@ -11,6 +11,8 @@ import {
   Timestamp,
   updateDoc,
   writeBatch,
+  runTransaction,
+  type FieldValue,
 } from "firebase/firestore";
 import { fbDb } from "@/integrations/firebase/client";
 import { sendTextMessage, sendTemplateMessage } from "@/lib/wabees/api";
@@ -69,7 +71,7 @@ export type CampaignCreatePayload = {
   readCount: number;
   failedCount: number;
   scheduledAt: null;
-  createdAt: Timestamp;
+  createdAt: Timestamp | FieldValue;
   startedAt: null;
   completedAt: null;
 };
@@ -103,7 +105,9 @@ export function buildCampaignCreatePayload(input: CreateCampaignInput): Campaign
     readCount: 0,
     failedCount: 0,
     scheduledAt: null,
-    createdAt: Timestamp.now(),
+    // Bug fix: was client `Timestamp.now()` which sorted incorrectly for
+    // clock-skewed devices (DST slew) and disagreed with server-written docs.
+    createdAt: serverTimestamp(),
     startedAt: null,
     completedAt: null,
   };
@@ -158,7 +162,22 @@ export async function createCampaign(
 }
 
 export async function deleteCampaign(uid: string, id: string): Promise<void> {
-  await deleteDoc(doc(fbDb(), "users", uid, "campaigns", id));
+  // Bug fix: previously deleting a running campaign broke the active send
+  // loop's onSnapshot fallback (`currentStatus` defaulted to "running") and
+  // the next `updateDoc(campaignRef, { sentCount: increment })` threw on
+  // the missing doc. Refuse to delete while running/paused; require explicit
+  // cancel first.
+  const ref = doc(fbDb(), "users", uid, "campaigns", id);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const status = (snap.data()?.status as string | undefined) ?? "draft";
+    if (status === "running" || status === "paused") {
+      throw new Error(
+        "Cancel the campaign before deleting it. (Currently " + status + ".)",
+      );
+    }
+  }
+  await deleteDoc(ref);
   await releaseQuota(uid, "campaigns", 1).catch(() => {});
   bumpRefetch("campaigns");
 }
@@ -269,7 +288,22 @@ export async function runCampaign(
   if (!creds) throw new Error("Connect WhatsApp first");
   const db = fbDb();
   const campaignRef = doc(db, "users", uid, "campaigns", id);
-  await updateDoc(campaignRef, { status: "running", startedAt: serverTimestamp() });
+  // Bug fix: atomic test-and-set on status so two tabs (or a rapid
+  // double-click that slipped past the CampaignDetail `running` guard)
+  // cannot both begin sending. Only draft/paused/failed campaigns can
+  // transition to running; anything else throws.
+  await runTransaction(db, async (tx) => {
+    const fresh = await tx.get(campaignRef);
+    if (!fresh.exists()) throw new Error("Campaign not found");
+    const status = (fresh.data()?.status as string | undefined) ?? "draft";
+    if (status === "running") {
+      throw new Error("Campaign is already running in another tab.");
+    }
+    if (status === "completed") {
+      throw new Error("Campaign already completed. Restart it to send again.");
+    }
+    tx.update(campaignRef, { status: "running", startedAt: serverTimestamp() });
+  });
 
   const isTemplate = opts?.messageType === "template" && opts?.templateName;
   const vars = opts?.templateVariables ?? [];

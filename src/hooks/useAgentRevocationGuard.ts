@@ -89,8 +89,20 @@ export function useAgentRevocationGuard(): void {
       (snap) => {
         const data = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
         const status = typeof data?.status === "string" ? data.status : data ? "active" : "missing";
+        // Bug fix: previously agents whose doc lacked ALL of {inviteCode,
+        // joinedVia==="invite", role} were classified as "implicit connect"
+        // and silently kicked out. Older admin back-fills / manual writes
+        // may have status="active" and an email but none of those three
+        // markers, so they were being logged out on next mount. Accept any
+        // recognized joinedVia value and an email-only record as legitimate.
+        const joinedVia = typeof data?.joinedVia === "string" ? data.joinedVia : null;
+        const legitJoinedVia =
+          joinedVia === "invite" || joinedVia === "admin" || joinedVia === "seed";
         const hasInvite =
-          typeof data?.inviteCode === "string" || data?.joinedVia === "invite" || typeof data?.role === "string";
+          typeof data?.inviteCode === "string" ||
+          legitJoinedVia ||
+          typeof data?.role === "string" ||
+          typeof data?.email === "string";
         if (data && status === "active" && !hasInvite) {
           void heal("implicit_connect");
           return;
