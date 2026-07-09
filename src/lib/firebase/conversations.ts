@@ -217,16 +217,22 @@ export async function updateTag(
     query(collection(db, `users/${uid}/conversations`), where("tags", "array-contains", oldName)),
   ).catch(() => null);
   if (!tagged) return;
-  const batch = writeBatch(db);
-  for (const d of tagged.docs) {
-    const tags: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
-    batch.set(
-      d.ref,
-      { tags: Array.from(new Set(tags.map((t) => (t === oldName ? newName : t)))) },
-      { merge: true },
-    );
+  // Bug fix: Firestore hard-caps a batch at 500 ops. For workspaces with
+  // >500 conversations sharing the tag, `batch.commit()` threw and the
+  // catalog rename above was orphaned. Chunk into 450-doc batches.
+  const CHUNK = 450;
+  for (let i = 0; i < tagged.docs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    for (const d of tagged.docs.slice(i, i + CHUNK)) {
+      const tags: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
+      batch.set(
+        d.ref,
+        { tags: Array.from(new Set(tags.map((t) => (t === oldName ? newName : t)))) },
+        { merge: true },
+      );
+    }
+    await batch.commit();
   }
-  await batch.commit();
 }
 
 export async function deleteTag(uid: string, tagId: string): Promise<void> {
@@ -242,10 +248,17 @@ export async function deleteTag(uid: string, tagId: string): Promise<void> {
   );
   const snap = await getDocs(q).catch(() => null);
   if (!snap) return;
-  for (const d of snap.docs) {
-    const t: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
-    await updateDoc(d.ref, { tags: t.filter((x) => x !== name) }).catch(() =>
-      setDoc(d.ref, { tags: t.filter((x) => x !== name) }, { merge: true }).catch(() => {}),
-    );
+  // Bug fix: sequential per-doc writes with swallowed errors meant a tab
+  // close or network drop mid-loop left conversations permanently tagged
+  // with a deleted tag string. Use batched writes so each chunk is
+  // all-or-nothing.
+  const CHUNK = 450;
+  for (let i = 0; i < snap.docs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    for (const d of snap.docs.slice(i, i + CHUNK)) {
+      const t: string[] = Array.isArray(d.data().tags) ? d.data().tags : [];
+      batch.set(d.ref, { tags: t.filter((x) => x !== name) }, { merge: true });
+    }
+    await batch.commit();
   }
 }
