@@ -57,7 +57,12 @@ export function useAgentAvailability(): {
     if (!ready || !uid) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const ownerUid = dataOwner || uid;
+    // Availability is a team-routing field and belongs only on real
+    // agent docs. Owners can still keep a local preference for the toggle UI,
+    // but writing users/{uid}/agents/{uid} creates a fake teammate row and
+    // pollutes collection-group agent counts.
+    if (!dataOwner || dataOwner === uid) return;
+    const ownerUid = dataOwner;
     const key = `${ownerUid}|${uid}`;
     const last = lastWrittenRef.current;
     if (last && last.key === key && last.value === status) return;
