@@ -63,18 +63,24 @@ flock($fp, LOCK_EX);
 $rawState = stream_get_contents($fp);
 $state = @json_decode($rawState ?: '', true) ?: ['t' => $now, 'n' => 0];
 if ($now - ($state['t'] ?? 0) >= 60) { $state = ['t' => $now, 'n' => 0]; }
-$state['n'] = ($state['n'] ?? 0) + 1;
+// High-sev fix: rate-limit off-by-one. Previously the counter was
+// incremented and persisted BEFORE the check, so a burst still poisoned
+// the state file even after 429. Check first, only persist on accept.
+$currentCount = (int)($state['n'] ?? 0);
+if ($currentCount >= 60) {
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    http_response_code(429);
+    echo json_encode(['error' => 'Rate limit exceeded (60 requests/minute)']);
+    exit;
+}
+$state['n'] = $currentCount + 1;
 rewind($fp);
 ftruncate($fp, 0);
 fwrite($fp, json_encode($state));
 fflush($fp);
 flock($fp, LOCK_UN);
 fclose($fp);
-if ($state['n'] > 60) {
-    http_response_code(429);
-    echo json_encode(['error' => 'Rate limit exceeded (60 requests/minute)']);
-    exit;
-}
 
 // --- Look up owner uid by apiKey ------------------------------------------
 $projectId = defined('FIREBASE_PROJECT_ID') ? FIREBASE_PROJECT_ID : 'wabees-app';

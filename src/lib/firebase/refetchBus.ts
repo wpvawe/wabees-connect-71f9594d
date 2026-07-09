@@ -23,7 +23,8 @@ export type RefetchKey =
   | "userSub"
   | "configDoc"
   | "adminUsers"
-  | "csatSurveys";
+  | "csatSurveys"
+  | "adminAuditLogs";
 
 type Listener = () => void;
 

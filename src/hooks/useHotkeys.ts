@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 type Handler = (event: KeyboardEvent) => void;
 
@@ -19,6 +19,12 @@ export function useHotkeys(
   deps: ReadonlyArray<unknown> = [],
   enabled: boolean = true,
 ) {
+  // High-sev fix: keep the handler map in a ref so hotkeys always call
+  // the latest closure. Previously, callers who omitted `deps` (most
+  // callers) got a stale map captured on mount — pressing a shortcut
+  // fired the old handler and referenced stale state.
+  const mapRef = useRef(map);
+  mapRef.current = map;
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
@@ -37,7 +43,7 @@ export function useHotkeys(
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key === "?" ? "?" : e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const handler = map[key];
+      const handler = mapRef.current[key];
       if (handler) {
         e.preventDefault();
         handler(e);

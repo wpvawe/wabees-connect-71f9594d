@@ -433,10 +433,12 @@ service cloud.firestore {
 
       // ============ Notifications ============
       match /notifications/{notificationId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        // Admin can create notifications (e.g. support reply, plan activation)
-        // Admin can also read/delete (for monitoring)
-        allow read, write: if isAdmin();
+        // High-sev fix: agents previously had full write (including delete).
+        // Agents can now read + create + update (mark as read), but only
+        // owners/admins may delete a notification.
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
 
@@ -481,8 +483,12 @@ service cloud.firestore {
 
       // ============ Call Logs ============
       match /call_logs/{callId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read, write: if isAdmin();
+        // High-sev fix: agents no longer get delete on call logs — that
+        // would let an agent wipe an owner's call history. Agents keep
+        // read/create/update; delete is owner/admin only.
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // ============ CSAT Surveys ============

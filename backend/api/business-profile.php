@@ -24,7 +24,6 @@ require_once __DIR__ . '/../config/firebase-auth.php';
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
 $action        = (string)($body['action'] ?? 'get');
 $idToken       = (string)($body['id_token'] ?? '');
-$accessToken   = (string)($body['access_token'] ?? '');
 $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($body['phone_number_id'] ?? ''));
 
 if (!$phoneNumberId) {
@@ -32,23 +31,33 @@ if (!$phoneNumberId) {
     echo json_encode(['error' => 'Missing phone_number_id']); exit;
 }
 
-if ($idToken !== '') {
-    $uid = verify_firebase_id_token($idToken, $err);
-    if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
-
-    // Resolve owner
-    $ownerUid = $uid;
-    $userResp = firestore_get("users/$uid");
-    if (($userResp['code'] ?? 404) === 200) {
-        $f = $userResp['data']['fields'] ?? [];
-        $dataOwner = trim($f['dataOwner']['stringValue'] ?? '');
-        if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
-    }
-
-    $tokens = get_user_access_token($ownerUid);
-    $accessToken = $tokens['accessToken'] ?? $accessToken;
+// High-sev fix: Firebase auth is now required. Previously this endpoint
+// accepted a caller-supplied `access_token` in the body, which let anyone
+// with (or who could brute-force) a Meta Graph token hit /whatsapp_business_profile
+// under our origin's CORS. Server now resolves the token from the caller's
+// own workspace via their verified Firebase id_token only.
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+if ($idToken === '' && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
+    $idToken = trim($m[1]);
 }
-if (!$accessToken) {
+if ($idToken === '') {
+    http_response_code(401);
+    echo json_encode(['error' => 'Firebase id_token required']); exit;
+}
+$uid = verify_firebase_id_token($idToken, $err);
+if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
+
+// Resolve owner (agents use their owner's WA credentials).
+$ownerUid = $uid;
+$userResp = firestore_get("users/$uid");
+if (($userResp['code'] ?? 404) === 200) {
+    $f = $userResp['data']['fields'] ?? [];
+    $dataOwner = trim($f['dataOwner']['stringValue'] ?? '');
+    if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
+}
+$tokens = get_user_access_token($ownerUid);
+$accessToken = (string)($tokens['accessToken'] ?? '');
+if ($accessToken === '') {
     http_response_code(400);
     echo json_encode(['error' => 'WhatsApp not connected']); exit;
 }

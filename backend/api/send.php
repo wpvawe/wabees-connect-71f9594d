@@ -16,15 +16,12 @@
  */
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-Api-Key');
-
-// CORS preflight
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require __DIR__ . '/_origin.php';
+// High-sev fix: replaced `Access-Control-Allow-Origin: *` with the shared
+// origin allowlist. Server-to-server callers (Flutter app, external
+// integrations) authenticate via X-Api-Key and do not rely on CORS at all;
+// browser callers must come from an allowed origin.
+wabees_cors(['POST', 'OPTIONS'], ['X-Api-Key']);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
