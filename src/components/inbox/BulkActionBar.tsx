@@ -86,15 +86,17 @@ export function BulkActionBar({
 
   const selectedRows = conversations.filter((c) => selected.includes(c.contactPhone));
   const count = selected.length;
-  const anyResolved = selectedRows.some((c) => c.state === "resolved");
+  const hasResolved = selectedRows.some((c) => c.state === "resolved");
+  const hasUnresolved = selectedRows.some((c) => c.state !== "resolved");
 
-  async function runForEach<T>(fn: (phone: string) => Promise<T>, label: string) {
+  async function runForEach<T>(fn: (phone: string) => Promise<T>, label: string, phones = selected) {
     if (!uid || !selfUid) return;
+    if (phones.length === 0) return;
     setBusy(true);
     let ok = 0;
     let fail = 0;
     await Promise.all(
-      selected.map(async (phone) => {
+      phones.map(async (phone) => {
         try {
           await fn(phone);
           ok += 1;
@@ -160,6 +162,9 @@ export function BulkActionBar({
 
   async function bulkState(state: ConversationState, snoozeUntil?: Date) {
     const actorEmail = fbAuth().currentUser?.email ?? null;
+    const phones = selectedRows
+      .filter((c) => (state === "open" ? c.state === "resolved" : c.state !== "resolved"))
+      .map((c) => c.contactPhone);
     await runForEach(async (phone) => {
       const row = selectedRows.find((c) => c.contactPhone === phone);
       await setConversationState(
@@ -178,7 +183,8 @@ export function BulkActionBar({
       ? "Resolved"
       : state === "snoozed"
       ? "Snoozed"
-      : "Reopened");
+      : "Reopened",
+    phones);
   }
 
   async function bulkDelete() {
@@ -216,10 +222,10 @@ export function BulkActionBar({
           <BulkChip icon={faTag} label="Tag" onClick={() => setPopover(popover === "tag" ? null : "tag")} active={popover === "tag"} />
         )}
         <BulkChip icon={faFlag} label="Priority" onClick={() => setPopover(popover === "priority" ? null : "priority")} active={popover === "priority"} />
-        {canState && !anyResolved && (
+        {canState && hasUnresolved && (
           <BulkChip icon={faCircleCheck} label="Resolve" onClick={() => void bulkState("resolved")} />
         )}
-        {canState && anyResolved && (
+        {canState && hasResolved && (
           <BulkChip icon={faRotateLeft} label="Reopen" onClick={() => void bulkState("open")} />
         )}
         {canState && (

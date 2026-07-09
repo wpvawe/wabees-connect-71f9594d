@@ -35,20 +35,15 @@ if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
 
 $file = $_FILES['file'];
 $type = $_POST['type'] ?? 'image';
-$phoneNumberId = $_POST['phone_number_id'] ?? '';
-$accessToken = $_POST['access_token'] ?? '';
-
-if (empty($phoneNumberId) || empty($accessToken)) {
-    $authInput = $_POST;
-    $auth = wabees_apply_bearer_auth($authInput);
-    if (!empty($auth['error'])) {
-        http_response_code((int)($auth['status'] ?? 401));
-        echo json_encode(['success' => false, 'message' => $auth['error']]);
-        exit;
-    }
-    $phoneNumberId = $authInput['phone_number_id'] ?? $phoneNumberId;
-    $accessToken = $authInput['access_token'] ?? $accessToken;
+$authInput = $_POST;
+$auth = wabees_apply_bearer_auth($authInput);
+if (!empty($auth['error'])) {
+    http_response_code((int)($auth['status'] ?? 401));
+    echo json_encode(['success' => false, 'message' => $auth['error']]);
+    exit;
 }
+$phoneNumberId = $authInput['phone_number_id'] ?? '';
+$accessToken = $authInput['access_token'] ?? '';
 
 if (empty($phoneNumberId) || empty($accessToken)) {
     http_response_code(400);

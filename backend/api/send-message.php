@@ -63,6 +63,11 @@ if ($shouldMeter) {
     if (function_exists('firestore_get')) {
         $ownerUid = $authUid;
         $userResp = firestore_get("users/$authUid");
+        if (($userResp['code'] ?? 0) !== 200) {
+            http_response_code(503);
+            echo json_encode(['error' => ['message' => 'Quota service unavailable. Try again shortly.']]);
+            exit;
+        }
         $userFields = $userResp['data']['fields'] ?? null;
         if (is_array($userFields)) {
             $dataOwner = $userFields['dataOwner']['stringValue'] ?? '';
@@ -71,6 +76,11 @@ if ($shouldMeter) {
             }
         }
         $subResp = firestore_get("users/$ownerUid/subscription/current");
+        if (($subResp['code'] ?? 0) !== 200) {
+            http_response_code(503);
+            echo json_encode(['error' => ['message' => 'Quota service unavailable. Try again shortly.']]);
+            exit;
+        }
         $subFields = $subResp['data']['fields'] ?? null;
         if (is_array($subFields)) {
             $maxMessages = (int)($subFields['maxMessages']['integerValue'] ?? 0);
@@ -92,8 +102,9 @@ if ($shouldMeter) {
             }
         }
     } else {
-        // Helper unavailable — skip metering, don't block send.
-        $shouldMeter = false;
+        http_response_code(503);
+        echo json_encode(['error' => ['message' => 'Quota service unavailable. Try again shortly.']]);
+        exit;
     }
 }
 

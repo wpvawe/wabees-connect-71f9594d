@@ -17,11 +17,10 @@
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+require __DIR__ . '/_origin.php';
+wabees_cors(['POST', 'OPTIONS']);
+wabees_require_origin();
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'error' => 'Method not allowed']);
@@ -48,7 +47,7 @@ $callerUid = verify_firebase_id_token(trim($m[1]), $err);
 if (!$callerUid) _wabees_claims_fail(401, 'Invalid token: ' . ($err ?? 'unknown'));
 
 $callerDoc = firestore_get("users/$callerUid");
-$callerRole = $callerDoc['fields']['role']['stringValue'] ?? '';
+$callerRole = $callerDoc['data']['fields']['role']['stringValue'] ?? '';
 if ($callerRole !== 'admin') _wabees_claims_fail(403, 'Admin only');
 
 // ---- 2. Parse target + claims ----

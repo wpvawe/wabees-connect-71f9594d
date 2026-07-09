@@ -139,6 +139,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
   const [menu, setMenu] = useState<{ phone: string; x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const selectedList = useMemo(() => Array.from(selection), [selection]);
   const toggleSelect = (phone: string) => {
     setSelection((prev) => {
@@ -244,7 +250,12 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     // focused on actionable conversations. Users can hit the "Resolved" chip
     // to bring them back.
     if (filter !== "resolved") {
-      rows = rows.filter((c) => c.state !== "resolved");
+      const nowIso = new Date(nowTick).toISOString();
+      rows = rows.filter(
+        (c) =>
+          c.state !== "resolved" &&
+          (c.state !== "snoozed" || (Boolean(c.snoozeUntil) && c.snoozeUntil! <= nowIso)),
+      );
     }
     // Agents (non-privileged) only ever see Mine + Unassigned regardless of
     // which chip they pick — the Firestore rules enforce this too, but
@@ -261,7 +272,7 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
       );
     }
     return rows;
-  }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid, role]);
+  }, [merged, q, filter, selectedTag, incomingFallbacks, selfUid, role, nowTick]);
 
   // Keyboard nav: j/k moves through the visible list; Enter is implicit
   // because we navigate immediately. `/` focuses search, `?` opens help,
