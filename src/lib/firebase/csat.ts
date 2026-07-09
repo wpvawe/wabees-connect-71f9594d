@@ -154,8 +154,20 @@ export async function sendCsatSurvey(args: {
   }));
 
   let quotaReserved = false;
-  await reserveQuota(ownerUid, "messages", 1);
-  quotaReserved = true;
+  // Bug fix: if reserveQuota threw (plan cap, expired subscription) the
+  // survey doc was left in status="pending" forever, corrupting response-rate
+  // and workload dashboard metrics. Guard the reserve and mark the survey
+  // failed on any throw before rethrowing.
+  try {
+    await reserveQuota(ownerUid, "messages", 1);
+    quotaReserved = true;
+  } catch (e) {
+    await updateDoc(surveyRef, {
+      status: "failed",
+      error: e instanceof Error ? e.message : "quota reserve failed",
+    }).catch(() => {});
+    throw e;
+  }
   const res = await sendListMessage({
     phone_number_id: creds.phone_number_id,
     access_token: "",
