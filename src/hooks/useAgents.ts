@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
@@ -66,6 +66,8 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
     session.status === "ready" && !!session.dataOwner && session.dataOwner !== session.uid;
   const [data, setData] = useState<Agent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bug fix: guard async setState after unmount / uid change.
+  const cancelledRef = useRef<boolean>(false);
 
   const load = useCallback(async () => {
     if (!uid) return;
