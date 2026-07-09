@@ -312,7 +312,6 @@ export function Composer({
             to: whatsappRecipientId(phone),
             template_name: t.name,
             language_code: t.languageCode,
-            quota_reserved: true,
           }),
       });
       toastPipelineOutcome(outcome, "Could not send template");
@@ -443,7 +442,6 @@ export function Composer({
             to: whatsappRecipientId(phone),
             message: body,
             context_message_id: whatsappContextMessageId(capturedReplyTo),
-            quota_reserved: true,
           }),
         onSuccess: () => {
           void markFirstResponseIfNeeded(uid, phone, selfUid);
@@ -572,7 +570,6 @@ export function Composer({
             ...(kind === "document" ? { filename: file.name } : {}),
             ...(isVoice ? { is_voice: true } : {}),
             context_message_id: whatsappContextMessageId(capturedReplyTo),
-            quota_reserved: true,
           }),
         onSuccess: () => {
           void markFirstResponseIfNeeded(uid, phone, selfUid);

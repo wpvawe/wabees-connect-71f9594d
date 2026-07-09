@@ -15,6 +15,7 @@ import { useMutation } from "@tanstack/react-query";
 import { saveWhatsAppConfig } from "@/lib/firebase/whatsapp-config";
 import { useFirebaseUid } from "@/hooks/useFirebaseSession";
 import { fbAuth } from "@/integrations/firebase/client";
+import { checkExistingWhatsAppOwner } from "@/lib/firebase/owner-repair.functions";
 import { smartConnectWhatsApp, verifyWhatsAppToken } from "@/lib/wabees/api";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -125,6 +126,18 @@ export function ManualTokenForm() {
       const idToken = await fbAuth().currentUser?.getIdToken();
       if (!idToken) toast.error("Please sign in again");
       if (!idToken) return;
+      const existing = await checkExistingWhatsAppOwner({
+        data: { idToken, phoneNumberId: v.phone_number_id.trim() },
+      });
+      if (existing.existingOwnerId && !existing.isSelf) {
+        const ownerLabel =
+          existing.existingOwnerBusinessName || existing.existingOwnerEmail || "the existing owner";
+        toast.error(`This WhatsApp number is already linked to ${ownerLabel}. Ask the owner for an invite.`);
+        return;
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify WhatsApp ownership");
+      return;
     } finally {
       setChecking(false);
     }

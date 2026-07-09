@@ -273,7 +273,7 @@ export function useMessages(phone: string | undefined): {
       (snap) => {
         // Hit the live cap? Older messages likely exist; "Load older" fetches
         // them on demand without disturbing this listener.
-        setHasMore((prev) => (snap.docs.length >= PAGE_SIZE ? true : prev));
+        setHasMore(snap.docs.length >= PAGE_SIZE);
         setLoadingMore(false);
         const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
         // Firestore returned desc-by-createdAt. Track the oldest live doc

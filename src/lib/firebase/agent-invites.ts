@@ -11,9 +11,11 @@
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -85,33 +87,37 @@ export async function createAgentInvite(input: {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const code = generateCode();
     const globalRef = doc(db, `agent_invites/${code}`);
-    const existing = await getDoc(globalRef).catch(() => null);
-    if (existing?.exists()) continue;
-
-    const inviteRef = await addDoc(collection(db, `users/${input.ownerUid}/agent_invites`), {
-      code,
-      email,
-      role,
-      status: "pending" as InviteStatus,
-      createdAt: serverTimestamp(),
-      expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
-      createdByEmail: input.ownerEmail ?? null,
+    const inviteRef = doc(collection(db, `users/${input.ownerUid}/agent_invites`));
+    let collision = false;
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(globalRef);
+      if (existing.exists()) {
+        collision = true;
+        return;
+      }
+      tx.set(inviteRef, {
+        code,
+        email,
+        role,
+        status: "pending" as InviteStatus,
+        createdAt: serverTimestamp(),
+        expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
+        createdByEmail: input.ownerEmail ?? null,
+      });
+      tx.set(globalRef, {
+        code,
+        ownerId: input.ownerUid,
+        inviteId: inviteRef.id,
+        role,
+        status: "pending" as InviteStatus,
+        email,
+        expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
+        ownerEmail: input.ownerEmail ?? null,
+        ownerBusinessName: input.ownerBusinessName ?? null,
+        createdAt: serverTimestamp(),
+      });
     });
-
-    const batch = writeBatch(db);
-    batch.set(globalRef, {
-      code,
-      ownerId: input.ownerUid,
-      inviteId: inviteRef.id,
-      role,
-      status: "pending" as InviteStatus,
-      email,
-      expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
-      ownerEmail: input.ownerEmail ?? null,
-      ownerBusinessName: input.ownerBusinessName ?? null,
-      createdAt: serverTimestamp(),
-    });
-    await batch.commit();
+    if (collision) continue;
 
     const origin =
       typeof window !== "undefined" ? window.location.origin : "https://web.wabees.live";
@@ -254,6 +260,11 @@ export async function acceptAgentInvite(input: {
       joinedVia: "invite",
       inviteCode: invite.code,
       skills: [],
+      leftAt: deleteField(),
+      leftReason: deleteField(),
+      revokedAt: deleteField(),
+      revokedByUid: deleteField(),
+      revokedByEmail: deleteField(),
     },
     { merge: true },
   );

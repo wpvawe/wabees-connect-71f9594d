@@ -61,6 +61,42 @@ service cloud.firestore {
       ];
     }
 
+    function agentInviteJoinKeys() {
+      return [
+        'email', 'role', 'status', 'joinedAt', 'joinedVia', 'inviteCode', 'skills',
+        'leftAt', 'leftReason', 'revokedAt', 'revokedByUid', 'revokedByEmail'
+      ];
+    }
+
+    function validInviteJoinPayload(userId, agentId) {
+      return request.auth != null
+        && request.auth.uid == agentId
+        && request.resource.data.inviteCode is string
+        && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
+        && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
+        && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
+        && (
+          get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.get('expiresAt', null) == null
+          || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.expiresAt > request.time
+        )
+        && request.resource.data.status == 'active'
+        && request.resource.data.joinedVia == 'invite'
+        && (
+          get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
+          || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
+        );
+    }
+
+    function validInviteJoinCreate(userId, agentId) {
+      return validInviteJoinPayload(userId, agentId)
+        && request.resource.data.keys().hasOnly(agentInviteJoinKeys());
+    }
+
+    function validInviteJoinUpdate(userId, agentId) {
+      return validInviteJoinPayload(userId, agentId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentInviteJoinKeys());
+    }
+
     function regularAgentConversationKeys() {
       return [
         'contactPhone', 'contactName', 'updatedAt',
@@ -81,6 +117,32 @@ service cloud.firestore {
         'tags', 'priority', 'priorityRank',
         'isPinned', 'pinOrder'
       ]);
+    }
+
+    function agentMessageCreateKeys() {
+      return [
+        'contactPhone', 'contactName',
+        'type', 'direction', 'status', 'body',
+        'mediaUrl', 'mediaId', 'mimeType', 'caption', 'fileName', 'fileSize', 'isVoice',
+        'templateName', 'templateLanguage', 'headerText', 'footerText', 'quickReplies', 'ctaButton',
+        'whatsappMessageId', 'errorReason', 'createdAt', 'updatedAt',
+        'replyToId', 'replyToBody', 'replyToWamid', 'replyToType',
+        'reactionEmoji', 'reactionMsgId', 'reactionAt',
+        'latitude', 'longitude', 'location',
+        'contacts', 'buttonReplyId', 'buttonReplyText', 'interactiveType', 'ctaUrl', 'otpCode',
+        'orderItems', 'orderTotal', 'orderCurrency', 'orderCatalogId', 'orderNote', 'flowResponse',
+        'botName', 'sentVia', 'forwarded'
+      ];
+    }
+
+    function agentMessageUpdateKeys() {
+      return [
+        'status', 'errorReason', 'whatsappMessageId',
+        'readAt', 'deliveredAt', 'updatedAt',
+        'reactionEmoji', 'reactionMsgId', 'reactionAt',
+        'starred', 'starredAt',
+        'body', 'mediaUrl', 'mediaId', 'caption', 'fileName', 'deletedAt'
+      ];
     }
 
     function selfAssignOnly(keys) {
@@ -166,30 +228,19 @@ service cloud.firestore {
         // ownerId == this workspace owner. This closes the C-2 escalation
         // where any signed-in user could create an agent doc under any
         // owner just because request.auth.uid == agentId.
-        allow create: if request.auth != null
-          && request.auth.uid == agentId
-          && request.resource.data.inviteCode is string
-          && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
-          && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
-          && (
-            // Either the invite is still pending (matching a same-batch
-            // CAS from pending→accepted; the invite-update rule enforces
-            // that only one such batch wins) OR the mirror already shows
-            // acceptedBy == self (single-write path).
-            get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
-            || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
-          );
+        allow create: if validInviteJoinCreate(userId, agentId);
         // Agent may update only its OWN operational fields (presence,
         // availability, FCM token, or voluntary leave). It cannot edit role,
         // workingHours, skills, activeLoad, or status back to active.
-        allow update: if request.auth != null
-          && request.auth.uid == agentId
-          && resource.data.get('status', 'active') != 'revoked'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentSelfUpdateKeys())
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-            || request.resource.data.status == 'left'
-          );
+        allow update: if validInviteJoinUpdate(userId, agentId)
+          || (request.auth != null
+            && request.auth.uid == agentId
+            && resource.data.get('status', 'active') != 'revoked'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentSelfUpdateKeys())
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+              || request.resource.data.status == 'left'
+            ));
       }
 
       // ============ Messages ============
@@ -197,12 +248,10 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
         allow create: if isOwner(userId) || isAdmin()
-          || (isSupervisorOf(userId) && request.resource.data.keys().hasOnly(supervisorConversationKeys()))
-          || (isAgentOf(userId) && regularAgentCanCreateConversation());
+          || (isAgentOf(userId) && request.resource.data.keys().hasOnly(agentMessageCreateKeys()));
         allow update: if isOwner(userId) || isAdmin()
-          || (isSupervisorOf(userId)
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(supervisorConversationKeys()))
-          || (isAgentOf(userId) && regularAgentCanUpdateConversation());
+          || (isAgentOf(userId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentMessageUpdateKeys()));
         allow delete: if isOwner(userId) || isAdmin();
       }
 
@@ -211,7 +260,13 @@ service cloud.firestore {
       // can hard-delete an entire thread.
       match /conversations/{convId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow create: if isOwner(userId) || isAdmin()
+          || (isSupervisorOf(userId) && request.resource.data.keys().hasOnly(supervisorConversationKeys()))
+          || (isAgentOf(userId) && regularAgentCanCreateConversation());
+        allow update: if isOwner(userId) || isAdmin()
+          || (isSupervisorOf(userId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(supervisorConversationKeys()))
+          || (isAgentOf(userId) && regularAgentCanUpdateConversation());
         allow delete: if isOwner(userId) || isAdmin();
       }
 
@@ -519,6 +574,7 @@ service cloud.firestore {
         (
           resource.data.status == 'pending'
           && request.resource.data.status == 'accepted'
+          && (resource.data.get('expiresAt', null) == null || resource.data.expiresAt > request.time)
           && request.resource.data.ownerId == resource.data.ownerId
           && request.resource.data.role == resource.data.role
           && request.resource.data.inviteId == resource.data.inviteId

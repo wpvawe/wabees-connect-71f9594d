@@ -17,7 +17,7 @@
  * subcollection so the UI can toast "You were removed from …".
  */
 import { useEffect, useRef } from "react";
-import { addDoc, collection, deleteField, doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useFirebaseSession } from "@/hooks/useFirebaseSession";
 
@@ -98,8 +98,15 @@ export function useAgentRevocationGuard(): void {
         if (status !== "revoked" && status !== "missing") return;
         void heal(status === "revoked" ? "revoked" : "missing");
       },
-      () => {
-        void heal("permission_denied");
+      (error) => {
+        if ((error as { code?: string }).code !== "permission-denied") return;
+        void getDoc(doc(db, `users/${dataOwner}/agents/${uid}`))
+          .then((snap) => {
+            if (!snap.exists()) void heal("missing");
+          })
+          .catch((e: unknown) => {
+            if ((e as { code?: string }).code === "permission-denied") void heal("permission_denied");
+          });
       },
     );
     return () => unsub();

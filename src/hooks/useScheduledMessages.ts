@@ -3,6 +3,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -168,7 +169,6 @@ export function useScheduledDispatcher() {
                 access_token: "",
                 to: whatsappRecipientId(phone),
                 message: body,
-                quota_reserved: true,
               });
               const wamid = extractWamid(res.raw);
               if (!res.success) {
@@ -185,10 +185,28 @@ export function useScheduledDispatcher() {
                 await releaseQuota(uid!, "messages", 1).catch(() => {});
                 quotaReserved = false;
               }
+              const normalizedPhone = normalizePhone(phone);
+              const convId = phoneDocId(phone);
+              let contactName = normalizedPhone;
+              try {
+                const [convSnap, contactSnap] = await Promise.all([
+                  getDoc(doc(db!, `users/${uid}/conversations/${convId}`)).catch(() => null),
+                  getDoc(doc(db!, `users/${uid}/contacts/${convId}`)).catch(() => null),
+                ]);
+                const convName = convSnap?.data()?.contactName;
+                const contact = contactSnap?.data();
+                const savedName =
+                  (typeof contact?.name === "string" && contact.name.trim()) ||
+                  (typeof convName === "string" && convName.trim()) ||
+                  "";
+                if (savedName && savedName !== normalizedPhone) contactName = savedName;
+              } catch {
+                /* fall back to phone */
+              }
               // Write into the main messages stream so the inbox shows it.
               const msgRef = await addDoc(collection(db!, `users/${uid}/messages`), {
-                contactPhone: phone,
-                contactName: phone,
+                contactPhone: normalizedPhone,
+                contactName,
                 type: "text",
                 direction: "outgoing",
                 status: "sent",
@@ -198,9 +216,10 @@ export function useScheduledDispatcher() {
                 createdAt: serverTimestamp(),
               });
               await setDoc(
-                doc(db!, `users/${uid}/conversations/${phoneDocId(phone)}`),
+                doc(db!, `users/${uid}/conversations/${convId}`),
                 {
-                  contactPhone: phone,
+                  contactPhone: normalizedPhone,
+                  contactName,
                   lastMessage: body,
                   lastMessageType: "text",
                   lastMessageAt: serverTimestamp(),

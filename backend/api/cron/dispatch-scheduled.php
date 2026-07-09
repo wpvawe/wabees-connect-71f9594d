@@ -45,8 +45,15 @@ if (!$localBypass && ($expectedKey === '' || !hash_equals($expectedKey, (string)
 }
 
 // Guard against overlapping runs when a batch is slow.
-$lock = @fopen(sys_get_temp_dir() . '/wabees_cron_dispatch.lock', 'c');
-if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
+$lockPath = sys_get_temp_dir() . '/wabees_cron_dispatch.lock';
+$lock = fopen($lockPath, 'c');
+if ($lock === false) {
+    error_log('[WABEES cron] Cannot open lock file: ' . $lockPath);
+    http_response_code(500);
+    echo json_encode(['error' => 'lock unavailable']);
+    exit;
+}
+if (!flock($lock, LOCK_EX | LOCK_NB)) {
     echo json_encode(['skipped' => 'busy']);
     exit;
 }
@@ -86,12 +93,13 @@ foreach ($dueDocs as $doc) {
         if ($lastAt && (time() - strtotime($lastAt)) < $staleWindowSec) continue;
     }
 
-    // Atomic claim: only update if status still matches expected.
-    $claim = firestore_update("users/$uid/scheduled_messages/$schedId", [
+    // Atomic claim: use the document updateTime as an optimistic lock so
+    // two cron workers on different hosts cannot both send the same row.
+    $claim = _claim_scheduled_message($uid, $schedId, [
         'status' => 'sending',
         'claimedAt' => firestore_timestamp(),
         'updatedAt' => firestore_timestamp(),
-    ], ['status', 'claimedAt', 'updatedAt']);
+    ], $doc['updateTime'] ?? null);
     if (($claim['code'] ?? 0) >= 400) continue;
 
     // Load owner's WA credentials.
@@ -122,9 +130,10 @@ foreach ($dueDocs as $doc) {
 
     // Mirror what the website dispatcher wrote: a message doc + conversation summary.
     $msgId = 'sch_' . bin2hex(random_bytes(8));
+    $contactName = _scheduled_contact_name($uid, $phone);
     firestore_set("users/$uid/messages/$msgId", [
         'contactPhone' => $phone,
-        'contactName' => $phone,
+        'contactName' => $contactName,
         'type' => 'text',
         'direction' => 'outgoing',
         'status' => 'sent',
@@ -136,6 +145,7 @@ foreach ($dueDocs as $doc) {
 
     firestore_set("users/$uid/conversations/$phone", [
         'contactPhone' => $phone,
+        'contactName' => $contactName,
         'lastMessage' => $body,
         'lastMessageType' => 'text',
         'lastMessageAt' => firestore_timestamp(),
@@ -276,6 +286,45 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
     return $out;
 }
 
+function _claim_scheduled_message(string $uid, string $schedId, array $data, ?string $updateTime): array {
+    if (!$updateTime) {
+        return ['code' => 409, 'data' => ['error' => ['message' => 'missing updateTime']]];
+    }
+    $path = "users/$uid/scheduled_messages/$schedId";
+    $params = [
+        'currentDocument.updateTime=' . urlencode($updateTime),
+        'updateMask.fieldPaths=status',
+        'updateMask.fieldPaths=claimedAt',
+        'updateMask.fieldPaths=updatedAt',
+    ];
+    $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/(default)/documents/' . $path . '?' . implode('&', $params);
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 8,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+        CURLOPT_NOSIGNAL => 1,
+        CURLOPT_URL => $url,
+        CURLOPT_CUSTOMREQUEST => 'PATCH',
+        CURLOPT_POSTFIELDS => json_encode(['fields' => convert_to_firestore_fields($data)]),
+        CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    if ($httpCode >= 400 || $httpCode === 0) {
+        error_log("[WABEES cron] claim skipped/failed ($httpCode) path=$path err=" . curl_error($ch));
+    }
+    curl_close($ch);
+    return ['code' => $httpCode, 'data' => json_decode((string)$response, true)];
+}
+
 function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
     $out = [];
     $pageToken = null;
@@ -400,6 +449,18 @@ function _send_whatsapp_text(string $phoneNumberId, string $token, string $to, s
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     return [$code, json_decode($resp, true) ?: []];
+}
+
+function _scheduled_contact_name(string $uid, string $phone): string {
+    $conv = firestore_get("users/$uid/conversations/$phone");
+    $convName = $conv['data']['fields']['contactName']['stringValue'] ?? '';
+    if (is_string($convName) && trim($convName) !== '' && trim($convName) !== $phone) {
+        return trim($convName);
+    }
+    $contact = firestore_get("users/$uid/contacts/$phone");
+    $contactName = $contact['data']['fields']['name']['stringValue'] ?? '';
+    if (is_string($contactName) && trim($contactName) !== '') return trim($contactName);
+    return $phone;
 }
 
 function _mark_failed(string $uid, string $schedId, string $reason): void {

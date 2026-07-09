@@ -430,7 +430,6 @@ function Thread({ phone }: { phone: string }) {
             to,
             message: m.body,
             context_message_id: m.replyToWamid ?? null,
-            quota_reserved: true,
           });
         } else if (
           m.type === "image" ||
@@ -451,7 +450,6 @@ function Thread({ phone }: { phone: string }) {
             ...(m.caption ? { caption: m.caption } : {}),
             ...(m.fileName ? { filename: m.fileName } : {}),
             context_message_id: m.replyToWamid ?? null,
-            quota_reserved: true,
           });
         } else {
           if (quotaReserved) {
