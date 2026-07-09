@@ -507,6 +507,12 @@ function _fs_timestamp($v): ?string {
     if (!is_array($v)) return null;
     return $v['timestampValue'] ?? null;
 }
+function _fs_int($v, int $def = 0): int {
+    if (!is_array($v)) return $def;
+    if (isset($v['integerValue'])) return (int) $v['integerValue'];
+    if (isset($v['doubleValue'])) return (int) $v['doubleValue'];
+    return $def;
+}
 
 function _next_occurrence(?string $origIso, string $recurrence): ?string {
     $base = $origIso ? strtotime($origIso) : time();
