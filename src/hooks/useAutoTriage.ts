@@ -16,6 +16,7 @@ import { useTriageSettings } from "@/hooks/useTriageSettings";
 import { classifyMessage } from "@/lib/ai/triage.functions";
 import { applyTriageToConversation } from "@/lib/firebase/triage";
 import { subscribeIncomingMessages } from "@/lib/firebase/messagesBroker";
+import { normalizePhone } from "@/lib/firebase/normalizers";
 
 /** Only text-ish inbound messages are worth classifying. */
 const TRIAGEABLE_TYPES = new Set(["text", "button", "interactive", "list"]);
@@ -56,6 +57,10 @@ export function useAutoTriage(): void {
     if (settings.categories.length === 0) return;
 
     const subscribedAt = Date.now();
+    // Bug fix: array/prop references from useTriageSettings snapshot re-fire
+    // this effect on every settings snapshot even when values are identical.
+    // Snapshot the categories inside the effect closure so equality churn is
+    // driven by a stable key in the dep array below.
     return subscribeIncomingMessages(uid, (msg) => {
       void (async () => {
           const d = { id: msg.id };
@@ -89,7 +94,11 @@ export function useAutoTriage(): void {
               // Persistent throttle: skip if this conversation was triaged
               // within TRIAGE_THROTTLE_MS by any past session.
               try {
-                const convRef = doc(db, `users/${uid}/conversations/${phone}`);
+                // Bug fix: conversation docs are keyed by normalized phone.
+                // Using the raw contactPhone field misses the doc, bypasses
+                // the persistent cooldown, and re-classifies (re-charging
+                // AI quota) on every message.
+                const convRef = doc(db, `users/${uid}/conversations/${normalizePhone(phone)}`);
                 const convSnap = await getDoc(convRef);
                 const raw = convSnap.exists()
                   ? ((convSnap.data() as Record<string, unknown>).aiTriageAt as unknown)
@@ -157,5 +166,15 @@ export function useAutoTriage(): void {
             }
       })();
     });
-  }, [enabled, isOwner, uid, settings.categories, settings.autoApplyTags, settings.autoSetPriority]);
+    // Bug fix: `settings.categories` is a new array reference on every
+    // Firestore snapshot even when values are equal. Depend on a stable
+    // joined key so the broker subscription doesn't churn.
+  }, [
+    enabled,
+    isOwner,
+    uid,
+    settings.categories.join("|"),
+    settings.autoApplyTags,
+    settings.autoSetPriority,
+  ]);
 }
