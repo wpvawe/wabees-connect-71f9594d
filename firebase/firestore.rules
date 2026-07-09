@@ -235,7 +235,13 @@ service cloud.firestore {
       // can hard-delete an entire thread.
       match /conversations/{convId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow create: if isOwner(userId) || isAdmin()
+          || (isSupervisorOf(userId) && request.resource.data.keys().hasOnly(supervisorConversationKeys()))
+          || (isAgentOf(userId) && regularAgentCanCreateConversation());
+        allow update: if isOwner(userId) || isAdmin()
+          || (isSupervisorOf(userId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(supervisorConversationKeys()))
+          || (isAgentOf(userId) && regularAgentCanUpdateConversation());
         allow delete: if isOwner(userId) || isAdmin();
       }
 
