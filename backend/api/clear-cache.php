@@ -46,6 +46,32 @@ if (!$bearerOk) {
     exit;
 }
 
+// SECURITY: clear_all wipes token, dedup, and APCu caches for ALL users —
+// a regular user calling this can disrupt webhook processing / message
+// delivery across the entire tenant. Only admins may clear-all. Fetch the
+// caller's uid from the verified token and check custom claim OR
+// users/{uid}.role == 'admin' (mirrors firestore.rules isAdmin()).
+if ($clearAll) {
+    $callerUid = null;
+    if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $mm)) {
+        $errAdmin = null;
+        $callerUid = verify_firebase_id_token(trim($mm[1]), $errAdmin);
+    }
+    $isAdmin = false;
+    if ($callerUid) {
+        require_once __DIR__ . '/../config/firebase-config.php';
+        $userDoc = firestore_get('users/' . rawurlencode($callerUid));
+        $userFields = (($userDoc['code'] ?? 404) === 200) ? ($userDoc['data']['fields'] ?? []) : [];
+        $role = trim((string)($userFields['role']['stringValue'] ?? ''));
+        $isAdmin = ($role === 'admin');
+    }
+    if (!$isAdmin) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Admin only']);
+        exit;
+    }
+}
+
 $cacheFile = __DIR__ . '/../cache/wa_map.json';
 $cleared = [];
 
