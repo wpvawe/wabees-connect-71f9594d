@@ -47,6 +47,7 @@ const BEARER_AUTH_ENDPOINTS = new Set<string>([
 
 const CREDENTIAL_REQUIRED_ENDPOINTS = new Set<string>([
   "verify-token.php",
+  "whatsapp-smart-connect.php",
   "subscribe-webhook.php",
 ]);
 
