@@ -93,12 +93,13 @@ foreach ($dueDocs as $doc) {
         if ($lastAt && (time() - strtotime($lastAt)) < $staleWindowSec) continue;
     }
 
-    // Atomic claim: only update if status still matches expected.
-    $claim = firestore_update("users/$uid/scheduled_messages/$schedId", [
+    // Atomic claim: use the document updateTime as an optimistic lock so
+    // two cron workers on different hosts cannot both send the same row.
+    $claim = _claim_scheduled_message($uid, $schedId, [
         'status' => 'sending',
         'claimedAt' => firestore_timestamp(),
         'updatedAt' => firestore_timestamp(),
-    ], ['status', 'claimedAt', 'updatedAt']);
+    ], $doc['updateTime'] ?? null);
     if (($claim['code'] ?? 0) >= 400) continue;
 
     // Load owner's WA credentials.
@@ -281,6 +282,45 @@ function _fetch_due_scheduled_global(string $nowIso, int $limit): array {
         $out[] = $doc;
     }
     return $out;
+}
+
+function _claim_scheduled_message(string $uid, string $schedId, array $data, ?string $updateTime): array {
+    if (!$updateTime) {
+        return ['code' => 409, 'data' => ['error' => ['message' => 'missing updateTime']]];
+    }
+    $path = "users/$uid/scheduled_messages/$schedId";
+    $params = [
+        'currentDocument.updateTime=' . urlencode($updateTime),
+        'updateMask.fieldPaths=status',
+        'updateMask.fieldPaths=claimedAt',
+        'updateMask.fieldPaths=updatedAt',
+    ];
+    $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/(default)/documents/' . $path . '?' . implode('&', $params);
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 8,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+        CURLOPT_NOSIGNAL => 1,
+        CURLOPT_URL => $url,
+        CURLOPT_CUSTOMREQUEST => 'PATCH',
+        CURLOPT_POSTFIELDS => json_encode(['fields' => convert_to_firestore_fields($data)]),
+        CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (_firestore_should_retry_auth($httpCode, $response)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, _firestore_refresh_auth_headers());
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    if ($httpCode >= 400 || $httpCode === 0) {
+        error_log("[WABEES cron] claim skipped/failed ($httpCode) path=$path err=" . curl_error($ch));
+    }
+    curl_close($ch);
+    return ['code' => $httpCode, 'data' => json_decode((string)$response, true)];
 }
 
 function _fetch_due_scheduled_per_user(string $nowIso, int $perUserLimit): array {
