@@ -441,7 +441,7 @@ service cloud.firestore {
         allow create: if isAgentOf(userId)
           && request.resource.data.get('createdByUid', request.auth.uid) == request.auth.uid;
         allow update: if isAgentOf(userId)
-          && resource.data.get('createdByUid', request.auth.uid) == request.auth.uid;
+          && resource.data.get('createdByUid', '') == request.auth.uid;
         allow read, write: if isAdmin();
       }
 

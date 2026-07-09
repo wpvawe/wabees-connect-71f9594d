@@ -15,7 +15,7 @@ import {
   updateDoc,
   Timestamp,
 } from "firebase/firestore";
-import { fbDb } from "@/integrations/firebase/client";
+import { fbAuth, fbDb } from "@/integrations/firebase/client";
 import { normalizePhone } from "@/lib/firebase/normalizers";
 
 export type ScheduledStatus = "pending" | "sending" | "sent" | "failed" | "cancelled";
@@ -46,6 +46,7 @@ export async function createScheduledMessage(
     errorReason: null,
     sentMessageId: null,
     recurrence: args.recurrence ?? "none",
+    createdByUid: fbAuth().currentUser?.uid ?? uid,
     createdAt: serverTimestamp(),
   });
   return ref.id;
