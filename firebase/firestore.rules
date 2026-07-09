@@ -70,8 +70,7 @@ service cloud.firestore {
 
     function userSelfUpdateForbiddenKeys() {
       return [
-        'role', 'status', 'dataOwner', 'dataOwnerJoinedAt', 'dataOwnerJoinedVia',
-        'whatsappAccessToken', 'apiKey', 'hasSubscription'
+        'role', 'status'
       ];
     }
 
@@ -110,7 +109,7 @@ service cloud.firestore {
 
     function validInviteJoinCreate(userId, agentId) {
       return validInviteJoinPayload(userId, agentId)
-        && request.resource.data.keys().hasOnly(agentInviteJoinKeys());
+        && request.resource.data.keys().hasOnly(agentInviteJoinKeys())
         && withinAgentQuota(userId);
     }
 
