@@ -318,13 +318,24 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
 
   useEffect(() => {
     if (!uid || !merged) return;
+    // Bug fix: previously this effect depended on `incomingFallbacks`, and
+    // its own setIncomingFallbacks call re-triggered the effect. Combined
+    // with `merged` changing frequently, this caused repeated 40-doc
+    // getDocs bursts. Track already-fetched phones in a ref so the effect
+    // depends only on real inputs.
     const missing = merged
-      .filter((c) => !c.lastIncomingMessageAt && incomingFallbacks[c.contactPhone] === undefined)
+      .filter(
+        (c) =>
+          !c.lastIncomingMessageAt &&
+          incomingFallbacks[c.contactPhone] === undefined &&
+          !fetchedFallbacksRef.current.has(c.contactPhone),
+      )
       .map((c) => c.contactPhone)
       .slice(0, 40);
     if (missing.length === 0) return;
     const db = fbDbOrNull();
     if (!db) return;
+    for (const p of missing) fetchedFallbacksRef.current.add(p);
     let cancelled = false;
     void (async () => {
       const updates: Record<string, string | null> = {};
@@ -375,7 +386,8 @@ export function ConversationList({ activePhone }: { activePhone?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [uid, merged, incomingFallbacks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, merged]);
 
   // Close context menu on outside click / ESC.
   useEffect(() => {
