@@ -65,7 +65,7 @@ service cloud.firestore {
       return ['email', 'role', 'status', 'joinedAt', 'joinedVia', 'inviteCode', 'skills'];
     }
 
-    function validInviteJoin(userId, agentId) {
+    function validInviteJoinPayload(userId, agentId) {
       return request.auth != null
         && request.auth.uid == agentId
         && request.resource.data.inviteCode is string
@@ -74,11 +74,20 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
         && request.resource.data.status == 'active'
         && request.resource.data.joinedVia == 'invite'
-        && request.resource.data.keys().hasOnly(agentInviteJoinKeys())
         && (
           get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.status == 'pending'
           || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.acceptedBy == request.auth.uid
         );
+    }
+
+    function validInviteJoinCreate(userId, agentId) {
+      return validInviteJoinPayload(userId, agentId)
+        && request.resource.data.keys().hasOnly(agentInviteJoinKeys());
+    }
+
+    function validInviteJoinUpdate(userId, agentId) {
+      return validInviteJoinPayload(userId, agentId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(agentInviteJoinKeys());
     }
 
     function regularAgentConversationKeys() {
@@ -212,11 +221,11 @@ service cloud.firestore {
         // ownerId == this workspace owner. This closes the C-2 escalation
         // where any signed-in user could create an agent doc under any
         // owner just because request.auth.uid == agentId.
-        allow create: if validInviteJoin(userId, agentId);
+        allow create: if validInviteJoinCreate(userId, agentId);
         // Agent may update only its OWN operational fields (presence,
         // availability, FCM token, or voluntary leave). It cannot edit role,
         // workingHours, skills, activeLoad, or status back to active.
-        allow update: if validInviteJoin(userId, agentId)
+        allow update: if validInviteJoinUpdate(userId, agentId)
           || (request.auth != null
             && request.auth.uid == agentId
             && resource.data.get('status', 'active') != 'revoked'
