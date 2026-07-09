@@ -98,7 +98,8 @@ async function postJson<T = unknown>(
   if (BEARER_AUTH_ENDPOINTS.has(endpoint)) {
     const user = fbAuth().currentUser;
     if (user) {
-      if (outboundBody.auth_uid === undefined) outboundBody = { ...outboundBody, auth_uid: user.uid };
+      if (outboundBody.auth_uid === undefined)
+        outboundBody = { ...outboundBody, auth_uid: user.uid };
       try {
         const idToken = await user.getIdToken();
         headers.Authorization = `Bearer ${idToken}`;
@@ -493,10 +494,7 @@ export function createMetaTemplate(args: {
   components: Array<Record<string, unknown>>;
   allow_category_change?: boolean;
 }) {
-  return postJson<{ id?: string; status?: string; category?: string }>(
-    "create-template.php",
-    args,
-  );
+  return postJson<{ id?: string; status?: string; category?: string }>("create-template.php", args);
 }
 
 /**
