@@ -58,11 +58,16 @@ export function useMessageSearch(queryText: string, windowSize = 1000): {
     }
     let cancelled = false;
     const handle = window.setTimeout(async () => {
-      setLoading(true);
-      setError(null);
       try {
         const db = fbDbOrNull();
         if (!db) return;
+        // Bug fix: setLoading(true) was called unconditionally at debounce
+        // fire — if the component unmounted / uid cleared between the
+        // timeout scheduling and its fire, we set state on an unmounted
+        // component. Check cancellation before touching state.
+        if (cancelled) return;
+        setLoading(true);
+        setError(null);
         const cacheKey = `${uid}:${windowSize}`;
         const cached = WINDOW_CACHE.get(cacheKey);
         let docs: CacheEntry["docs"];
