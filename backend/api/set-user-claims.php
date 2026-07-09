@@ -56,7 +56,7 @@ $body = json_decode($raw, true) ?: [];
 $targetUid = trim($body['uid'] ?? '');
 if ($targetUid === '') _wabees_claims_fail(400, 'Missing uid');
 
-$allowedRoles = ['admin', 'manager', 'agent', 'user', 'moderator'];
+$allowedRoles = ['admin', 'agent', 'user'];
 $hasRole = array_key_exists('role', $body);
 $hasOwner = array_key_exists('dataOwner', $body);
 $newRole = $hasRole ? $body['role'] : null;

@@ -9,9 +9,9 @@
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+require __DIR__ . '/_origin.php';
+wabees_cors(['POST', 'OPTIONS']);
+wabees_require_origin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

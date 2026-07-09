@@ -35,6 +35,19 @@ if (!preg_match('/^wbk_[a-f0-9]{16,}$/i', $apiKey)) {
 require_once __DIR__ . '/../config/firebase-admin.php';
 require_once __DIR__ . '/../config/firebase-config.php';
 
+function wabees_public_normalize_phone($phone) {
+    $cleaned = preg_replace('/[\s\-\(\)\.]/', '', (string)$phone);
+    if (str_starts_with($cleaned, '+')) $cleaned = substr($cleaned, 1);
+    $cleaned = preg_replace('/[^0-9]/', '', $cleaned);
+    if ($cleaned === '') return '';
+    if (str_starts_with($cleaned, '0') && strlen($cleaned) === 11) {
+        $cleaned = '92' . substr($cleaned, 1);
+    } elseif (str_starts_with($cleaned, '3') && strlen($cleaned) === 10) {
+        $cleaned = '92' . $cleaned;
+    }
+    return '+' . $cleaned;
+}
+
 // --- Rate-limit (per key, per minute) --------------------------------------
 $rateDir = __DIR__ . '/../logs/api-rate';
 if (!is_dir($rateDir)) @mkdir($rateDir, 0755, true);
@@ -240,6 +253,7 @@ if ($graphCode >= 200 && $graphCode < 300) {
     $waMsgId   = $graphData['messages'][0]['id'] ?? null;
     $nowIso    = gmdate('Y-m-d\TH:i:s\Z');
     $docId     = 'msg_api_' . time() . '_' . rand(1000, 9999);
+    $normalizedTo = wabees_public_normalize_phone($to) ?: $to;
 
     // Short preview for conversation list
     $preview = '';
@@ -248,15 +262,15 @@ if ($graphCode >= 200 && $graphCode < 300) {
     else                            $preview = '[' . strtoupper($type) . ']';
 
     $msgDoc = [
-        'contactPhone'    => $to,
-        'contactName'     => $to,
+        'contactPhone'    => $normalizedTo,
+        'contactName'     => $normalizedTo,
         'type'            => $type,
         'direction'       => 'outgoing',
         'status'          => 'sent',
         'body'            => $preview,
         'createdAt'       => $nowIso,
         'sentVia'         => 'api',
-        'waMessageId'     => $waMsgId,
+        'whatsappMessageId' => $waMsgId,
     ];
     if ($type === 'template') {
         $msgDoc['templateName'] = $input['template_name'] ?? '';
@@ -270,9 +284,9 @@ if ($graphCode >= 200 && $graphCode < 300) {
     }
 
     @firestore_set("users/$ownerUid/messages/$docId", $msgDoc);
-    @firestore_set("users/$ownerUid/conversations/$to", [
-        'contactPhone'     => $to,
-        'contactName'      => $to,
+    @firestore_set("users/$ownerUid/conversations/$normalizedTo", [
+        'contactPhone'     => $normalizedTo,
+        'contactName'      => $normalizedTo,
         'lastMessage'      => $preview,
         'lastMessageType'  => $type,
         'lastMessageAt'    => $nowIso,

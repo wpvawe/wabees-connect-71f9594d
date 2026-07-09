@@ -98,7 +98,7 @@ if ($wabaId === '' || $accessToken === '' || $name === '') {
 }
 
 $graphVersion = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v21.0';
-$query = ['name' => $name, 'access_token' => $accessToken];
+$query = ['name' => $name];
 if ($hsmId !== '') $query['hsm_id'] = $hsmId;
 $url = "https://graph.facebook.com/{$graphVersion}/" . rawurlencode($wabaId)
      . "/message_templates?" . http_build_query($query);
@@ -110,6 +110,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT        => 15,
     CURLOPT_CONNECTTIMEOUT => 5,
+    CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $accessToken],
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

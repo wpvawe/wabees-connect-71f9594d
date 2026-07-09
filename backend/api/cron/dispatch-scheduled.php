@@ -45,8 +45,15 @@ if (!$localBypass && ($expectedKey === '' || !hash_equals($expectedKey, (string)
 }
 
 // Guard against overlapping runs when a batch is slow.
-$lock = @fopen(sys_get_temp_dir() . '/wabees_cron_dispatch.lock', 'c');
-if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
+$lockPath = sys_get_temp_dir() . '/wabees_cron_dispatch.lock';
+$lock = fopen($lockPath, 'c');
+if ($lock === false) {
+    error_log('[WABEES cron] Cannot open lock file: ' . $lockPath);
+    http_response_code(500);
+    echo json_encode(['error' => 'lock unavailable']);
+    exit;
+}
+if (!flock($lock, LOCK_EX | LOCK_NB)) {
     echo json_encode(['skipped' => 'busy']);
     exit;
 }
