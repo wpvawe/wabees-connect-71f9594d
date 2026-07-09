@@ -68,6 +68,26 @@ service cloud.firestore {
       ];
     }
 
+    function userSelfUpdateForbiddenKeys() {
+      return [
+        'role', 'status', 'dataOwner', 'dataOwnerJoinedAt', 'dataOwnerJoinedVia',
+        'whatsappAccessToken', 'apiKey', 'hasSubscription'
+      ];
+    }
+
+    function inviteEmailMatches(invite) {
+      return invite.get('email', null) == null
+        || invite.email == ''
+        || invite.email == request.auth.token.email;
+    }
+
+    function withinAgentQuota(ownerId) {
+      return !exists(/databases/$(database)/documents/users/$(ownerId)/subscription/current)
+        || get(/databases/$(database)/documents/users/$(ownerId)/subscription/current).data.get('maxAgents', 0) == 0
+        || get(/databases/$(database)/documents/users/$(ownerId)/subscription/current).data.get('agentsUsed', 0)
+             < get(/databases/$(database)/documents/users/$(ownerId)/subscription/current).data.get('maxAgents', 0);
+    }
+
     function validInviteJoinPayload(userId, agentId) {
       return request.auth != null
         && request.auth.uid == agentId
@@ -75,6 +95,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode))
         && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.ownerId == userId
         && get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
+        && inviteEmailMatches(get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data)
         && (
           get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.get('expiresAt', null) == null
           || get(/databases/$(database)/documents/agent_invites/$(request.resource.data.inviteCode)).data.expiresAt > request.time
@@ -90,6 +111,7 @@ service cloud.firestore {
     function validInviteJoinCreate(userId, agentId) {
       return validInviteJoinPayload(userId, agentId)
         && request.resource.data.keys().hasOnly(agentInviteJoinKeys());
+        && withinAgentQuota(userId);
     }
 
     function validInviteJoinUpdate(userId, agentId) {
@@ -237,11 +259,18 @@ service cloud.firestore {
       // hooks already write (`totalMessages`, `totalCampaigns`) plus
       // low-risk activity stamps. Sensitive fields (role, plan, status,
       // dataOwner, whatsappAccessToken, apiKey, email) stay owner+admin.
-      allow update: if isOwner(userId) || isAdmin()
+      allow update: if isAdmin()
+        || (isOwner(userId)
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(userSelfUpdateForbiddenKeys()))
         || (isAgentOf(userId)
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['totalMessages', 'totalCampaigns',
-                           'lastActivityAt', 'updatedAt']));
+                            'lastActivityAt', 'updatedAt'])
+            && request.resource.data.get('totalMessages', resource.data.get('totalMessages', 0)) >= resource.data.get('totalMessages', 0)
+            && request.resource.data.get('totalMessages', resource.data.get('totalMessages', 0)) <= resource.data.get('totalMessages', 0) + 1000
+            && request.resource.data.get('totalCampaigns', resource.data.get('totalCampaigns', 0)) >= resource.data.get('totalCampaigns', 0)
+            && request.resource.data.get('totalCampaigns', resource.data.get('totalCampaigns', 0)) <= resource.data.get('totalCampaigns', 0) + 100);
 
       // Only admin can delete users
       allow delete: if isAdmin();
@@ -392,7 +421,8 @@ service cloud.firestore {
 
       // ============ Internal Notes (per conversation subcollection) ============
       match /conversations/{convId}/notes/{noteId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read, create, update: if isOwner(userId) || isAgentOf(userId);
+        allow delete: if isOwner(userId) || isAdmin();
         allow read: if isAdmin();
       }
 
@@ -407,14 +437,19 @@ service cloud.firestore {
 
       // ============ Scheduled Messages ============
       match /scheduled_messages/{msgId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
+        allow create: if isAgentOf(userId)
+          && request.resource.data.get('createdByUid', request.auth.uid) == request.auth.uid;
+        allow update: if isAgentOf(userId)
+          && resource.data.get('createdByUid', request.auth.uid) == request.auth.uid;
         allow read, write: if isAdmin();
       }
 
       // ============ Tags ============
       match /tags/{tagId} {
-        allow read, write: if isOwner(userId) || isAgentOf(userId);
-        allow read, write: if isAdmin();
+        allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // ============ Products (Catalog) ============
@@ -433,7 +468,8 @@ service cloud.firestore {
       // Owner + agents create surveys on resolve. Reads shared with team.
       match /csat_surveys/{surveyId} {
         allow read: if isOwner(userId) || isAgentOf(userId) || isAdmin();
-        allow create, update: if isOwner(userId) || isAgentOf(userId);
+        allow create: if isOwner(userId) || isAgentOf(userId);
+        allow update: if isOwner(userId) || isAdmin();
         allow delete: if isOwner(userId) || isAdmin();
       }
 
@@ -483,6 +519,7 @@ service cloud.firestore {
         allow update: if request.auth != null
           && resource.data.status == 'pending'
           && request.resource.data.status == 'accepted'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt'])
           && resource.data.code is string
           && request.resource.data.code == resource.data.code
           && exists(/databases/$(database)/documents/agent_invites/$(resource.data.code))
@@ -619,6 +656,7 @@ service cloud.firestore {
         (
           resource.data.status == 'pending'
           && request.resource.data.status == 'accepted'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt'])
           && (resource.data.get('expiresAt', null) == null || resource.data.expiresAt > request.time)
           && request.resource.data.ownerId == resource.data.ownerId
           && request.resource.data.role == resource.data.role
