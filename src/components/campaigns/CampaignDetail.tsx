@@ -59,6 +59,9 @@ export function CampaignDetail({ id }: { id: string }) {
 
   async function run() {
     if (!uid || !selfUid || !data) return;
+    // Bug fix: double-click / rapid re-entry could stack two run() calls
+    // before setRunning(true) settled, dispatching the campaign twice.
+    if (running) return;
     if (!confirm(`Start sending to ${data.totalRecipients} recipients?`)) return;
     setRunning(true);
     try {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession";
@@ -66,6 +66,8 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
     session.status === "ready" && !!session.dataOwner && session.dataOwner !== session.uid;
   const [data, setData] = useState<Agent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bug fix: guard async setState after unmount / uid change.
+  const cancelledRef = useRef<boolean>(false);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -73,6 +75,9 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
     if (!db) return;
     try {
       const docs = await fetchAgentsCoalesced(db, uid);
+      // Bug fix: bail if the caller signalled cancellation while the
+      // coalesced fetch was in flight (uid changed / component unmounted).
+      if (cancelledRef.current) return;
       setData(
         docs
           // Never surface the owner themselves as a teammate row —
@@ -113,17 +118,22 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
       );
       setError(null);
     } catch (err) {
+      if (cancelledRef.current) return;
       setError((err as Error).message);
     }
   }, [uid, selfUid, maskOtherEmails]);
 
   useEffect(() => {
+    cancelledRef.current = false;
     void load();
     const unsub = subscribeRefetch("agents", () => {
       if (uid) invalidateAgents(uid);
       void load();
     });
-    return () => unsub();
+    return () => {
+      cancelledRef.current = true;
+      unsub();
+    };
   }, [load, uid]);
 
   return { data, error };

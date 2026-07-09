@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -39,6 +39,12 @@ export function AssignAgentDialog({
   const { data: conversations } = useConversations();
   const [busy, setBusy] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  // Bug fix: reason textarea persisted between opens — if a user typed a
+  // reason, cancelled, then reopened the dialog for a different conversation
+  // the old text was pre-filled and could be submitted with the new assign.
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
 
   const requiredSkills = (() => {
     const conv = conversations?.find((c) => c.contactPhone === phone);
