@@ -91,7 +91,10 @@ export function useScheduledDispatcher() {
     let busy = false;
 
     async function tick() {
-      if (!alive || busy) return;
+      // Bug fix: re-check uid/selfUid inside every tick. The effect closure
+      // captured them at mount, but sign-out between ticks could otherwise
+      // dispatch scheduled messages using stale credentials.
+      if (!alive || busy || !uid || !selfUid) return;
       busy = true;
       try {
         const nowMs = Date.now();
@@ -106,7 +109,7 @@ export function useScheduledDispatcher() {
         );
         const snap = await getDocs(snapRef);
         if (!alive) return;
-        const creds = await loadWaConnection(selfUid!).catch(() => null);
+        const creds = await loadWaConnection(selfUid).catch(() => null);
         if (!creds) return;
         const STALE_SENDING_MS = 5 * 60 * 1000;
         for (const d of snap.docs) {
