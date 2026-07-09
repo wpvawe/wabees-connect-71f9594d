@@ -116,10 +116,15 @@ async function postJson<T = unknown>(
     }
   }
 
+  // Bug fix: no timeout on the PHP proxy fetch meant a slow/unresponsive
+  // backend would stall the whole campaign send loop indefinitely with the
+  // campaign stuck at status="running" and no recovery short of killing the
+  // tab. 30s is plenty for Meta Graph round-trips.
   const res = await fetch(`${WABEES_API_BASE}/${endpoint}`, {
     method: "POST",
     headers,
     body: JSON.stringify(outboundBody),
+    signal: AbortSignal.timeout(30_000),
   });
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   const explicitSuccess = typeof raw.success === "boolean" ? raw.success : undefined;
