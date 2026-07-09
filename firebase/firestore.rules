@@ -63,7 +63,7 @@ service cloud.firestore {
 
     function regularAgentConversationKeys() {
       return [
-        'contactPhone', 'contactName',
+        'contactPhone', 'contactName', 'updatedAt',
         'lastMessage', 'lastMessageType', 'lastMessageAt',
         'unreadCount',
         'state', 'stateUpdatedAt', 'stateUpdatedByUid', 'stateUpdatedByEmail',
