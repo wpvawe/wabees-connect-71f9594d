@@ -11,6 +11,7 @@
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -254,6 +255,11 @@ export async function acceptAgentInvite(input: {
       joinedVia: "invite",
       inviteCode: invite.code,
       skills: [],
+      leftAt: deleteField(),
+      leftReason: deleteField(),
+      revokedAt: deleteField(),
+      revokedByUid: deleteField(),
+      revokedByEmail: deleteField(),
     },
     { merge: true },
   );
