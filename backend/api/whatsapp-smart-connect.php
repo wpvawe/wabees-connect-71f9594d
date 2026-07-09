@@ -13,11 +13,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
-require_once __DIR__ . '/../config/wa-bearer-auth.php';
-$auth = wabees_apply_bearer_auth($input);
-if (!empty($auth['error'])) {
-    http_response_code((int)($auth['status'] ?? 401));
-    echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
+require_once __DIR__ . '/../config/firebase-auth.php';
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+$idToken = trim((string)($input['id_token'] ?? ''));
+if (!$idToken && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) $idToken = trim($m[1]);
+$uid = verify_firebase_id_token($idToken, $err);
+if (!$uid) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => $err ?: 'Unauthorized']]);
     exit;
 }
 
