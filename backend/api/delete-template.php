@@ -73,6 +73,11 @@ if (!empty($auth['error'])) {
     echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => 'Unauthorized']]);
+    exit;
+}
 
 if (empty($data['business_account_id']) && !empty($auth['owner_uid'])) {
     $ownerUid = preg_replace('/[^A-Za-z0-9_-]/', '', (string)$auth['owner_uid']);

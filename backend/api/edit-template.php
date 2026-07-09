@@ -70,6 +70,11 @@ if (!empty($auth['error'])) {
     echo json_encode(['success' => false, 'error' => ['message' => $auth['error']]]);
     exit;
 }
+if (($auth['applied'] ?? false) !== true) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => ['message' => 'Unauthorized']]);
+    exit;
+}
 
 $accessToken  = trim((string)($data['access_token'] ?? ''));
 $hsmId        = trim((string)($data['hsm_id'] ?? ''));
