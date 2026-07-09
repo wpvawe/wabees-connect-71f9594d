@@ -73,6 +73,9 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
     if (!db) return;
     try {
       const docs = await fetchAgentsCoalesced(db, uid);
+      // Bug fix: bail if the caller signalled cancellation while the
+      // coalesced fetch was in flight (uid changed / component unmounted).
+      if (cancelledRef.current) return;
       setData(
         docs
           // Never surface the owner themselves as a teammate row —
@@ -113,17 +116,22 @@ export function useAgents(): { data: Agent[] | null; error: string | null } {
       );
       setError(null);
     } catch (err) {
+      if (cancelledRef.current) return;
       setError((err as Error).message);
     }
   }, [uid, selfUid, maskOtherEmails]);
 
   useEffect(() => {
+    cancelledRef.current = false;
     void load();
     const unsub = subscribeRefetch("agents", () => {
       if (uid) invalidateAgents(uid);
       void load();
     });
-    return () => unsub();
+    return () => {
+      cancelledRef.current = true;
+      unsub();
+    };
   }, [load, uid]);
 
   return { data, error };
