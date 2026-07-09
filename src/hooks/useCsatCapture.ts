@@ -175,5 +175,14 @@ export function useCsatCapture(): void {
       window.clearInterval(pollTimer);
       unsubBroker();
     };
-  }, [session, settings.askComment, settings.commentPrompt]);
+    // Bug fix: `session` is an object that changes identity on every token
+    // refresh, tearing down this subscription (and its local Maps) needlessly.
+    // Depend on the primitives the effect actually reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    session.status === "ready" ? session.uid : null,
+    session.status === "ready" ? session.dataOwner : null,
+    settings.askComment,
+    settings.commentPrompt,
+  ]);
 }
