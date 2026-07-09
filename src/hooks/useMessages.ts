@@ -253,11 +253,19 @@ export function useMessages(phone: string | undefined): {
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const oldestOlderCreatedRef = useRef<Date | null>(null);
   const oldestLiveCreatedRef = useRef<Date | null>(null);
+  // Bug fix: once the user pages back with loadMore(), a subsequent live
+  // snapshot must NOT reset hasMore based on the fixed live-window size,
+  // otherwise "Load older" disappears the moment any new message arrives.
+  const hasPagedBackRef = useRef<boolean>(false);
 
   // Reset paging when the thread changes.
   useEffect(() => {
     setHasMore(false);
     setOlderRows([]);
+    // Bug fix: also clear liveRows here so switching threads doesn't flash
+    // the previous thread's messages before the new snapshot arrives.
+    setLiveRows(null);
+    hasPagedBackRef.current = false;
     oldestOlderCreatedRef.current = null;
     oldestLiveCreatedRef.current = null;
   }, [phone]);
@@ -281,7 +289,9 @@ export function useMessages(phone: string | undefined): {
       (snap) => {
         // Hit the live cap? Older messages likely exist; "Load older" fetches
         // them on demand without disturbing this listener.
-        setHasMore(snap.docs.length >= PAGE_SIZE);
+        if (!hasPagedBackRef.current) {
+          setHasMore(snap.docs.length >= PAGE_SIZE);
+        }
         setLoadingMore(false);
         const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
         // Firestore returned desc-by-createdAt. Track the oldest live doc
@@ -336,6 +346,7 @@ export function useMessages(phone: string | undefined): {
         return merged;
       });
       setHasMore(snap.docs.length >= PAGE_STEP);
+      hasPagedBackRef.current = true;
     } catch (err) {
       setError((err as Error).message);
     } finally {
