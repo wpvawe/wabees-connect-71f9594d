@@ -18,48 +18,53 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['error' => 'POST only']); exit;
 }
 
-require_once __DIR__ . '/../config/firebase-config.php';
-require_once __DIR__ . '/../config/firebase-auth.php';
+require_once __DIR__ . '/../config/wa-bearer-auth.php';
 
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
-$action        = (string)($body['action'] ?? 'get');
-$idToken       = (string)($body['id_token'] ?? '');
-$phoneNumberId = preg_replace('/[^0-9]/', '', (string)($body['phone_number_id'] ?? ''));
+$action = (string)($body['action'] ?? 'get');
 
-if (!$phoneNumberId) {
+// Resolve the exact phone_number_id + access_token from the authenticated
+// workspace, not from caller-supplied body values. This prevents profile fetch
+// from using a stale/mismatched token and also supports agents via dataOwner.
+$auth = wabees_apply_bearer_auth($body);
+if (!empty($auth['error'])) {
+    http_response_code((int)($auth['status'] ?? 401));
+    echo json_encode(['error' => $auth['error']]); exit;
+}
+
+if (($auth['applied'] ?? false) === true) {
+    $ownerUid = (string)($auth['owner_uid'] ?? '');
+    $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($body['phone_number_id'] ?? ''));
+    $accessToken = (string)($body['access_token'] ?? '');
+} else {
+    // Backward-compatible fallback for older app builds that still send only
+    // id_token in the JSON body.
+    $idToken = (string)($body['id_token'] ?? '');
+    if ($idToken === '') {
+        http_response_code(401);
+        echo json_encode(['error' => 'Firebase bearer token required']); exit;
+    }
+    $uid = verify_firebase_id_token($idToken, $err);
+    if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
+    $ownerUid = $uid;
+    $userResp = firestore_get('users/' . rawurlencode($uid));
+    if (($userResp['code'] ?? 404) === 200) {
+        $f = $userResp['data']['fields'] ?? [];
+        $dataOwner = trim((string)($f['dataOwner']['stringValue'] ?? ''));
+        if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
+    }
+    $creds = wabees_load_owner_credentials($ownerUid);
+    if (!empty($creds['error'])) {
+        http_response_code((int)($creds['status'] ?? 400));
+        echo json_encode(['error' => $creds['error']]); exit;
+    }
+    $phoneNumberId = preg_replace('/[^0-9]/', '', (string)($creds['phone_number_id'] ?? ''));
+    $accessToken = (string)($creds['access_token'] ?? '');
+}
+
+if (!$phoneNumberId || $accessToken === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing phone_number_id']); exit;
-}
-
-// High-sev fix: Firebase auth is now required. Previously this endpoint
-// accepted a caller-supplied `access_token` in the body, which let anyone
-// with (or who could brute-force) a Meta Graph token hit /whatsapp_business_profile
-// under our origin's CORS. Server now resolves the token from the caller's
-// own workspace via their verified Firebase id_token only.
-$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
-if ($idToken === '' && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
-    $idToken = trim($m[1]);
-}
-if ($idToken === '') {
-    http_response_code(401);
-    echo json_encode(['error' => 'Firebase id_token required']); exit;
-}
-$uid = verify_firebase_id_token($idToken, $err);
-if (!$uid) { http_response_code(401); echo json_encode(['error' => $err ?: 'Unauthorized']); exit; }
-
-// Resolve owner (agents use their owner's WA credentials).
-$ownerUid = $uid;
-$userResp = firestore_get("users/$uid");
-if (($userResp['code'] ?? 404) === 200) {
-    $f = $userResp['data']['fields'] ?? [];
-    $dataOwner = trim($f['dataOwner']['stringValue'] ?? '');
-    if ($dataOwner !== '' && $dataOwner !== $uid) $ownerUid = $dataOwner;
-}
-$tokens = get_user_access_token($ownerUid);
-$accessToken = (string)($tokens['accessToken'] ?? '');
-if ($accessToken === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'WhatsApp not connected']); exit;
+    echo json_encode(['error' => 'WhatsApp not fully connected']); exit;
 }
 
 $gv = 'v21.0';

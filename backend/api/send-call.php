@@ -99,7 +99,7 @@ if ($action !== 'connect' && empty($callId)) {
     exit;
 }
 
-$url = "https://graph.facebook.com/v24.0/{$phoneNumberId}/calls";
+$url = "https://graph.facebook.com/v21.0/{$phoneNumberId}/calls";
 
 $payload = [
     'messaging_product' => 'whatsapp',
@@ -118,24 +118,54 @@ if (!empty($input['biz_opaque_callback_data'])) {
     $payload['biz_opaque_callback_data'] = (string)$input['biz_opaque_callback_data'];
 }
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    "Authorization: Bearer {$accessToken}",
-]);
+function wabees_call_graph_request(string $url, string $accessToken, array $payload): array {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        "Authorization: Bearer {$accessToken}",
+    ]);
+    $response  = curl_exec($ch);
+    $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    return [
+        'response' => $response,
+        'httpCode' => (int)$httpCode,
+        'curlError' => (string)$curlError,
+        'data' => json_decode((string)$response, true),
+    ];
+}
 
-$response  = curl_exec($ch);
-$httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlError = curl_error($ch);
-curl_close($ch);
+$primary = wabees_call_graph_request($url, $accessToken, $payload);
+send_call_log('META action=' . $action . ' call_id=' . $callId . ' http=' . $primary['httpCode'] . ' resp=' . substr((string)$primary['response'], 0, 400) . ' err=' . $primary['curlError']);
 
-send_call_log('META action=' . $action . ' call_id=' . $callId . ' http=' . $httpCode . ' resp=' . substr((string)$response, 0, 400) . ' err=' . $curlError);
+$effective = $primary;
+$fallback = null;
+if ($action === 'reject') {
+    // Some Meta Calling accounts acknowledge reject but keep the consumer app
+    // ringing. Follow reject with terminate as a safe hard-stop fallback. If
+    // reject fails, terminate can still succeed and should be treated as a
+    // successful user reject for UI/app sync purposes.
+    $terminatePayload = $payload;
+    $terminatePayload['action'] = 'terminate';
+    $fallback = wabees_call_graph_request($url, $accessToken, $terminatePayload);
+    send_call_log('META_FALLBACK action=terminate for=reject call_id=' . $callId . ' http=' . $fallback['httpCode'] . ' resp=' . substr((string)$fallback['response'], 0, 400) . ' err=' . $fallback['curlError']);
+    $primaryOk = empty($primary['curlError']) && $primary['httpCode'] >= 200 && $primary['httpCode'] < 300;
+    $fallbackOk = empty($fallback['curlError']) && $fallback['httpCode'] >= 200 && $fallback['httpCode'] < 300;
+    if (!$primaryOk && $fallbackOk) {
+        $effective = $fallback;
+    }
+}
+
+$response  = $effective['response'];
+$httpCode  = (int)$effective['httpCode'];
+$curlError = (string)$effective['curlError'];
 
 if ($curlError) {
     http_response_code(500);
@@ -143,7 +173,14 @@ if ($curlError) {
     exit;
 }
 
-$data = json_decode($response, true);
+$data = is_array($effective['data']) ? $effective['data'] : json_decode((string)$response, true);
+if ($fallback !== null) {
+    $data = is_array($data) ? $data : [];
+    $data['_wabees_reject_fallback'] = [
+        'terminate_http' => (int)$fallback['httpCode'],
+        'terminate_ok' => empty($fallback['curlError']) && $fallback['httpCode'] >= 200 && $fallback['httpCode'] < 300,
+    ];
+}
 http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
 
 // Log outbound intents in Firestore so the browser sees status transitions

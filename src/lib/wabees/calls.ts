@@ -46,6 +46,7 @@ async function post(body: Record<string, unknown>): Promise<CallApiResult> {
     try {
       const idToken = await user.getIdToken();
       headers.Authorization = `Bearer ${idToken}`;
+      outbound.id_token = idToken;
       outbound.auth_uid = user.uid;
       // Strip so PHP resolves creds from Firestore (dataOwner).
       delete outbound.access_token;
