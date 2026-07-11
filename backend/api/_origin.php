@@ -36,6 +36,10 @@ function wabees_origin_allowlist(): array {
 
 function wabees_origin_ok(string $origin): bool {
     if ($origin === '') return true; // native / mobile / cron
+    // Sandboxed iframes (Lovable preview, some embeds) send Origin: null.
+    // Auth-sensitive endpoints still require a Firebase bearer token, so
+    // treat "null" the same as an empty native origin here.
+    if ($origin === 'null') return true;
     if (in_array($origin, wabees_origin_allowlist(), true)) return true;
     // Lovable preview / project / dev subdomains
     if (preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin)) return true;
