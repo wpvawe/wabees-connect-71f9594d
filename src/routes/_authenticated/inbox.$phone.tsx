@@ -69,7 +69,6 @@ import {
   sendMediaMessage,
   extractWamid,
 } from "@/lib/wabees/api";
-import { initiateCall } from "@/lib/wabees/calls";
 import { loadWaConnection } from "@/lib/firebase/whatsapp-config";
 import { useContacts } from "@/hooks/useContacts";
 import { useConversations } from "@/hooks/useConversations";
@@ -968,19 +967,16 @@ function Thread({ phone }: { phone: string }) {
         >
           <FontAwesomeIcon icon={faMagnifyingGlass} className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onClick={async () => {
-            const res = await initiateCall({ to: phone });
-            if (res.success) toast.success("Calling " + phone);
-            else toast.error(res.message || "Couldn't start call");
-          }}
-          aria-label={`WhatsApp call ${phone}`}
-          title="WhatsApp call"
+        <a
+          href={`https://wa.me/${phone.replace(/\D/g, "")}`}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open WhatsApp with ${phone}`}
+          title="Open in WhatsApp to call"
           className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
           <FontAwesomeIcon icon={faPhone} className="h-4 w-4" />
-        </button>
+        </a>
         <button
           type="button"
           onClick={() => setDetailsOpen(true)}
