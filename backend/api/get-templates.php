@@ -15,7 +15,7 @@ $allowedOrigins = [
     'http://127.0.0.1:8080',
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-$originOk = $origin === '' || in_array($origin, $allowedOrigins, true)
+$originOk = $origin === '' || $origin === 'null' || in_array($origin, $allowedOrigins, true)
     || (bool) preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin)
     || (bool) preg_match('#^https://[a-z0-9-]+\.lovableproject\.com$#i', $origin)
     || (bool) preg_match('#^https://[a-z0-9-]+\.lovable\.dev$#i', $origin);

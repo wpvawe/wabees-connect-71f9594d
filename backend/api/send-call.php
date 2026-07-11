@@ -149,10 +149,6 @@ http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
 // Log outbound intents in Firestore so the browser sees status transitions
 // even before Meta's first webhook event arrives.
 $ownerUid = $auth['owner_uid'] ?? ($auth['auth_uid'] ?? '');
-// Even when Meta returns an error we still update the Firestore call_log
-// for reject/terminate — otherwise a "ringing" doc stays live and the
-// browser banner reappears on every reload. Meta errors are surfaced via
-// the metaError field + HTTP response body; UX shows a clear toast.
 if ($ownerUid !== '') {
     $firestoreHelper = __DIR__ . '/../config/firebase-config.php';
     if (file_exists($firestoreHelper)) require_once $firestoreHelper;
@@ -182,20 +178,26 @@ if ($ownerUid !== '') {
                 'createdAt'     => ['timestampValue' => $now],
             ]);
         } elseif (!empty($callId)) {
-            $mergeStatus = $action === 'reject' ? 'rejected' :
-                           ($action === 'terminate' ? 'terminated' :
-                           ($action === 'accept' ? 'connected' : $action));
-            $mergeFields = [
-                'status'    => ['stringValue' => $mergeStatus],
-                'endedAt'   => ['timestampValue' => $now],
-                'updatedAt' => ['timestampValue' => $now],
-            ];
+            $mergeFields = ['updatedAt' => ['timestampValue' => $now]];
+            if ($metaOk) {
+                $mergeStatus = $action === 'reject' ? 'rejected' :
+                               ($action === 'terminate' ? 'terminated' :
+                               ($action === 'accept' ? 'connected' : $action));
+                $mergeFields['status'] = ['stringValue' => $mergeStatus];
+                if (in_array($action, ['reject', 'terminate'], true)) {
+                    $mergeFields['endedAt'] = ['timestampValue' => $now];
+                }
+                if ($action === 'accept') {
+                    $mergeFields['connectedAt'] = ['timestampValue' => $now];
+                }
+            }
             if (!$metaOk) {
                 $mergeFields['metaError']    = ['stringValue' => $metaErrorMsg ?: ('HTTP ' . $httpCode)];
                 $mergeFields['metaErrorHttp'] = ['integerValue' => (string)$httpCode];
+                $mergeFields['lastActionFailed'] = ['stringValue' => $action];
             }
             @firestore_set("users/$ownerUid/call_logs/$callId", $mergeFields, true);
-            send_call_log('FIRESTORE merged ' . $callId . ' status=' . $mergeStatus . ' metaOk=' . ($metaOk ? '1' : '0'));
+            send_call_log('FIRESTORE merged ' . $callId . ' action=' . $action . ' metaOk=' . ($metaOk ? '1' : '0'));
         }
     }
 }
