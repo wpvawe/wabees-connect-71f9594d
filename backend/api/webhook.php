@@ -2355,10 +2355,13 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
     $from = $callEvent['from'] ?? '';
     $type = $callEvent['type'] ?? '';       // voice
     $timestamp = $callEvent['timestamp'] ?? time();
-    $status = $callEvent['status'] ?? '';    // ringing, connected, ended, rejected, not_answered, missed
+    $event = strtolower((string)($callEvent['event'] ?? ''));
+    $rawStatus = $callEvent['status'] ?? ''; // Meta can send "COMPLETED" or an array on terminate webhooks.
+    $statusText = is_array($rawStatus) ? strtolower((string)end($rawStatus)) : strtolower((string)$rawStatus);
+    $status = normalize_call_status($event, $statusText, $callEvent); // ringing, connected, terminated, rejected, not_answered, missed
     $sdpOffer = $callEvent['sdp'] ?? ($callEvent['session']['sdp'] ?? '');
 
-    webhook_log("CALL: id=$callId from=$from type=$type status=$status");
+    webhook_log("CALL: id=$callId from=$from type=$type event=$event raw_status=" . (is_array($rawStatus) ? implode(',', $rawStatus) : (string)$rawStatus) . " status=$status");
 
     $normalizedFrom = normalize_phone($from);
 
@@ -2444,8 +2447,9 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
 
         // Calculate duration if we have start time
         $existingLog = firestore_get($callLogPath);
-        if (!empty($existingLog['fields']['startedAt']['timestampValue'])) {
-            $startTs = strtotime($existingLog['fields']['startedAt']['timestampValue']);
+        $existingFields = (($existingLog['code'] ?? 404) === 200) ? ($existingLog['data']['fields'] ?? []) : [];
+        if (!empty($existingFields['startedAt']['timestampValue'])) {
+            $startTs = strtotime($existingFields['startedAt']['timestampValue']);
             $duration = max(0, (int) $timestamp - $startTs);
             $updateData['duration'] = ['integerValue' => (string) $duration];
         }
@@ -2463,9 +2467,9 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
         // ============ MISSED-CALL AUTO-REPLY ============
         // Only for actually-missed inbound calls (not answered / rejected).
         $missedStatuses = ['missed', 'not_answered', 'rejected'];
-        $alreadyReplied = !empty($existingLog['fields']['autoReplied']['booleanValue']);
+        $alreadyReplied = !empty($existingFields['autoReplied']['booleanValue']);
         if (in_array($status, $missedStatuses, true) && !$alreadyReplied) {
-            $callType = $existingLog['fields']['type']['stringValue'] ?? 'incoming';
+            $callType = $existingFields['type']['stringValue'] ?? 'incoming';
             if ($callType === 'incoming') {
                 maybe_send_missed_call_reply($user, $userId, $phoneNumberId, $from, $callId);
             }
@@ -2480,6 +2484,27 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
             'connectedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp)],
         ], true);
     }
+}
+
+function normalize_call_status(string $event, string $statusText, array $callEvent): string
+{
+    $statusText = strtolower(trim($statusText));
+    if ($statusText === 'in_progress') return 'connected';
+    if (in_array($statusText, ['ringing', 'connected', 'ended', 'terminated', 'not_answered', 'missed', 'rejected'], true)) {
+        return $statusText;
+    }
+    if ($event === 'connect' || !empty($callEvent['session']['sdp']) || !empty($callEvent['sdp'])) return 'ringing';
+    if ($event === 'terminate') {
+        // Meta terminate webhooks often arrive as status=COMPLETED/FAILED instead
+        // of status=terminated. Any terminate event must close the Firestore
+        // ringing doc so website/app banners do not reappear after reload.
+        if (in_array($statusText, ['failed', 'not answered', 'not_answered', 'no_answer', 'timeout'], true)) {
+            return 'not_answered';
+        }
+        return 'terminated';
+    }
+    if ($statusText === 'completed') return 'terminated';
+    return $statusText;
 }
 
 // ================================================================

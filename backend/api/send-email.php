@@ -23,6 +23,7 @@ $allowedOrigins = [
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $originOk =
     $origin === '' ||
+    $origin === 'null' ||
     in_array($origin, $allowedOrigins, true) ||
     (bool) preg_match('#^https://(?:id-preview--)?[a-z0-9-]+\.lovable\.app$#i', $origin) ||
     (bool) preg_match('#^https://[a-z0-9-]+\.lovable(?:project)?\.app$#i', $origin) ||
