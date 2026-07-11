@@ -2465,12 +2465,19 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
         ], true);
 
         // ============ MISSED-CALL AUTO-REPLY ============
-        // Only for actually-missed inbound calls (not answered / rejected).
+        // Fire for inbound calls that ended without ever connecting.
+        // Meta commonly sends `event=terminate status=COMPLETED` when the
+        // caller hangs up unanswered → normalized to `terminated`. Treat
+        // any terminal status as missed IF connectedAt is empty.
         $missedStatuses = ['missed', 'not_answered', 'rejected'];
         $alreadyReplied = !empty($existingFields['autoReplied']['booleanValue']);
-        if (in_array($status, $missedStatuses, true) && !$alreadyReplied) {
+        $wasConnected   = !empty($existingFields['connectedAt']['timestampValue']);
+        $isTerminalMiss = in_array($status, $missedStatuses, true)
+            || (($status === 'terminated' || $status === 'ended') && !$wasConnected);
+        if ($isTerminalMiss && !$alreadyReplied) {
             $callType = $existingFields['type']['stringValue'] ?? 'incoming';
             if ($callType === 'incoming') {
+                webhook_log("CALL_AUTOREPLY: trigger status=$status wasConnected=" . ($wasConnected ? '1' : '0') . " callId=$callId");
                 maybe_send_missed_call_reply($user, $userId, $phoneNumberId, $from, $callId);
             }
         }
