@@ -24,6 +24,17 @@ header('Content-Type: application/json');
 require __DIR__ . '/_origin.php';
 wabees_cors(['POST', 'OPTIONS']);
 wabees_require_origin();
+
+// Simple daily log so we can see reject/terminate hits + Meta responses.
+// Mirrors backend/api/webhook.php::webhook_log().
+function send_call_log(string $msg): void {
+    $logFile = __DIR__ . '/../logs/send-call_' . date('Y-m-d') . '.log';
+    $dir = dirname($logFile);
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    @file_put_contents($logFile, date('H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
+    @error_log('[WABEES send-call] ' . $msg);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => ['message' => 'Method not allowed']]);
@@ -31,15 +42,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
+send_call_log('REQ action=' . ($input['action'] ?? '-') . ' call_id=' . ($input['call_id'] ?? '-') . ' to=' . ($input['to'] ?? '-'));
 
 require_once __DIR__ . '/../config/wa-bearer-auth.php';
 $auth = wabees_apply_bearer_auth($input);
 if (!empty($auth['error'])) {
+    send_call_log('AUTH_FAIL ' . ($auth['error'] ?? ''));
     http_response_code((int)($auth['status'] ?? 401));
     echo json_encode(['error' => ['message' => $auth['error']]]);
     exit;
 }
 if (($auth['applied'] ?? false) !== true) {
+    send_call_log('AUTH_MISSING bearer');
     http_response_code(401);
     echo json_encode(['error' => ['message' => 'Authorization bearer token is required']]);
     exit;
@@ -121,6 +135,8 @@ $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlError = curl_error($ch);
 curl_close($ch);
 
+send_call_log('META action=' . $action . ' call_id=' . $callId . ' http=' . $httpCode . ' resp=' . substr((string)$response, 0, 400) . ' err=' . $curlError);
+
 if ($curlError) {
     http_response_code(500);
     echo json_encode(['error' => ['message' => 'Network error: ' . $curlError]]);
@@ -133,13 +149,24 @@ http_response_code(($httpCode >= 100 && $httpCode < 600) ? $httpCode : 502);
 // Log outbound intents in Firestore so the browser sees status transitions
 // even before Meta's first webhook event arrives.
 $ownerUid = $auth['owner_uid'] ?? ($auth['auth_uid'] ?? '');
-if ($ownerUid !== '' && $httpCode === 200) {
+// Even when Meta returns an error we still update the Firestore call_log
+// for reject/terminate — otherwise a "ringing" doc stays live and the
+// browser banner reappears on every reload. Meta errors are surfaced via
+// the metaError field + HTTP response body; UX shows a clear toast.
+if ($ownerUid !== '') {
     $firestoreHelper = __DIR__ . '/../config/firebase-config.php';
     if (file_exists($firestoreHelper)) require_once $firestoreHelper;
 
     if (function_exists('firestore_set')) {
         $now = gmdate('Y-m-d\TH:i:s\Z');
-        if ($action === 'connect') {
+        $metaOk = ($httpCode >= 200 && $httpCode < 300);
+        $metaErrorMsg = '';
+        if (!$metaOk && is_array($data) && isset($data['error'])) {
+            $metaErrorMsg = is_array($data['error'])
+                ? (string)($data['error']['message'] ?? json_encode($data['error']))
+                : (string)$data['error'];
+        }
+        if ($action === 'connect' && $metaOk) {
             $newId = is_array($data) && !empty($data['calls'][0]['id'])
                 ? $data['calls'][0]['id']
                 : ('local_' . bin2hex(random_bytes(6)));
@@ -158,11 +185,17 @@ if ($ownerUid !== '' && $httpCode === 200) {
             $mergeStatus = $action === 'reject' ? 'rejected' :
                            ($action === 'terminate' ? 'terminated' :
                            ($action === 'accept' ? 'connected' : $action));
-            @firestore_set("users/$ownerUid/call_logs/$callId", [
+            $mergeFields = [
                 'status'    => ['stringValue' => $mergeStatus],
                 'endedAt'   => ['timestampValue' => $now],
                 'updatedAt' => ['timestampValue' => $now],
-            ], true);
+            ];
+            if (!$metaOk) {
+                $mergeFields['metaError']    = ['stringValue' => $metaErrorMsg ?: ('HTTP ' . $httpCode)];
+                $mergeFields['metaErrorHttp'] = ['integerValue' => (string)$httpCode];
+            }
+            @firestore_set("users/$ownerUid/call_logs/$callId", $mergeFields, true);
+            send_call_log('FIRESTORE merged ' . $callId . ' status=' . $mergeStatus . ' metaOk=' . ($metaOk ? '1' : '0'));
         }
     }
 }
