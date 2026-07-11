@@ -78,13 +78,34 @@ export function useCallLogs(max = 100): {
   return { data, loading, error };
 }
 
-/** The most recent still-ringing incoming call, if any. Drives the banner. */
+/**
+ * The most recent still-ringing incoming call, if any. Drives the banner.
+ *
+ * Age-guarded: a WhatsApp call almost never rings for more than 45s. If a
+ * `ringing` doc is older than that, Meta's `terminated` webhook was
+ * dropped/missed and the doc is stale. Rendering it would re-show the
+ * banner on every reload forever, which is exactly the bug users hit.
+ */
+const RINGING_MAX_AGE_MS = 45_000;
+
 export function useRingingCall(): CallLogRecord | null {
   const { data } = useCallLogs(20);
+  // Force re-evaluation every few seconds so a stale ringing doc drops
+  // out of the banner without needing a Firestore update to arrive.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
   if (!data) return null;
+  const now = Date.now();
   return (
-    data.find(
-      (c) => c.type === "incoming" && (c.status === "ringing" || c.status === "connect"),
-    ) ?? null
+    data.find((c) => {
+      if (c.type !== "incoming") return false;
+      if (c.status !== "ringing" && c.status !== "connect") return false;
+      const started = c.createdAt ? Date.parse(c.createdAt) : NaN;
+      if (!Number.isFinite(started)) return true; // no timestamp — trust it
+      return now - started <= RINGING_MAX_AGE_MS;
+    }) ?? null
   );
 }

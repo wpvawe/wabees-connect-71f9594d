@@ -69,7 +69,9 @@ async function post(body: Record<string, unknown>): Promise<CallApiResult> {
         ? String((rawError as { message?: unknown }).message ?? "")
         : undefined;
   return {
-    success: res.ok && !raw.error,
+    // HTTP status is the source of truth. A 4xx/5xx from Meta means the
+    // reject/terminate did NOT actually stop the ring on WhatsApp's side.
+    success: res.ok && res.status >= 200 && res.status < 300 && !raw.error,
     message: (raw.message as string | undefined) ?? errorMessage,
     raw,
   };

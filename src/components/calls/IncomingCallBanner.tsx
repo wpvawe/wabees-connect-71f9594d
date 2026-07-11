@@ -56,10 +56,20 @@ export function IncomingCallBanner() {
 
   async function onReject() {
     if (!call) return;
-    setDismissedId(call.id);
     const res = await rejectCall({ call_id: call.callId });
-    if (!res.success) toast.error(res.message || "Couldn't reject call");
-    else toast.success("Call rejected");
+    if (!res.success) {
+      // Do NOT dismiss the banner — Meta didn't accept the reject and the
+      // WhatsApp app is still ringing. Show the real error so the user
+      // knows to hang up on their phone.
+      toast.error(
+        res.message
+          ? `Reject failed: ${res.message}`
+          : "Couldn't reject the call on WhatsApp. Hang up from the phone.",
+      );
+      return;
+    }
+    setDismissedId(call.id);
+    toast.success("Call rejected");
   }
 
   return (
