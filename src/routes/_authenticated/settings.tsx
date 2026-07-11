@@ -20,6 +20,7 @@ import { CannedResponsesSection } from "@/components/settings/CannedResponsesSec
 import { SlaSettingsSection } from "@/components/settings/SlaSettingsSection";
 import { AutoTriageSection } from "@/components/settings/AutoTriageSection";
 import { CsatSettingsSection } from "@/components/settings/CsatSettingsSection";
+import { MissedCallReplySection } from "@/components/settings/MissedCallReplySection";
 import { Gated } from "@/components/auth/OwnerOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -188,6 +189,9 @@ function SettingsPage() {
         </Gated>
         <Gated capability="sla.manage">
           <CsatSettingsSection />
+        </Gated>
+        <Gated capability="sla.manage">
+          <MissedCallReplySection />
         </Gated>
       </div>
     </>
