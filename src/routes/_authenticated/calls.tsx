@@ -12,8 +12,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useCallLogs } from "@/hooks/useCallLogs";
-import { terminateCall, rejectCall, initiateCall } from "@/lib/wabees/calls";
-import { whatsappRecipientId } from "@/lib/firebase/normalizers";
+import { terminateCall, rejectCall } from "@/lib/wabees/calls";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 
 export const Route = createFileRoute("/_authenticated/calls")({
@@ -59,7 +58,6 @@ function CallsPage() {
   const { data, loading, error } = useCallLogs(150);
   const wa = useWhatsAppConfig("effective");
   const [busy, setBusy] = useState<string | null>(null);
-  const [dialInput, setDialInput] = useState("");
 
   const groups = useMemo(() => {
     const list = data ?? [];
@@ -72,22 +70,6 @@ function CallsPage() {
       ),
     };
   }, [data]);
-
-  async function onDial() {
-    const to = whatsappRecipientId(dialInput.trim());
-    if (!to || to.replace(/\D/g, "").length < 6) {
-      toast.error("Enter a valid phone number with country code");
-      return;
-    }
-    setBusy("dial");
-    const res = await initiateCall({ to });
-    setBusy(null);
-    if (!res.success) toast.error(res.message || "Call failed to start");
-    else {
-      toast.success("Calling " + to);
-      setDialInput("");
-    }
-  }
 
   async function onEnd(callId: string) {
     setBusy(callId);
@@ -119,35 +101,33 @@ function CallsPage() {
         </div>
       </header>
 
-      {/* Dial pad */}
-      <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="mb-2 text-sm font-medium">Start a call</div>
-        <p className="mb-3 text-xs text-muted-foreground">
-          {wa.data?.connected
-            ? "Enter the customer's WhatsApp number with country code (e.g. 923001234567)."
-            : "Connect a WhatsApp number first to make outbound calls."}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={dialInput}
-            onChange={(e) => setDialInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onDial()}
-            placeholder="+92 300 1234567"
-            className="h-10 flex-1 min-w-[220px] rounded-md border border-border bg-background px-3 text-sm"
-          />
-          <button
-            type="button"
-            disabled={!wa.data?.connected || busy === "dial"}
-            onClick={onDial}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {busy === "dial" ? (
-              <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
-            ) : (
-              <FontAwesomeIcon icon={faPhone} className="h-4 w-4" />
-            )}
-            Call
-          </button>
+      {/* Setup / capability panel — honest about what works without a media gateway. */}
+      <div className="mb-6 grid gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-2">
+        <div>
+          <div className="mb-1 text-sm font-semibold">What works right now</div>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            <li>• Incoming calls: live banner + ring + Firestore log</li>
+            <li>• Reject incoming call from browser</li>
+            <li>• End (terminate) an active call</li>
+            <li>• Full call history: missed / rejected / duration</li>
+            <li>• Answer audio on WhatsApp Business app or Desktop</li>
+          </ul>
+        </div>
+        <div>
+          <div className="mb-1 text-sm font-semibold">Needs SIP / WebRTC gateway</div>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            <li>• Making outbound calls from the browser</li>
+            <li>• Answering calls directly in the browser</li>
+            <li>
+              Configure in <span className="font-medium">Meta → WhatsApp → Phone number →
+              Call settings → Use SIP</span>. Until then, calls ring on the WhatsApp app.
+            </li>
+          </ul>
+          {!wa.data?.connected ? (
+            <p className="mt-2 text-xs text-destructive">
+              WhatsApp is not connected — connect a number first.
+            </p>
+          ) : null}
         </div>
       </div>
 
