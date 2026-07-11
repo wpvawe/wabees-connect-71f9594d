@@ -17,6 +17,7 @@ import { AccountStatusGate } from "@/components/shell/AccountStatusGate";
 import { useAnnouncement } from "@/hooks/useAnnouncement";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBullhorn, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { IncomingCallBanner } from "@/components/calls/IncomingCallBanner";
 
 function waitForFirebaseUser(): Promise<User | null> {
   const auth = fbAuth();
@@ -77,6 +78,7 @@ function AuthenticatedShell() {
       <SideRail />
       <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-14 md:pb-0">
         {onInbox ? <UnreadTitleMount /> : null}
+        <IncomingCallBanner />
         <AnnouncementBanner />
         <Outlet />
       </main>

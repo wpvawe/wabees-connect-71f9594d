@@ -20,6 +20,7 @@ import {
   faLink,
   faBell,
   faBullseye,
+  faPhoneVolume,
   faAngleDoubleLeft,
   faAngleDoubleRight,
 } from "@fortawesome/free-solid-svg-icons";
@@ -51,6 +52,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Messaging",
     items: [
       { to: "/inbox", label: "Inbox", icon: faComments },
+      { to: "/calls", label: "Calls", icon: faPhoneVolume },
       { to: "/contacts", label: "Contacts", icon: faAddressBook },
       { to: "/templates", label: "Templates", icon: faFileLines },
     ],
