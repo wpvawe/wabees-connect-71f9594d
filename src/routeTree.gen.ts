@@ -29,6 +29,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated/contacts'
 import { Route as AuthenticatedConnectRouteImport } from './routes/_authenticated/connect'
 import { Route as AuthenticatedCampaignsRouteImport } from './routes/_authenticated/campaigns'
+import { Route as AuthenticatedCallsRouteImport } from './routes/_authenticated/calls'
 import { Route as AuthenticatedBotsRouteImport } from './routes/_authenticated/bots'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiBotRouteImport } from './routes/_authenticated/ai-bot'
@@ -144,6 +145,11 @@ const AuthenticatedCampaignsRoute = AuthenticatedCampaignsRouteImport.update({
   path: '/campaigns',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCallsRoute = AuthenticatedCallsRouteImport.update({
+  id: '/calls',
+  path: '/calls',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedBotsRoute = AuthenticatedBotsRouteImport.update({
   id: '/bots',
   path: '/bots',
@@ -224,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/ai-bot': typeof AuthenticatedAiBotRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/bots': typeof AuthenticatedBotsRoute
+  '/calls': typeof AuthenticatedCallsRoute
   '/campaigns': typeof AuthenticatedCampaignsRouteWithChildren
   '/connect': typeof AuthenticatedConnectRoute
   '/contacts': typeof AuthenticatedContactsRoute
@@ -257,6 +264,7 @@ export interface FileRoutesByTo {
   '/ai-bot': typeof AuthenticatedAiBotRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/bots': typeof AuthenticatedBotsRoute
+  '/calls': typeof AuthenticatedCallsRoute
   '/connect': typeof AuthenticatedConnectRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -291,6 +299,7 @@ export interface FileRoutesById {
   '/_authenticated/ai-bot': typeof AuthenticatedAiBotRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/bots': typeof AuthenticatedBotsRoute
+  '/_authenticated/calls': typeof AuthenticatedCallsRoute
   '/_authenticated/campaigns': typeof AuthenticatedCampaignsRouteWithChildren
   '/_authenticated/connect': typeof AuthenticatedConnectRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | '/ai-bot'
     | '/analytics'
     | '/bots'
+    | '/calls'
     | '/campaigns'
     | '/connect'
     | '/contacts'
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/ai-bot'
     | '/analytics'
     | '/bots'
+    | '/calls'
     | '/connect'
     | '/contacts'
     | '/dashboard'
@@ -393,6 +404,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ai-bot'
     | '/_authenticated/analytics'
     | '/_authenticated/bots'
+    | '/_authenticated/calls'
     | '/_authenticated/campaigns'
     | '/_authenticated/connect'
     | '/_authenticated/contacts'
@@ -570,6 +582,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCampaignsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/calls': {
+      id: '/_authenticated/calls'
+      path: '/calls'
+      fullPath: '/calls'
+      preLoaderRoute: typeof AuthenticatedCallsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/bots': {
       id: '/_authenticated/bots'
       path: '/bots'
@@ -717,6 +736,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiBotRoute: typeof AuthenticatedAiBotRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedBotsRoute: typeof AuthenticatedBotsRoute
+  AuthenticatedCallsRoute: typeof AuthenticatedCallsRoute
   AuthenticatedCampaignsRoute: typeof AuthenticatedCampaignsRouteWithChildren
   AuthenticatedConnectRoute: typeof AuthenticatedConnectRoute
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
@@ -738,6 +758,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiBotRoute: AuthenticatedAiBotRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedBotsRoute: AuthenticatedBotsRoute,
+  AuthenticatedCallsRoute: AuthenticatedCallsRoute,
   AuthenticatedCampaignsRoute: AuthenticatedCampaignsRouteWithChildren,
   AuthenticatedConnectRoute: AuthenticatedConnectRoute,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
