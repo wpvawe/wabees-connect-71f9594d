@@ -99,7 +99,7 @@ if ($action !== 'connect' && empty($callId)) {
     exit;
 }
 
-$url = "https://graph.facebook.com/v24.0/{$phoneNumberId}/calls";
+$url = "https://graph.facebook.com/v21.0/{$phoneNumberId}/calls";
 
 $payload = [
     'messaging_product' => 'whatsapp',

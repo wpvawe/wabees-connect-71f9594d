@@ -59,11 +59,20 @@ function wabees_load_owner_credentials(string $ownerUid): array {
 
 function wabees_apply_bearer_auth(array &$input): array {
     $header = wabees_auth_header();
-    if (!preg_match('/Bearer\s+(.+)/i', $header, $m)) {
+    $token = '';
+    if (preg_match('/Bearer\s+(.+)/i', $header, $m)) {
+        $token = trim($m[1]);
+    } elseif (!empty($input['id_token']) && is_string($input['id_token'])) {
+        // Hostinger/Cloudflare can strip Authorization in some PHP modes.
+        // Modern web/app clients also send id_token in the JSON body as a
+        // fallback so authenticated actions do not degrade to AUTH_MISSING.
+        $token = trim($input['id_token']);
+    }
+    if ($token === '') {
         return ['applied' => false];
     }
 
-    $uid = verify_firebase_id_token(trim($m[1]), $err);
+    $uid = verify_firebase_id_token($token, $err);
     if (!$uid) return ['applied' => false, 'error' => $err ?: 'Unauthorized', 'status' => 401];
 
     $ownerUid = $uid;
