@@ -13,11 +13,28 @@
  * - Interactive message parsing (buttons, list replies)
  */
 
-// Webhook verification token. Prefer server env; fall back to the shared
-// constant used by the web app (`src/lib/constants/webhook.ts`) so the
-// endpoint works even on shared hosts where env vars are hard to set.
-// This is NOT secret — Meta echoes the token publicly during handshake.
-$verifyToken = getenv('WEBHOOK_VERIFY_TOKEN') ?: 'wabees_webhook_verify_2024';
+// Optional private runtime config for shared hosts where Apache SetEnv/getenv
+// is not exposed to PHP-FPM. The file is deployed on the server only and must
+// not be committed with secrets.
+$runtimeEnvFile = __DIR__ . '/../config/runtime-env.php';
+if (file_exists($runtimeEnvFile)) {
+    require_once $runtimeEnvFile;
+}
+
+function wabees_env(string $key): string
+{
+    $value = getenv($key);
+    if ($value !== false && $value !== '') return (string)$value;
+    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return (string)$_SERVER[$key];
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') return (string)$_ENV[$key];
+    if (defined($key)) return (string)constant($key);
+    return '';
+}
+
+// Webhook verification token. Prefer server env/config; fall back to the
+// shared constant used by the web app (`src/lib/constants/webhook.ts`). This
+// is NOT secret — Meta echoes the token publicly during handshake.
+$verifyToken = wabees_env('WEBHOOK_VERIFY_TOKEN') ?: 'wabees_webhook_verify_2024';
 define('VERIFY_TOKEN', $verifyToken);
 
 // Fast-ack Meta immediately using fastcgi_finish_request, then process the
@@ -453,7 +470,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     set_time_limit(120);
 
     $raw = file_get_contents('php://input');
-    $appSecret = getenv('META_APP_SECRET') ?: '';
+    $appSecret = wabees_env('META_APP_SECRET');
     $sigHeader = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
     // SECURITY: Signature verification is MANDATORY. If META_APP_SECRET is
     // not configured, reject all inbound webhooks — an unverified webhook
