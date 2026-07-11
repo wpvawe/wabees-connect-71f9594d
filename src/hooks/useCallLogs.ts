@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
-import { str, toIso, num } from "@/lib/firebase/normalizers";
+import { str, toIso } from "@/lib/firebase/normalizers";
 import type { CallLogRecord } from "@/lib/wabees/calls";
 
 /**
@@ -51,7 +51,12 @@ export function useCallLogs(max = 100): {
             callType: str(x.callType, "voice"),
             status: str(x.status),
             phoneNumberId: str(x.phoneNumberId) || null,
-            duration: num(x.duration, null as unknown as number),
+            duration:
+              typeof x.duration === "number"
+                ? x.duration
+                : typeof x.duration === "string" && x.duration.trim()
+                  ? Number(x.duration)
+                  : null,
             startedAt: toIso(x.startedAt),
             connectedAt: toIso(x.connectedAt),
             endedAt: toIso(x.endedAt),
