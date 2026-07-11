@@ -2376,6 +2376,11 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
     if ($status === 'ringing' || !empty($sdpOffer)) {
         webhook_log("CALL: Incoming call from $from (callId=$callId)");
 
+        // Stale-ringing sweep: any older ringing doc for this user that
+        // never got a `terminated` webhook (Meta drop / network glitch)
+        // would otherwise re-show the banner forever on reload.
+        cleanup_stale_ringing_calls($userId);
+
         // Store call log in Firestore
         $callLogPath = "users/$userId/call_logs/$callId";
         firestore_set($callLogPath, [
@@ -2454,6 +2459,17 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
             'lastMessageType' => ['stringValue' => 'call'],
             'lastMessageAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
         ], true);
+
+        // ============ MISSED-CALL AUTO-REPLY ============
+        // Only for actually-missed inbound calls (not answered / rejected).
+        $missedStatuses = ['missed', 'not_answered', 'rejected'];
+        $alreadyReplied = !empty($existingLog['fields']['autoReplied']['booleanValue']);
+        if (in_array($status, $missedStatuses, true) && !$alreadyReplied) {
+            $callType = $existingLog['fields']['type']['stringValue'] ?? 'incoming';
+            if ($callType === 'incoming') {
+                maybe_send_missed_call_reply($user, $userId, $phoneNumberId, $from, $callId);
+            }
+        }
     }
 
     // ============ CALL CONNECTED ============
@@ -2463,6 +2479,101 @@ function handle_call_event($user, $phoneNumberId, $callEvent, $fullValue)
             'status' => ['stringValue' => 'connected'],
             'connectedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp)],
         ], true);
+    }
+}
+
+// ================================================================
+// Sweep stale `ringing` docs (age > 60s) for this user and mark them
+// `missed`. Runs on every fresh incoming call. Bounded to 20 docs so it
+// never blocks the hot webhook path.
+// ================================================================
+function cleanup_stale_ringing_calls(string $userId): void
+{
+    try {
+        $listUrl = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+            . '/databases/(default)/documents/users/' . rawurlencode($userId) . '/call_logs?pageSize=20&orderBy=createdAt%20desc';
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $listUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_HTTPHEADER => get_firebase_auth_headers(),
+        ]);
+        $resp = curl_exec($ch);
+        curl_close($ch);
+        $snap = @json_decode($resp, true);
+        if (empty($snap['documents'])) return;
+        $now = time();
+        foreach ($snap['documents'] as $doc) {
+            $f = $doc['fields'] ?? [];
+            $st = $f['status']['stringValue'] ?? '';
+            if ($st !== 'ringing' && $st !== 'connect') continue;
+            $created = $f['createdAt']['timestampValue'] ?? '';
+            if (empty($created)) continue;
+            $age = $now - strtotime($created);
+            if ($age <= 60) continue;
+            $name = $doc['name'] ?? '';
+            if (!preg_match('#/call_logs/([^/]+)$#', $name, $m)) continue;
+            $stalePath = "users/$userId/call_logs/{$m[1]}";
+            firestore_set($stalePath, [
+                'status'  => ['stringValue' => 'missed'],
+                'endedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
+                'staleClosed' => ['booleanValue' => true],
+            ], true);
+            webhook_log("CALL: Stale ringing cleaned callId={$m[1]} age={$age}s");
+        }
+    } catch (\Throwable $e) {
+        webhook_log('CALL_STALE_CLEANUP_ERR: ' . $e->getMessage());
+    }
+}
+
+// ================================================================
+// Missed-call auto-reply
+// Reads users/{uid}/settings/missed_call_reply → { enabled, message }.
+// If enabled, sends a WhatsApp text to $from and marks the call log as
+// autoReplied=true so a follow-up terminal event doesn't double-send.
+// ================================================================
+function maybe_send_missed_call_reply(array $user, string $userId, string $phoneNumberId, string $from, string $callId): void
+{
+    try {
+        $settingsResp = firestore_get("users/$userId/settings/missed_call_reply");
+        if (($settingsResp['code'] ?? 404) !== 200) return;
+        $fields = $settingsResp['data']['fields'] ?? [];
+        $enabled = !empty($fields['enabled']['booleanValue']);
+        if (!$enabled) return;
+        $message = trim((string)($fields['message']['stringValue'] ?? ''));
+        if ($message === '') {
+            $message = "Sorry, we missed your call. Please send us a message and we'll get back to you shortly.";
+        }
+
+        // Resolve access token — same field the FCM path uses.
+        $accessToken = $user['data']['whatsappAccessToken']['stringValue'] ?? '';
+        if ($accessToken === '' && function_exists('get_user_access_token')) {
+            $cached = get_user_access_token($userId);
+            $accessToken = (string)($cached['accessToken'] ?? '');
+        }
+        if ($accessToken === '' || $phoneNumberId === '') {
+            webhook_log("CALL_AUTOREPLY: skip — missing creds userId=$userId");
+            return;
+        }
+
+        $ok = send_bot_text_reply($phoneNumberId, $accessToken, $from, $message);
+        webhook_log('CALL_AUTOREPLY: sent=' . ($ok ? '1' : '0') . " to=$from callId=$callId");
+
+        // Mark the call log so a duplicate terminal event (e.g. rejected
+        // then missed race) doesn't fire a second message.
+        firestore_set("users/$userId/call_logs/$callId", [
+            'autoReplied'   => ['booleanValue' => true],
+            'autoRepliedAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
+        ], true);
+
+        // Book-keep against usage + analytics like a normal outbound.
+        if ($ok) {
+            wabees_increment_message_usage($userId, 1);
+        }
+    } catch (\Throwable $e) {
+        webhook_log('CALL_AUTOREPLY_ERR: ' . $e->getMessage());
     }
 }
 
