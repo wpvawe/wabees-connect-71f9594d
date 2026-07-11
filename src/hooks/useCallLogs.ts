@@ -86,7 +86,22 @@ export function useCallLogs(max = 100): {
  * dropped/missed and the doc is stale. Rendering it would re-show the
  * banner on every reload forever, which is exactly the bug users hit.
  */
-const RINGING_MAX_AGE_MS = 45_000;
+export const RINGING_MAX_AGE_MS = 45_000;
+
+export function isRingingLikeStatus(status: string): boolean {
+  return status === "ringing" || status === "connect";
+}
+
+export function isCallFresh(call: Pick<CallLogRecord, "createdAt">): boolean {
+  if (!call.createdAt) return false;
+  const created = Date.parse(call.createdAt);
+  return Number.isFinite(created) && Date.now() - created <= RINGING_MAX_AGE_MS;
+}
+
+export function effectiveCallStatus(call: Pick<CallLogRecord, "status" | "createdAt">): string {
+  if (isRingingLikeStatus(call.status) && !isCallFresh(call)) return "missed";
+  return call.status;
+}
 
 export function useRingingCall(): CallLogRecord | null {
   const { data } = useCallLogs(20);
@@ -102,9 +117,9 @@ export function useRingingCall(): CallLogRecord | null {
   return (
     data.find((c) => {
       if (c.type !== "incoming") return false;
-      if (c.status !== "ringing" && c.status !== "connect") return false;
+      if (!isRingingLikeStatus(c.status)) return false;
       const started = c.createdAt ? Date.parse(c.createdAt) : NaN;
-      if (!Number.isFinite(started)) return true; // no timestamp — trust it
+      if (!Number.isFinite(started)) return false;
       return now - started <= RINGING_MAX_AGE_MS;
     }) ?? null
   );

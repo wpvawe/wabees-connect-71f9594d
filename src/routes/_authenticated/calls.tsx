@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { useCallLogs } from "@/hooks/useCallLogs";
+import { effectiveCallStatus, useCallLogs } from "@/hooks/useCallLogs";
 import { terminateCall, rejectCall } from "@/lib/wabees/calls";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 
@@ -63,10 +63,10 @@ function CallsPage() {
     const list = data ?? [];
     return {
       active: list.filter((c) =>
-        ["ringing", "connected", "initiated"].includes(c.status),
+        ["ringing", "connected", "initiated"].includes(effectiveCallStatus(c)),
       ),
       history: list.filter(
-        (c) => !["ringing", "connected", "initiated"].includes(c.status),
+        (c) => !["ringing", "connected", "initiated"].includes(effectiveCallStatus(c)),
       ),
     };
   }, [data]);
@@ -165,8 +165,8 @@ function CallsPage() {
                         {c.from || c.to} · {c.callType}
                       </div>
                     </div>
-                    {statusPill(c.status)}
-                    {c.status === "ringing" && c.type === "incoming" ? (
+                    {statusPill(effectiveCallStatus(c))}
+                    {effectiveCallStatus(c) === "ringing" && c.type === "incoming" ? (
                       <button
                         type="button"
                         disabled={busy === c.callId}
@@ -222,7 +222,7 @@ function CallsPage() {
                             <FontAwesomeIcon
                               icon={c.type === "incoming" ? faArrowLeft : faArrowRight}
                               className={`h-3 w-3 ${
-                                c.status === "missed" || c.status === "not_answered" || c.status === "rejected"
+                                effectiveCallStatus(c) === "missed" || effectiveCallStatus(c) === "not_answered" || effectiveCallStatus(c) === "rejected"
                                   ? "text-destructive"
                                   : "text-emerald-600"
                               }`}
@@ -234,7 +234,7 @@ function CallsPage() {
                               <div className="text-xs text-muted-foreground">{other}</div>
                             ) : null}
                           </td>
-                          <td className="px-3 py-2">{statusPill(c.status)}</td>
+                          <td className="px-3 py-2">{statusPill(effectiveCallStatus(c))}</td>
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {fmtDuration(c.duration)}
                           </td>
