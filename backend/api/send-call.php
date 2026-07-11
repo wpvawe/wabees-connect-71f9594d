@@ -67,6 +67,18 @@ if ($action === 'connect' && empty($to)) {
     echo json_encode(['error' => ['message' => 'to is required for connect']]);
     exit;
 }
+if ($action === 'connect' && empty($input['session'])) {
+    // Honest guard: Meta's /calls endpoint REQUIRES an SDP session offer
+    // for `connect`. Without a WebRTC/SIP media gateway we cannot generate
+    // one, so the request would 400 at Meta. Fail early with a clear,
+    // actionable message instead of forwarding a broken payload.
+    http_response_code(501);
+    echo json_encode(['error' => [
+        'message' => 'Outbound calling requires a WebRTC/SIP media gateway. Meta Calling API needs an SDP session offer for action=connect — this build does not include a media server. Configure a SIP gateway in Meta → WhatsApp → Call settings → "Use SIP" to enable outbound calls.',
+        'code'    => 'media_gateway_required',
+    ]]);
+    exit;
+}
 if ($action !== 'connect' && empty($callId)) {
     http_response_code(400);
     echo json_encode(['error' => ['message' => 'call_id is required for ' . $action]]);
