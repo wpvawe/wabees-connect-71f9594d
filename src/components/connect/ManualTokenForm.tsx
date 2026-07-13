@@ -61,13 +61,14 @@ export function ManualTokenForm() {
         phone = smart.data.phone ?? {};
         if (!waba_id && smart.data.waba_id) waba_id = smart.data.waba_id;
         businessName = smart.data.business_name || phone.verified_name;
-      } else if (smart.message) {
+      } else if (smart.message && !/whatsapp_business_account|nonexisting field|\(#100\)/i.test(smart.message)) {
         toast.message(`Auto-detect skipped: ${smart.message}`);
       }
     } catch (e) {
-      toast.message(
-        e instanceof Error ? `Auto-detect skipped: ${e.message}` : "Auto-detect skipped",
-      );
+      const msg = e instanceof Error ? e.message : "";
+      if (msg && !/whatsapp_business_account|nonexisting field|\(#100\)/i.test(msg)) {
+        toast.message(`Auto-detect skipped: ${msg}`);
+      }
     }
 
     if (!phone.display_phone_number || !phone.verified_name || !phone.quality_rating) {
@@ -78,7 +79,9 @@ export function ManualTokenForm() {
         });
         if (verified.raw.error && typeof verified.raw.error === "object") {
           const msg = (verified.raw.error as { message?: string }).message;
-          if (msg) toast.message(`Phone verify skipped: ${msg}`);
+          if (msg && !/whatsapp_business_account|nonexisting field|\(#100\)/i.test(msg)) {
+            toast.message(`Phone verify skipped: ${msg}`);
+          }
         } else {
           phone = {
             display_phone_number:

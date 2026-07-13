@@ -49,8 +49,20 @@ function wabees_graph_get_json(string $url, string $token): array {
 }
 
 $gv = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v21.0';
-$fields = 'id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,messaging_limit_tier,throughput,whatsapp_business_account';
-[$pc, $phoneJson, $perr] = wabees_graph_get_json("https://graph.facebook.com/$gv/$phoneNumberId?fields=" . rawurlencode($fields), $accessToken);
+$fullFields = 'id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,messaging_limit_tier,throughput,whatsapp_business_account';
+$safeFields = 'id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,messaging_limit_tier,throughput';
+[$pc, $phoneJson, $perr] = wabees_graph_get_json("https://graph.facebook.com/$gv/$phoneNumberId?fields=" . rawurlencode($fullFields), $accessToken);
+// Retry without the WABA field if Meta rejects it (#100 — missing
+// whatsapp_business_management scope). Base connect should still succeed.
+if (
+    $pc < 200 || $pc >= 300
+    || (!empty($phoneJson['error']) && (int)($phoneJson['error']['code'] ?? 0) === 100)
+) {
+    [$pc2, $phoneJson2, $perr2] = wabees_graph_get_json("https://graph.facebook.com/$gv/$phoneNumberId?fields=" . rawurlencode($safeFields), $accessToken);
+    if ($pc2 >= 200 && $pc2 < 300 && empty($phoneJson2['error'])) {
+        $pc = $pc2; $phoneJson = $phoneJson2; $perr = $perr2;
+    }
+}
 if ($pc < 200 || $pc >= 300 || !empty($phoneJson['error'])) {
     http_response_code($pc >= 400 ? $pc : 502);
     echo json_encode(['success' => false, 'error' => ['message' => $phoneJson['error']['message'] ?? ($perr ?: 'Could not verify phone')]]);
