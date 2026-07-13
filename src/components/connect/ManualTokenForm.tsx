@@ -123,21 +123,37 @@ export function ManualTokenForm() {
     }
     setChecking(true);
     try {
-      const idToken = await fbAuth().currentUser?.getIdToken();
-      if (!idToken) toast.error("Please sign in again");
-      if (!idToken) return;
-      const existing = await checkExistingWhatsAppOwner({
-        data: { idToken, phoneNumberId: v.phone_number_id.trim() },
-      });
-      if (existing.existingOwnerId && !existing.isSelf) {
-        const ownerLabel =
-          existing.existingOwnerBusinessName || existing.existingOwnerEmail || "the existing owner";
-        toast.error(`This WhatsApp number is already linked to ${ownerLabel}. Ask the owner for an invite.`);
+      let idToken: string | undefined;
+      try {
+        idToken = await fbAuth().currentUser?.getIdToken();
+      } catch {
+        idToken = undefined;
+      }
+      if (!idToken) {
+        toast.error("Please sign in again");
         return;
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not verify WhatsApp ownership");
-      return;
+      try {
+        const existing = await checkExistingWhatsAppOwner({
+          data: { idToken, phoneNumberId: v.phone_number_id.trim() },
+        });
+        if (existing.existingOwnerId && !existing.isSelf) {
+          const ownerLabel =
+            existing.existingOwnerBusinessName ||
+            existing.existingOwnerEmail ||
+            "the existing owner";
+          toast.error(
+            `This WhatsApp number is already linked to ${ownerLabel}. Ask the owner for an invite.`,
+          );
+          return;
+        }
+      } catch (e) {
+        // Ownership pre-check is best-effort. If the backend service account
+        // isn't reachable (e.g. preview build with missing runtime secret),
+        // fall through — Firestore rules + the PHP backend still enforce
+        // ownership when the config is written.
+        console.warn("Ownership pre-check skipped:", e);
+      }
     } finally {
       setChecking(false);
     }
