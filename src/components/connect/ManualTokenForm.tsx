@@ -123,9 +123,16 @@ export function ManualTokenForm() {
     }
     setChecking(true);
     try {
-      const idToken = await fbAuth().currentUser?.getIdToken();
-      if (!idToken) toast.error("Please sign in again");
-      if (!idToken) return;
+      let idToken: string | undefined;
+      try {
+        idToken = await fbAuth().currentUser?.getIdToken();
+      } catch {
+        idToken = undefined;
+      }
+      if (!idToken) {
+        toast.error("Please sign in again");
+        return;
+      }
       try {
         const existing = await checkExistingWhatsAppOwner({
           data: { idToken, phoneNumberId: v.phone_number_id.trim() },
