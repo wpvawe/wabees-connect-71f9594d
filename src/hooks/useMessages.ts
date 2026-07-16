@@ -121,8 +121,18 @@ function parseMessageDoc(
     /\b(otp|verification|code|pin)\b/i.test(body) && otpFromBody;
   const rawMediaUrl = strOrNull(x.mediaUrl);
   const rawMediaId = strOrNull(x.mediaId);
+  // Prefer a freshly signed proxy URL whenever we have a mediaId — the
+  // webhook writes `mediaUrl` as `/media-proxy.php?id=&uid=` without an
+  // id_token, which now returns 401. `mediaProxyUrl` embeds the cached
+  // Firebase token so `<img>` / `<video>` tags can load without headers.
+  const rawIsProxy =
+    typeof rawMediaUrl === "string" && rawMediaUrl.includes("/media-proxy.php");
   const mediaUrl =
-    rawMediaUrl ?? (rawMediaId && uid ? mediaProxyUrl(rawMediaId, uid) : null);
+    rawMediaId && uid
+      ? mediaProxyUrl(rawMediaId, uid)
+      : rawIsProxy
+        ? rawMediaUrl
+        : (rawMediaUrl ?? null);
   return {
     id: d.id,
     contactPhone: normalizePhone(contactPhone),
