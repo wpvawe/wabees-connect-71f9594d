@@ -43,30 +43,44 @@ require_once __DIR__ . '/../config/wa-bearer-auth.php';
 $authHeader = wabees_auth_header();
 $idToken = trim((string)($_GET['id_token'] ?? ''));
 if (!$idToken && $authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) $idToken = trim($m[1]);
-// SECURITY: A Firebase id_token is REQUIRED. Without it we would trust the
-// attacker-controlled ?uid= parameter and any caller who guessed a victim's
-// uid + media id could download that user's WhatsApp media.
-if ($idToken === '') {
-    http_response_code(401);
-    echo 'Unauthorized';
-    exit;
+// Auth: prefer Firebase id_token (website). Flutter app has no id_token in
+// URLs (native <img> equivalents cannot set headers on cached media), so we
+// fall back to matching the caller's WhatsApp access_token against the token
+// stored for the requested uid — the same backward-compat pattern used by
+// send-message.php. Without either, requests are rejected.
+$callerUid = '';
+if ($idToken !== '') {
+    $err = null;
+    $callerUid = (string) verify_firebase_id_token($idToken, $err);
 }
-$err = null;
-$callerUid = verify_firebase_id_token($idToken, $err);
-if (!$callerUid) {
-    http_response_code(401);
-    echo 'Unauthorized';
-    exit;
-}
-$uid = $callerUid;
-$callerResp = firestore_get('users/' . rawurlencode($callerUid));
-$callerFields = (($callerResp['code'] ?? 404) === 200) ? ($callerResp['data']['fields'] ?? []) : [];
-$dataOwner = trim((string)($callerFields['dataOwner']['stringValue'] ?? ''));
-if ($dataOwner !== '' && $dataOwner !== $callerUid) $uid = $dataOwner;
-if ($requestedUid !== $callerUid && $requestedUid !== $uid) {
-    http_response_code(403);
-    echo 'Forbidden';
-    exit;
+$uid = $callerUid ?: $requestedUid;
+if ($callerUid !== '') {
+    $callerResp = firestore_get('users/' . rawurlencode($callerUid));
+    $callerFields = (($callerResp['code'] ?? 404) === 200) ? ($callerResp['data']['fields'] ?? []) : [];
+    $dataOwner = trim((string)($callerFields['dataOwner']['stringValue'] ?? ''));
+    if ($dataOwner !== '' && $dataOwner !== $callerUid) $uid = $dataOwner;
+    if ($requestedUid !== $callerUid && $requestedUid !== $uid) {
+        http_response_code(403);
+        echo 'Forbidden';
+        exit;
+    }
+} else {
+    // Legacy Flutter path: caller must prove ownership of the uid by
+    // presenting the matching WhatsApp access_token stored for that user.
+    $providedWaToken = trim((string)($_GET['access_token'] ?? ''));
+    if ($providedWaToken === '' || $requestedUid === '') {
+        http_response_code(401);
+        echo 'Unauthorized';
+        exit;
+    }
+    $stored = get_user_access_token($requestedUid);
+    $storedTok = (string)($stored['accessToken'] ?? '');
+    if ($storedTok === '' || !hash_equals($storedTok, $providedWaToken)) {
+        http_response_code(401);
+        echo 'Unauthorized';
+        exit;
+    }
+    $uid = $requestedUid;
 }
 if (!proxy_media_belongs_to_user($uid, $mediaId)) {
     http_response_code(403);
