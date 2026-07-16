@@ -205,6 +205,13 @@ export async function setUserField(uid: string, field: string, value: unknown) {
   });
   void logAudit("user.field", uid, { field, value });
   bumpRefetch("adminUsers");
+  // If the admin flipped the AI bot feature flag, bust the PHP webhook's
+  // file cache for this user so the change takes effect immediately
+  // (users/{uid} doc is cached for 10 min in the webhook).
+  if (field === "aiBotEnabled") {
+    const { clearBotConfigCache } = await import("@/lib/wabees/api");
+    void clearBotConfigCache(uid);
+  }
 }
 
 // Hard-delete a user + all subcollections we know about. This is destructive

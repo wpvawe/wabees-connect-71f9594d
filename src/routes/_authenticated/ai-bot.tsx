@@ -33,6 +33,7 @@ import { useEffectiveUid, useFirebaseSession } from "@/hooks/useFirebaseSession"
 import { useProfile } from "@/hooks/useProfile";
 import { useSubscription } from "@/hooks/useSubscription";
 import { fbDb } from "@/integrations/firebase/client";
+import { clearBotConfigCache } from "@/lib/wabees/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -125,6 +126,10 @@ function AiBotPage() {
       const payload = { ...form, faq: JSON.stringify(faqs), updatedAt: serverTimestamp() };
       await setDoc(doc(fbDb(), "users", uid, "bot_config", "settings"), payload, { merge: true });
       setDirty(false);
+      // Bust PHP webhook's file cache so an OFF toggle (or any config
+      // change) takes effect on the very next incoming message instead
+      // of waiting for the 5-min TTL to expire.
+      void clearBotConfigCache(uid);
       toast.success("Saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");

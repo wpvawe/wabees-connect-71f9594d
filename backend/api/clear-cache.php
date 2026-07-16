@@ -32,13 +32,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $phoneNumberId = $input['phone_number_id'] ?? '';
 $clearAll = isset($input['clear_all']);
+// Bust the 5–10 min file cache for a specific user's `users/{uid}` and
+// `users/{uid}/bot_config/settings` docs. Called after saving the AI bot
+// toggle so the webhook immediately picks up enabled=false instead of
+// waiting out the cache TTL.
+$botConfigUid = trim((string)($input['bot_config_uid'] ?? ''));
 
 require_once __DIR__ . '/../config/firebase-auth.php';
 $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 $bearerOk = false;
+$callerUidFromToken = null;
 if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) {
     $err = null;
-    $bearerOk = (bool) verify_firebase_id_token(trim($m[1]), $err);
+    $callerUidFromToken = verify_firebase_id_token(trim($m[1]), $err);
+    $bearerOk = (bool) $callerUidFromToken;
 }
 if (!$bearerOk) {
     http_response_code(403);
@@ -100,6 +107,42 @@ if ($clearAll) {
         $cleared[] = 'APCu cache cleared entirely';
     }
     echo json_encode(['success' => true, 'cleared' => $cleared]);
+    exit;
+}
+
+// Bot-config cache bust — caller must be the same uid or an admin.
+if ($botConfigUid !== '') {
+    $allowed = ($callerUidFromToken === $botConfigUid);
+    if (!$allowed) {
+        require_once __DIR__ . '/../config/firebase-config.php';
+        $callerDoc = firestore_get('users/' . rawurlencode((string)$callerUidFromToken));
+        $callerFields = (($callerDoc['code'] ?? 404) === 200) ? ($callerDoc['data']['fields'] ?? []) : [];
+        $callerRole = trim((string)($callerFields['role']['stringValue'] ?? ''));
+        $allowed = ($callerRole === 'admin');
+    }
+    if (!$allowed) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Forbidden']);
+        exit;
+    }
+    $safeUid = preg_replace('/[^A-Za-z0-9_-]/', '', $botConfigUid);
+    $targets = [
+        __DIR__ . "/../cache/fs/users_{$safeUid}_bot_config_settings.json",
+        __DIR__ . "/../cache/fs/users_{$safeUid}.json",
+    ];
+    $bustCleared = [];
+    foreach ($targets as $file) {
+        if (file_exists($file)) {
+            @unlink($file);
+            $bustCleared[] = basename($file);
+        }
+    }
+    echo json_encode([
+        'success' => true,
+        'bot_config_uid' => $safeUid,
+        'cleared' => $bustCleared,
+        'message' => 'bot_config + user doc cache cleared',
+    ]);
     exit;
 }
 
