@@ -4,7 +4,7 @@
  * users and Firestore data.
  */
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, onIdTokenChanged, type Auth } from "firebase/auth";
 import {
   initializeFirestore,
   getFirestore,
@@ -39,7 +39,10 @@ export function fbAuth(): Auth {
   if (typeof window === "undefined") {
     throw new Error("fbAuth() called in non-browser context");
   }
-  if (!_auth) _auth = getAuth(ensureApp());
+  if (!_auth) {
+    _auth = getAuth(ensureApp());
+    startIdTokenCache(_auth);
+  }
   return _auth;
 }
 
@@ -90,4 +93,34 @@ export const WABEES_API_BASE = normalizeWabeesApiBase(
 export function fbDbOrNull(): Firestore | null {
   if (typeof window === "undefined") return null;
   return fbDb();
+}
+
+/**
+ * Cached Firebase id token — kept fresh by `onIdTokenChanged` so synchronous
+ * consumers (like `<img src>` URLs built by `mediaProxyUrl`) can attach the
+ * bearer via query string without waiting on `getIdToken()`. Null before the
+ * first sign-in / token fetch completes.
+ */
+let _cachedIdToken: string | null = null;
+let _idTokenStarted = false;
+function startIdTokenCache(auth: Auth): void {
+  if (_idTokenStarted) return;
+  _idTokenStarted = true;
+  onIdTokenChanged(auth, (user) => {
+    if (!user) {
+      _cachedIdToken = null;
+      return;
+    }
+    user
+      .getIdToken()
+      .then((t) => {
+        _cachedIdToken = t || null;
+      })
+      .catch(() => {
+        _cachedIdToken = null;
+      });
+  });
+}
+export function getCachedIdToken(): string | null {
+  return _cachedIdToken;
 }
