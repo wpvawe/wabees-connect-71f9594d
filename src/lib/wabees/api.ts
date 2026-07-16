@@ -4,7 +4,7 @@
  * Meta Graph; PHP also writes outbound message rows to Firestore so the
  * realtime hooks pick them up automatically.
  */
-import { WABEES_API_BASE } from "@/integrations/firebase/client";
+import { WABEES_API_BASE, getCachedIdToken } from "@/integrations/firebase/client";
 import { fbAuth } from "@/integrations/firebase/client";
 
 export type WabeesApiResult<T = unknown> = {
@@ -624,8 +624,15 @@ export async function uploadMedia(args: {
 }
 
 /** Build a media-proxy URL for displaying app/webhook media in the inbox. */
-export function mediaProxyUrl(mediaId: string, uid: string): string {
-  return `${WABEES_API_BASE}/media-proxy.php?id=${encodeURIComponent(mediaId)}&uid=${encodeURIComponent(uid)}`;
+export function mediaProxyUrl(mediaId: string, uid: string, token?: string | null): string {
+  // media-proxy.php now requires a Firebase id_token. `<img>` / `<video>`
+  // tags can't attach headers so we ride it in as a query param. `token`
+  // defaults to the cached id token kept fresh by `onIdTokenChanged`.
+  const idToken = token ?? getCachedIdToken();
+  const base =
+    `${WABEES_API_BASE}/media-proxy.php?id=${encodeURIComponent(mediaId)}` +
+    `&uid=${encodeURIComponent(uid)}`;
+  return idToken ? `${base}&id_token=${encodeURIComponent(idToken)}` : base;
 }
 
 /**

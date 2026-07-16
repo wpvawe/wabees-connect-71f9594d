@@ -27,9 +27,16 @@ if (!empty($auth['error'])) {
     exit;
 }
 if (($auth['applied'] ?? false) !== true) {
-    http_response_code(401);
-    echo json_encode(['error' => ['message' => 'Authorization bearer token is required']]);
-    exit;
+    // Backward-compat for the Flutter app and any legacy caller that
+    // still ships phone_number_id + access_token in the JSON body.
+    // The React web client always attaches a Firebase bearer; when it's
+    // missing we require the body creds to keep this endpoint from
+    // hard-401'ing the mobile app.
+    if (empty($input['phone_number_id']) || empty($input['access_token'])) {
+        http_response_code(401);
+        echo json_encode(['error' => ['message' => 'Authorization bearer token or credentials required']]);
+        exit;
+    }
 }
 
 $required = ['phone_number_id', 'access_token', 'to', 'type'];
