@@ -216,6 +216,27 @@ export async function clearWebhookOwnerCache(
   return { ownerId };
 }
 
+/**
+ * Bust the PHP webhook's 5–10 min file cache for `users/{uid}` and
+ * `users/{uid}/bot_config/settings`. Call this after the AI Bot toggle
+ * (or `aiBotEnabled` admin toggle) is saved to Firestore so the very next
+ * incoming WhatsApp message sees the new value instead of waiting out
+ * the TTL.
+ */
+export async function clearBotConfigCache(uid: string): Promise<void> {
+  if (!uid) return;
+  const idToken = (await fbAuth().currentUser?.getIdToken()) ?? "";
+  if (!idToken) return;
+  await fetch(`${WABEES_API_BASE}/clear-cache.php`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ bot_config_uid: uid }),
+  }).catch(() => undefined);
+}
+
 export async function repairWhatsAppConnect(args: {
   phone_number_id: string;
   access_token: string;
