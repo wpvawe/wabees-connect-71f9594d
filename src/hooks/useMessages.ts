@@ -7,9 +7,9 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
   Timestamp,
   type QueryDocumentSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -299,44 +299,80 @@ export function useMessages(phone: string | undefined): {
     if (!db) return;
     setLiveRows(null);
     const candidates = phoneQueryCandidates(phone);
-    const q = query(
+    const timestampQuery = query(
       collection(db, `users/${uid}/messages`),
       candidates.length === 1
         ? where("contactPhone", "==", candidates[0])
         : where("contactPhone", "in", candidates),
+      // Legacy PHP wrote ISO strings; new code writes Firestore Timestamp.
+      // Firestore sorts value types separately, so read Timestamp rows and
+      // string rows in separate windows, then merge by parsed time below.
+      where("createdAt", "<", ""),
       orderBy("createdAt", "desc"),
       limit(PAGE_SIZE),
     );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        // Hit the live cap? Older messages likely exist; "Load older" fetches
-        // them on demand without disturbing this listener.
-        if (!hasPagedBackRef.current) {
-          setHasMore(snap.docs.length >= PAGE_SIZE);
-        }
-        setLoadingMore(false);
-        const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
-        // Firestore returned desc-by-createdAt. Track the oldest live doc
-        // as the pagination cursor for the first "Load older" fetch.
-        const oldest = snap.docs[snap.docs.length - 1];
-        if (oldest) {
-          const raw = oldest.data().createdAt;
-          if (raw instanceof Timestamp) oldestLiveCreatedRef.current = raw.toDate();
-          else if (raw instanceof Date) oldestLiveCreatedRef.current = raw;
-        }
-        // Firestore can contain legacy ISO-string `createdAt` rows mixed with
-        // newer Timestamp rows. `orderBy(createdAt)` groups those by value
-        // type, so reversing the snapshot still renders blocks out of time
-        // order. Always sort the parsed ISO values client-side before render.
-        setLiveRows(sortMessagesAsc(mergeReactions(parsed)));
-      },
-      (err) => {
-        setError(err.message);
-        setLoadingMore(false);
-      },
+    const legacyStringQuery = query(
+      collection(db, `users/${uid}/messages`),
+      candidates.length === 1
+        ? where("contactPhone", "==", candidates[0])
+        : where("contactPhone", "in", candidates),
+      where("createdAt", ">=", ""),
+      orderBy("createdAt", "desc"),
+      limit(PAGE_SIZE),
     );
-    return () => unsub();
+
+    let timestampDocs: QueryDocumentSnapshot[] = [];
+    let legacyDocs: QueryDocumentSnapshot[] = [];
+    let timestampReady = false;
+    let legacyReady = false;
+
+    const flushLiveRows = () => {
+      if (!timestampReady || !legacyReady) return;
+      const docsById = new Map<string, QueryDocumentSnapshot>();
+      for (const d of [...timestampDocs, ...legacyDocs]) docsById.set(d.id, d);
+      const docs = Array.from(docsById.values());
+      if (!hasPagedBackRef.current) {
+        setHasMore(timestampDocs.length >= PAGE_SIZE || legacyDocs.length >= PAGE_SIZE);
+      }
+      setLoadingMore(false);
+      const parsed = sortMessagesAsc(mergeReactions(docs.map((d) => parseMessageDoc(d, phone, uid))));
+      const oldest = parsed[0]?.createdAt ? new Date(parsed[0].createdAt) : null;
+      oldestLiveCreatedRef.current = oldest && Number.isFinite(oldest.getTime()) ? oldest : null;
+      setLiveRows(parsed);
+    };
+
+    const unsubs: Unsubscribe[] = [];
+    unsubs.push(
+      onSnapshot(
+        timestampQuery,
+        (snap) => {
+          timestampDocs = snap.docs;
+          timestampReady = true;
+          flushLiveRows();
+        },
+        (err) => {
+          setError(err.message);
+          setLoadingMore(false);
+        },
+      ),
+    );
+    unsubs.push(
+      onSnapshot(
+        legacyStringQuery,
+        (snap) => {
+          legacyDocs = snap.docs;
+          legacyReady = true;
+          flushLiveRows();
+        },
+        (err) => {
+          setError(err.message);
+          setLoadingMore(false);
+        },
+      ),
+    );
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
   }, [uid, phone]);
 
   const loadMore = useCallback(async () => {
@@ -348,31 +384,46 @@ export function useMessages(phone: string | undefined): {
     setLoadingMore(true);
     try {
       const candidates = phoneQueryCandidates(phone);
-      const snap = await getDocs(
-        query(
-          collection(db, `users/${uid}/messages`),
-          candidates.length === 1
-            ? where("contactPhone", "==", candidates[0])
-            : where("contactPhone", "in", candidates),
-          orderBy("createdAt", "desc"),
-          startAfter(Timestamp.fromDate(cursor)),
-          limit(PAGE_STEP),
+      const phoneFilter =
+        candidates.length === 1
+          ? where("contactPhone", "==", candidates[0])
+          : where("contactPhone", "in", candidates);
+      const [timestampSnap, legacySnap] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, `users/${uid}/messages`),
+            phoneFilter,
+            where("createdAt", "<", Timestamp.fromDate(cursor)),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_STEP),
+          ),
         ),
+        getDocs(
+          query(
+            collection(db, `users/${uid}/messages`),
+            phoneFilter,
+            where("createdAt", "<", cursor.toISOString()),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_STEP),
+          ),
+        ),
+      ]);
+      const parsed = sortMessagesAsc(
+        mergeReactions([
+          ...timestampSnap.docs.map((d) => parseMessageDoc(d, phone, uid)),
+          ...legacySnap.docs.map((d) => parseMessageDoc(d, phone, uid)),
+        ]),
       );
-      const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
-      const oldest = snap.docs[snap.docs.length - 1];
-      if (oldest) {
-        const raw = oldest.data().createdAt;
-        if (raw instanceof Timestamp) oldestOlderCreatedRef.current = raw.toDate();
-        else if (raw instanceof Date) oldestOlderCreatedRef.current = raw;
-      }
+      const oldest = parsed[0]?.createdAt ? new Date(parsed[0].createdAt) : null;
+      if (oldest && Number.isFinite(oldest.getTime())) oldestOlderCreatedRef.current = oldest;
       setOlderRows((prev) => {
         const seen = new Set(prev.map((m) => m.id));
         const merged = [...prev];
         for (const m of parsed) if (!seen.has(m.id)) merged.push(m);
         return merged;
-      });
-      setHasMore(snap.docs.length >= PAGE_STEP);
+      },
+      );
+      setHasMore(timestampSnap.docs.length >= PAGE_STEP || legacySnap.docs.length >= PAGE_STEP);
       hasPagedBackRef.current = true;
     } catch (err) {
       setError((err as Error).message);
