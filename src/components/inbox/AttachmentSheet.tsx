@@ -1,8 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faImage, faVideo, faFile, faMusic, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { toast } from "sonner";
 
 export type AttachKind = "image" | "video" | "document" | "audio";
+
+// WhatsApp Cloud API supported document types (Meta docs).
+// Anything else must be blocked before we upload — Meta returns (#100).
+const DOC_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt," +
+  "application/pdf,application/msword," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+  "application/vnd.ms-excel," +
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+  "application/vnd.ms-powerpoint," +
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation," +
+  "text/plain";
+
+const BLOCKED_DOC_EXTS = new Set([
+  "zip", "rar", "7z", "tar", "gz", "apk", "exe", "dmg", "iso", "csv", "rtf",
+]);
+
+function isDocumentAllowed(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  if (BLOCKED_DOC_EXTS.has(ext)) return false;
+  return true;
+}
 
 /**
  * WhatsApp-style attachment bottom sheet matching the Flutter app's
@@ -36,6 +60,13 @@ export function AttachmentSheet({
 
   function handleFile(kind: AttachKind, file: File | undefined) {
     if (!file) return;
+    if (kind === "document" && !isDocumentAllowed(file)) {
+      toast.error(
+        "WhatsApp does not allow this file type. Supported: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT.",
+      );
+      onClose();
+      return;
+    }
     // Image / video get an optional caption preview. Doc & audio send directly.
     if (kind === "image" || kind === "video") {
       setPending({ file, kind });
@@ -118,6 +149,7 @@ export function AttachmentSheet({
             <input
               ref={docRef}
               type="file"
+              accept={DOC_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
