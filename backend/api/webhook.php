@@ -1652,7 +1652,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         'status' => 'delivered',
         'body' => $messageBody,
         'whatsappMessageId' => $messageId,
-        'createdAt' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp),
+        // Store as Firestore Timestamp (not string) so `orderBy(createdAt)`
+        // sorts incoming + outgoing messages together. Outgoing messages
+        // from the web/app use `serverTimestamp()` (Timestamp type); if this
+        // stays a string, Firestore's value-type ordering separates them
+        // and the thread renders out of chronological order.
+        'createdAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp)],
     ];
 
     if ($mediaId) {
