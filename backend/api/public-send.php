@@ -283,7 +283,7 @@ if ($graphCode >= 200 && $graphCode < 300) {
         'direction'       => 'outgoing',
         'status'          => 'sent',
         'body'            => $preview,
-        'createdAt'       => $nowIso,
+        'createdAt'       => ['timestampValue' => $nowIso],
         'sentVia'         => 'api',
         'whatsappMessageId' => $waMsgId,
     ];
@@ -304,7 +304,7 @@ if ($graphCode >= 200 && $graphCode < 300) {
         'contactName'      => $normalizedTo,
         'lastMessage'      => $preview,
         'lastMessageType'  => $type,
-        'lastMessageAt'    => $nowIso,
+        'lastMessageAt'    => ['timestampValue' => $nowIso],
     ], true);
     @firestore_increment("users/$ownerUid/subscription/current", 'messagesUsed', 1);
     @firestore_increment("users/$ownerUid", 'totalMessages', 1);
