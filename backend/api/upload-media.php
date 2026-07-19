@@ -67,15 +67,7 @@ $allowedTypes = [
         'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
         'application/vnd.ms-powerpoint.template.macroEnabled.12',
         'application/vnd.ms-powerpoint.slideshow.macroEnabled.12',
-        'application/rtf',
-        'application/zip',
-        'application/x-zip-compressed',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/vnd.android.package-archive',
-        'application/octet-stream',
         'text/plain',
-        'text/rtf',
     ],
     'audio' => ['audio/mpeg', 'audio/ogg', 'application/ogg', 'audio/opus', 'audio/amr', 'audio/amr-wb', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'video/mp4', 'audio/mp4a-latm'],
 ];
@@ -90,8 +82,6 @@ $originalExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 // the upload and the website can download with the correct extension later.
 if ($type === 'document') {
     $extMimeMap = [
-        'rtf' => 'application/rtf',
-        'apk' => 'application/vnd.android.package-archive',
         'doc' => 'application/msword',
         'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'xls' => 'application/vnd.ms-excel',
@@ -99,9 +89,6 @@ if ($type === 'document') {
         'ppt' => 'application/vnd.ms-powerpoint',
         'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'pdf' => 'application/pdf',
-        'zip' => 'application/zip',
-        'rar' => 'application/x-rar-compressed',
-        '7z' => 'application/x-7z-compressed',
         'txt' => 'text/plain',
     ];
     if (($mimeType === 'application/octet-stream' || $mimeType === 'text/plain') && isset($extMimeMap[$originalExt])) {
@@ -111,20 +98,25 @@ if ($type === 'document') {
 
 $validMimes = $allowedTypes[$type] ?? $allowedTypes['document'];
 
-// WhatsApp Cloud does NOT support CSV (text/csv) — block early with clear message
-if ($type === 'document' && $mimeType === 'text/csv') {
+// WhatsApp Cloud does NOT support archives, CSV, RTF, APK, etc. Block early
+// with a clear, friendly message instead of letting Meta return (#100).
+$unsupportedExts = ['zip', 'rar', '7z', 'apk', 'csv', 'rtf', 'tar', 'gz', 'exe', 'dmg', 'iso'];
+if ($type === 'document' && (in_array($originalExt, $unsupportedExts, true) || $mimeType === 'text/csv' || $mimeType === 'application/zip' || $mimeType === 'application/x-zip-compressed' || $mimeType === 'application/x-rar-compressed' || $mimeType === 'application/x-7z-compressed' || $mimeType === 'application/vnd.android.package-archive' || $mimeType === 'application/rtf' || $mimeType === 'text/rtf')) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'CSV files are not supported by WhatsApp. Please export as Excel (.xlsx) or PDF.',
+        'message' => 'WhatsApp does not allow this file type. Supported documents: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT. Please convert your file (e.g. compress into a supported format or share as PDF).',
     ]);
     exit;
 }
 
 if ($type === 'document') {
-    if (strpos($mimeType, 'application/') !== 0 && strpos($mimeType, 'text/') !== 0 && !in_array($mimeType, $validMimes, true)) {
+    if (!in_array($mimeType, $validMimes, true)) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => "Invalid file type for document: $mimeType"]);
+        echo json_encode([
+            'success' => false,
+            'message' => "WhatsApp does not support this document type ($mimeType). Allowed: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT.",
+        ]);
         exit;
     }
 } else {
