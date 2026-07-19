@@ -348,8 +348,10 @@ export function useMessages(phone: string | undefined): {
       }
       setLoadingMore(false);
       const parsed = sortMessagesAsc(mergeReactions(docs.map((d) => parseMessageDoc(d, phone, uid))));
-      oldestTimestampCreatedRef.current = oldestDocDate(timestampDocs);
-      oldestLegacyStringCreatedRef.current = oldestDocDate(legacyDocs);
+      oldestTimestampCreatedRef.current =
+        timestampDocs.length >= PAGE_SIZE ? oldestDocDate(timestampDocs) : null;
+      oldestLegacyStringCreatedRef.current =
+        legacyDocs.length >= PAGE_SIZE ? oldestDocDate(legacyDocs) : null;
       setLiveRows(parsed);
     };
 
@@ -432,8 +434,10 @@ export function useMessages(phone: string | undefined): {
           ...legacyDocs.map((d) => parseMessageDoc(d, phone, uid)),
         ]),
       );
-      oldestTimestampCreatedRef.current = oldestDocDate(timestampDocs) ?? oldestTimestampCreatedRef.current;
-      oldestLegacyStringCreatedRef.current = oldestDocDate(legacyDocs) ?? oldestLegacyStringCreatedRef.current;
+      oldestTimestampCreatedRef.current =
+        timestampDocs.length >= PAGE_STEP ? oldestDocDate(timestampDocs) : null;
+      oldestLegacyStringCreatedRef.current =
+        legacyDocs.length >= PAGE_STEP ? oldestDocDate(legacyDocs) : null;
       setOlderRows((prev) => {
         const seen = new Set(prev.map((m) => m.id));
         const merged = [...prev];
