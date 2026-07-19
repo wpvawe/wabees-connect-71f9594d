@@ -100,7 +100,7 @@ function parseMessageDoc(
   fallbackPhone: string,
   uid: string,
 ): Message {
-  const x = d.data() as Record<string, unknown>;
+  const x = d.data({ serverTimestamps: "estimate" }) as Record<string, unknown>;
   const contactPhone = str(x.contactPhone, fallbackPhone);
   const locRaw = (x.location as Record<string, unknown> | undefined) ?? null;
   const latitude =
@@ -260,7 +260,7 @@ function sortMessagesAsc(rows: Message[]): Message[] {
 function oldestDocDate(docs: QueryDocumentSnapshot[]): Date | null {
   let oldest: Date | null = null;
   for (const d of docs) {
-    const iso = toIso((d.data() as Record<string, unknown>).createdAt);
+    const iso = toIso((d.data({ serverTimestamps: "estimate" }) as Record<string, unknown>).createdAt);
     if (!iso) continue;
     const date = new Date(iso);
     if (!Number.isFinite(date.getTime())) continue;
