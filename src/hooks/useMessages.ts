@@ -257,6 +257,18 @@ function sortMessagesAsc(rows: Message[]): Message[] {
   });
 }
 
+function oldestDocDate(docs: QueryDocumentSnapshot[]): Date | null {
+  let oldest: Date | null = null;
+  for (const d of docs) {
+    const iso = toIso((d.data() as Record<string, unknown>).createdAt);
+    if (!iso) continue;
+    const date = new Date(iso);
+    if (!Number.isFinite(date.getTime())) continue;
+    if (!oldest || date.getTime() < oldest.getTime()) oldest = date;
+  }
+  return oldest;
+}
+
 export function useMessages(phone: string | undefined): {
   data: Message[] | null;
   error: string | null;
