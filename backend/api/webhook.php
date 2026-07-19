@@ -1652,7 +1652,12 @@ function handle_incoming_message($user, $phoneNumberId, $message, $contacts)
         'status' => 'delivered',
         'body' => $messageBody,
         'whatsappMessageId' => $messageId,
-        'createdAt' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp),
+        // Store as Firestore Timestamp (not string) so `orderBy(createdAt)`
+        // sorts incoming + outgoing messages together. Outgoing messages
+        // from the web/app use `serverTimestamp()` (Timestamp type); if this
+        // stays a string, Firestore's value-type ordering separates them
+        // and the thread renders out of chronological order.
+        'createdAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z', (int) $timestamp)],
     ];
 
     if ($mediaId) {
@@ -3067,7 +3072,7 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
                 'direction' => 'outgoing',
                 'status' => 'sent',
                 'body' => $addText,
-                'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
+                'createdAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
                 'botName' => $botName,
             ];
             if (!empty($addHeader) && trim($addHeader) !== '')
@@ -3105,7 +3110,7 @@ function _process_bot_triggers($documents, $user, $phoneNumberId, $from, $contac
             'direction' => 'outgoing',
             'status' => 'sent',
             'body' => $responseText,
-            'createdAt' => gmdate('Y-m-d\TH:i:s\Z'),
+            'createdAt' => ['timestampValue' => gmdate('Y-m-d\TH:i:s\Z')],
             'botName' => $botName,
         ];
         // Use filtered quickReplies (same as what was sent to WhatsApp)
@@ -3825,7 +3830,7 @@ function _handle_ai_bot($user, $userId, $phoneNumberId, $clientPhone, $clientNam
                 'direction' => 'outgoing',
                 'status' => 'sent',
                 'body' => $aiReply,
-                'createdAt' => $nowIso,
+                'createdAt' => ['timestampValue' => $nowIso],
                 'isAiBot' => true,
             ]),
         ],
