@@ -244,6 +244,19 @@ function mergeReactions(rows: Message[]): Message[] {
   return merged.filter((m) => !(m.type === "reaction" && !m.mediaUrl));
 }
 
+function messageTimeMs(m: Pick<Message, "createdAt" | "id">): number {
+  const parsed = m.createdAt ? Date.parse(m.createdAt) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortMessagesAsc(rows: Message[]): Message[] {
+  return [...rows].sort((a, b) => {
+    const diff = messageTimeMs(a) - messageTimeMs(b);
+    if (diff !== 0) return diff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function useMessages(phone: string | undefined): {
   data: Message[] | null;
   error: string | null;
@@ -312,7 +325,11 @@ export function useMessages(phone: string | undefined): {
           if (raw instanceof Timestamp) oldestLiveCreatedRef.current = raw.toDate();
           else if (raw instanceof Date) oldestLiveCreatedRef.current = raw;
         }
-        setLiveRows(mergeReactions(parsed).reverse());
+        // Firestore can contain legacy ISO-string `createdAt` rows mixed with
+        // newer Timestamp rows. `orderBy(createdAt)` groups those by value
+        // type, so reversing the snapshot still renders blocks out of time
+        // order. Always sort the parsed ISO values client-side before render.
+        setLiveRows(sortMessagesAsc(mergeReactions(parsed)));
       },
       (err) => {
         setError(err.message);
@@ -370,10 +387,8 @@ export function useMessages(phone: string | undefined): {
     if (liveRows === null) return null;
     if (olderRows.length === 0) return liveRows;
     const seen = new Set(liveRows.map((m) => m.id));
-    const olderAsc = [...olderRows]
-      .filter((m) => !seen.has(m.id))
-      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
-    return mergeReactions([...olderAsc, ...liveRows]);
+    const olderAsc = sortMessagesAsc(olderRows.filter((m) => !seen.has(m.id)));
+    return sortMessagesAsc(mergeReactions([...olderAsc, ...liveRows]));
   }, [liveRows, olderRows]);
 
   return { data, error, hasMore, loadMore, loadingMore };
