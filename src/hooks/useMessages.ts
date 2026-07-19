@@ -402,6 +402,7 @@ export function useMessages(phone: string | undefined): {
           query(
             collection(db, `users/${uid}/messages`),
             phoneFilter,
+            where("createdAt", ">=", ""),
             where("createdAt", "<", cursor.toISOString()),
             orderBy("createdAt", "desc"),
             limit(PAGE_STEP),
