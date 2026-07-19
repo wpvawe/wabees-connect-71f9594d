@@ -7,9 +7,9 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
   Timestamp,
   type QueryDocumentSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { fbDbOrNull } from "@/integrations/firebase/client";
 import { useEffectiveUid } from "@/hooks/useFirebaseSession";
@@ -100,7 +100,7 @@ function parseMessageDoc(
   fallbackPhone: string,
   uid: string,
 ): Message {
-  const x = d.data() as Record<string, unknown>;
+  const x = d.data({ serverTimestamps: "estimate" }) as Record<string, unknown>;
   const contactPhone = str(x.contactPhone, fallbackPhone);
   const locRaw = (x.location as Record<string, unknown> | undefined) ?? null;
   const latitude =
@@ -244,6 +244,31 @@ function mergeReactions(rows: Message[]): Message[] {
   return merged.filter((m) => !(m.type === "reaction" && !m.mediaUrl));
 }
 
+function messageTimeMs(m: Pick<Message, "createdAt" | "id">): number {
+  const parsed = m.createdAt ? Date.parse(m.createdAt) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortMessagesAsc(rows: Message[]): Message[] {
+  return [...rows].sort((a, b) => {
+    const diff = messageTimeMs(a) - messageTimeMs(b);
+    if (diff !== 0) return diff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function oldestDocDate(docs: QueryDocumentSnapshot[]): Date | null {
+  let oldest: Date | null = null;
+  for (const d of docs) {
+    const iso = toIso((d.data({ serverTimestamps: "estimate" }) as Record<string, unknown>).createdAt);
+    if (!iso) continue;
+    const date = new Date(iso);
+    if (!Number.isFinite(date.getTime())) continue;
+    if (!oldest || date.getTime() < oldest.getTime()) oldest = date;
+  }
+  return oldest;
+}
+
 export function useMessages(phone: string | undefined): {
   data: Message[] | null;
   error: string | null;
@@ -261,8 +286,8 @@ export function useMessages(phone: string | undefined): {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
-  const oldestOlderCreatedRef = useRef<Date | null>(null);
-  const oldestLiveCreatedRef = useRef<Date | null>(null);
+  const oldestTimestampCreatedRef = useRef<Date | null>(null);
+  const oldestLegacyStringCreatedRef = useRef<Date | null>(null);
   // Bug fix: once the user pages back with loadMore(), a subsequent live
   // snapshot must NOT reset hasMore based on the fixed live-window size,
   // otherwise "Load older" disappears the moment any new message arrives.
@@ -276,8 +301,8 @@ export function useMessages(phone: string | undefined): {
     // the previous thread's messages before the new snapshot arrives.
     setLiveRows(null);
     hasPagedBackRef.current = false;
-    oldestOlderCreatedRef.current = null;
-    oldestLiveCreatedRef.current = null;
+    oldestTimestampCreatedRef.current = null;
+    oldestLegacyStringCreatedRef.current = null;
   }, [phone]);
 
   useEffect(() => {
@@ -286,76 +311,141 @@ export function useMessages(phone: string | undefined): {
     if (!db) return;
     setLiveRows(null);
     const candidates = phoneQueryCandidates(phone);
-    const q = query(
+    const timestampQuery = query(
       collection(db, `users/${uid}/messages`),
       candidates.length === 1
         ? where("contactPhone", "==", candidates[0])
         : where("contactPhone", "in", candidates),
+      // Legacy PHP wrote ISO strings; new code writes Firestore Timestamp.
+      // Firestore sorts value types separately, so read Timestamp rows and
+      // string rows in separate windows, then merge by parsed time below.
+      where("createdAt", "<", ""),
       orderBy("createdAt", "desc"),
       limit(PAGE_SIZE),
     );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        // Hit the live cap? Older messages likely exist; "Load older" fetches
-        // them on demand without disturbing this listener.
-        if (!hasPagedBackRef.current) {
-          setHasMore(snap.docs.length >= PAGE_SIZE);
-        }
-        setLoadingMore(false);
-        const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
-        // Firestore returned desc-by-createdAt. Track the oldest live doc
-        // as the pagination cursor for the first "Load older" fetch.
-        const oldest = snap.docs[snap.docs.length - 1];
-        if (oldest) {
-          const raw = oldest.data().createdAt;
-          if (raw instanceof Timestamp) oldestLiveCreatedRef.current = raw.toDate();
-          else if (raw instanceof Date) oldestLiveCreatedRef.current = raw;
-        }
-        setLiveRows(mergeReactions(parsed).reverse());
-      },
-      (err) => {
-        setError(err.message);
-        setLoadingMore(false);
-      },
+    const legacyStringQuery = query(
+      collection(db, `users/${uid}/messages`),
+      candidates.length === 1
+        ? where("contactPhone", "==", candidates[0])
+        : where("contactPhone", "in", candidates),
+      where("createdAt", ">=", ""),
+      orderBy("createdAt", "desc"),
+      limit(PAGE_SIZE),
     );
-    return () => unsub();
+
+    let timestampDocs: QueryDocumentSnapshot[] = [];
+    let legacyDocs: QueryDocumentSnapshot[] = [];
+    let timestampReady = false;
+    let legacyReady = false;
+
+    const flushLiveRows = () => {
+      if (!timestampReady || !legacyReady) return;
+      const docsById = new Map<string, QueryDocumentSnapshot>();
+      for (const d of [...timestampDocs, ...legacyDocs]) docsById.set(d.id, d);
+      const docs = Array.from(docsById.values());
+      if (!hasPagedBackRef.current) {
+        setHasMore(timestampDocs.length >= PAGE_SIZE || legacyDocs.length >= PAGE_SIZE);
+      }
+      setLoadingMore(false);
+      const parsed = sortMessagesAsc(mergeReactions(docs.map((d) => parseMessageDoc(d, phone, uid))));
+      oldestTimestampCreatedRef.current =
+        timestampDocs.length >= PAGE_SIZE ? oldestDocDate(timestampDocs) : null;
+      oldestLegacyStringCreatedRef.current =
+        legacyDocs.length >= PAGE_SIZE ? oldestDocDate(legacyDocs) : null;
+      setLiveRows(parsed);
+    };
+
+    const unsubs: Unsubscribe[] = [];
+    unsubs.push(
+      onSnapshot(
+        timestampQuery,
+        (snap) => {
+          timestampDocs = snap.docs;
+          timestampReady = true;
+          flushLiveRows();
+        },
+        (err) => {
+          setError(err.message);
+          setLoadingMore(false);
+        },
+      ),
+    );
+    unsubs.push(
+      onSnapshot(
+        legacyStringQuery,
+        (snap) => {
+          legacyDocs = snap.docs;
+          legacyReady = true;
+          flushLiveRows();
+        },
+        (err) => {
+          setError(err.message);
+          setLoadingMore(false);
+        },
+      ),
+    );
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
   }, [uid, phone]);
 
   const loadMore = useCallback(async () => {
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const cursor = oldestOlderCreatedRef.current ?? oldestLiveCreatedRef.current;
-    if (!cursor) return;
+    const timestampCursor = oldestTimestampCreatedRef.current;
+    const legacyCursor = oldestLegacyStringCreatedRef.current;
+    if (!timestampCursor && !legacyCursor) return;
     setLoadingMore(true);
     try {
       const candidates = phoneQueryCandidates(phone);
-      const snap = await getDocs(
-        query(
-          collection(db, `users/${uid}/messages`),
-          candidates.length === 1
-            ? where("contactPhone", "==", candidates[0])
-            : where("contactPhone", "in", candidates),
-          orderBy("createdAt", "desc"),
-          startAfter(Timestamp.fromDate(cursor)),
-          limit(PAGE_STEP),
-        ),
+      const phoneFilter =
+        candidates.length === 1
+          ? where("contactPhone", "==", candidates[0])
+          : where("contactPhone", "in", candidates);
+      const [timestampDocs, legacyDocs] = await Promise.all([
+        timestampCursor
+          ? getDocs(
+              query(
+                collection(db, `users/${uid}/messages`),
+                phoneFilter,
+                where("createdAt", "<", Timestamp.fromDate(timestampCursor)),
+                orderBy("createdAt", "desc"),
+                limit(PAGE_STEP),
+              ),
+            ).then((snap) => snap.docs)
+          : Promise.resolve([]),
+        legacyCursor
+          ? getDocs(
+              query(
+                collection(db, `users/${uid}/messages`),
+                phoneFilter,
+                where("createdAt", ">=", ""),
+                where("createdAt", "<", legacyCursor.toISOString()),
+                orderBy("createdAt", "desc"),
+                limit(PAGE_STEP),
+              ),
+            ).then((snap) => snap.docs)
+          : Promise.resolve([]),
+      ]);
+      const parsed = sortMessagesAsc(
+        mergeReactions([
+          ...timestampDocs.map((d) => parseMessageDoc(d, phone, uid)),
+          ...legacyDocs.map((d) => parseMessageDoc(d, phone, uid)),
+        ]),
       );
-      const parsed = snap.docs.map((d) => parseMessageDoc(d, phone, uid));
-      const oldest = snap.docs[snap.docs.length - 1];
-      if (oldest) {
-        const raw = oldest.data().createdAt;
-        if (raw instanceof Timestamp) oldestOlderCreatedRef.current = raw.toDate();
-        else if (raw instanceof Date) oldestOlderCreatedRef.current = raw;
-      }
+      oldestTimestampCreatedRef.current =
+        timestampDocs.length >= PAGE_STEP ? oldestDocDate(timestampDocs) : null;
+      oldestLegacyStringCreatedRef.current =
+        legacyDocs.length >= PAGE_STEP ? oldestDocDate(legacyDocs) : null;
       setOlderRows((prev) => {
         const seen = new Set(prev.map((m) => m.id));
         const merged = [...prev];
         for (const m of parsed) if (!seen.has(m.id)) merged.push(m);
         return merged;
-      });
-      setHasMore(snap.docs.length >= PAGE_STEP);
+      },
+      );
+      setHasMore(timestampDocs.length >= PAGE_STEP || legacyDocs.length >= PAGE_STEP);
       hasPagedBackRef.current = true;
     } catch (err) {
       setError((err as Error).message);
@@ -370,10 +460,8 @@ export function useMessages(phone: string | undefined): {
     if (liveRows === null) return null;
     if (olderRows.length === 0) return liveRows;
     const seen = new Set(liveRows.map((m) => m.id));
-    const olderAsc = [...olderRows]
-      .filter((m) => !seen.has(m.id))
-      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
-    return mergeReactions([...olderAsc, ...liveRows]);
+    const olderAsc = sortMessagesAsc(olderRows.filter((m) => !seen.has(m.id)));
+    return sortMessagesAsc(mergeReactions([...olderAsc, ...liveRows]));
   }, [liveRows, olderRows]);
 
   return { data, error, hasMore, loadMore, loadingMore };
