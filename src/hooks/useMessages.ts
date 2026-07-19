@@ -274,8 +274,8 @@ export function useMessages(phone: string | undefined): {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
-  const oldestOlderCreatedRef = useRef<Date | null>(null);
-  const oldestLiveCreatedRef = useRef<Date | null>(null);
+  const oldestTimestampCreatedRef = useRef<Date | null>(null);
+  const oldestLegacyStringCreatedRef = useRef<Date | null>(null);
   // Bug fix: once the user pages back with loadMore(), a subsequent live
   // snapshot must NOT reset hasMore based on the fixed live-window size,
   // otherwise "Load older" disappears the moment any new message arrives.
@@ -289,8 +289,8 @@ export function useMessages(phone: string | undefined): {
     // the previous thread's messages before the new snapshot arrives.
     setLiveRows(null);
     hasPagedBackRef.current = false;
-    oldestOlderCreatedRef.current = null;
-    oldestLiveCreatedRef.current = null;
+    oldestTimestampCreatedRef.current = null;
+    oldestLegacyStringCreatedRef.current = null;
   }, [phone]);
 
   useEffect(() => {
@@ -336,8 +336,8 @@ export function useMessages(phone: string | undefined): {
       }
       setLoadingMore(false);
       const parsed = sortMessagesAsc(mergeReactions(docs.map((d) => parseMessageDoc(d, phone, uid))));
-      const oldest = parsed[0]?.createdAt ? new Date(parsed[0].createdAt) : null;
-      oldestLiveCreatedRef.current = oldest && Number.isFinite(oldest.getTime()) ? oldest : null;
+      oldestTimestampCreatedRef.current = oldestDocDate(timestampDocs);
+      oldestLegacyStringCreatedRef.current = oldestDocDate(legacyDocs);
       setLiveRows(parsed);
     };
 
@@ -379,8 +379,9 @@ export function useMessages(phone: string | undefined): {
     if (!uid || !phone) return;
     const db = fbDbOrNull();
     if (!db) return;
-    const cursor = oldestOlderCreatedRef.current ?? oldestLiveCreatedRef.current;
-    if (!cursor) return;
+    const timestampCursor = oldestTimestampCreatedRef.current;
+    const legacyCursor = oldestLegacyStringCreatedRef.current;
+    if (!timestampCursor && !legacyCursor) return;
     setLoadingMore(true);
     try {
       const candidates = phoneQueryCandidates(phone);
@@ -388,35 +389,39 @@ export function useMessages(phone: string | undefined): {
         candidates.length === 1
           ? where("contactPhone", "==", candidates[0])
           : where("contactPhone", "in", candidates);
-      const [timestampSnap, legacySnap] = await Promise.all([
-        getDocs(
-          query(
-            collection(db, `users/${uid}/messages`),
-            phoneFilter,
-            where("createdAt", "<", Timestamp.fromDate(cursor)),
-            orderBy("createdAt", "desc"),
-            limit(PAGE_STEP),
-          ),
-        ),
-        getDocs(
-          query(
-            collection(db, `users/${uid}/messages`),
-            phoneFilter,
-            where("createdAt", ">=", ""),
-            where("createdAt", "<", cursor.toISOString()),
-            orderBy("createdAt", "desc"),
-            limit(PAGE_STEP),
-          ),
-        ),
+      const [timestampDocs, legacyDocs] = await Promise.all([
+        timestampCursor
+          ? getDocs(
+              query(
+                collection(db, `users/${uid}/messages`),
+                phoneFilter,
+                where("createdAt", "<", Timestamp.fromDate(timestampCursor)),
+                orderBy("createdAt", "desc"),
+                limit(PAGE_STEP),
+              ),
+            ).then((snap) => snap.docs)
+          : Promise.resolve([]),
+        legacyCursor
+          ? getDocs(
+              query(
+                collection(db, `users/${uid}/messages`),
+                phoneFilter,
+                where("createdAt", ">=", ""),
+                where("createdAt", "<", legacyCursor.toISOString()),
+                orderBy("createdAt", "desc"),
+                limit(PAGE_STEP),
+              ),
+            ).then((snap) => snap.docs)
+          : Promise.resolve([]),
       ]);
       const parsed = sortMessagesAsc(
         mergeReactions([
-          ...timestampSnap.docs.map((d) => parseMessageDoc(d, phone, uid)),
-          ...legacySnap.docs.map((d) => parseMessageDoc(d, phone, uid)),
+          ...timestampDocs.map((d) => parseMessageDoc(d, phone, uid)),
+          ...legacyDocs.map((d) => parseMessageDoc(d, phone, uid)),
         ]),
       );
-      const oldest = parsed[0]?.createdAt ? new Date(parsed[0].createdAt) : null;
-      if (oldest && Number.isFinite(oldest.getTime())) oldestOlderCreatedRef.current = oldest;
+      oldestTimestampCreatedRef.current = oldestDocDate(timestampDocs) ?? oldestTimestampCreatedRef.current;
+      oldestLegacyStringCreatedRef.current = oldestDocDate(legacyDocs) ?? oldestLegacyStringCreatedRef.current;
       setOlderRows((prev) => {
         const seen = new Set(prev.map((m) => m.id));
         const merged = [...prev];
@@ -424,7 +429,7 @@ export function useMessages(phone: string | undefined): {
         return merged;
       },
       );
-      setHasMore(timestampSnap.docs.length >= PAGE_STEP || legacySnap.docs.length >= PAGE_STEP);
+      setHasMore(timestampDocs.length >= PAGE_STEP || legacyDocs.length >= PAGE_STEP);
       hasPagedBackRef.current = true;
     } catch (err) {
       setError((err as Error).message);
